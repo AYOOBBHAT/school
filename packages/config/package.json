@@ -1,0 +1,9 @@
+{
+  "name": "@school/config",
+  "private": true,
+  "version": "0.1.0",
+  "files": ["tsconfig.base.json", "eslint.base.cjs", "tailwind.base.cjs", "postcss.base.cjs"],
+  "license": "MIT"
+}
+
+

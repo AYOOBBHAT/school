@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "School SaaS",
+    "slug": "school-saas",
+    "scheme": "schools",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android"],
+    "sdkVersion": "52.0.0",
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": ["**/*"]
+  }
+}
+
+
