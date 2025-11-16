@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireRoles } from '../middleware/auth';
+import { requireRoles } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -354,6 +354,7 @@ router.get('/profile', requireRoles(['student']), async (req, res) => {
         admission_date,
         class_group_id,
         section_id,
+        profile_id,
         class_groups:class_group_id (
           id,
           name,

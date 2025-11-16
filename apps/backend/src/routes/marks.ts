@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import Joi from 'joi';
 import { createClient } from '@supabase/supabase-js';
-import { requireRoles } from '../middleware/auth';
+import { requireRoles } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -78,7 +78,7 @@ router.post('/bulk', requireRoles(['teacher', 'principal', 'clerk']), async (req
 
     // For teachers, verify they are assigned to the subject and class
     if (user.role === 'teacher') {
-      const subjectIds = [...new Set(value.marks.map((m: any) => m.subject_id))];
+      const subjectIds = [...new Set(value.marks.map((m: any) => m.subject_id))] as string[];
       const { data: assignments, error: assignmentError } = await adminSupabase
         .from('teacher_assignments')
         .select('subject_id, class_group_id')

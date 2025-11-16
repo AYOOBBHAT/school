@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireRoles } from '../middleware/auth';
+import { requireRoles } from '../middleware/auth.js';
 
 const router = Router();
 
