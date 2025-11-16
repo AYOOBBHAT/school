@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import Joi from 'joi';
 import { createClient } from '@supabase/supabase-js';
-import { generateJoinCode } from '../utils/joinCode';
+import { generateJoinCode } from '../utils/joinCode.js';
 
 const router = Router();
 
