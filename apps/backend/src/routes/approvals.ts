@@ -201,9 +201,29 @@ router.post('/action', requireRoles(['principal', 'clerk']), async (req, res) =>
 
         if (value.class_group_id) {
           studentData.class_group_id = value.class_group_id;
-        }
-        if (value.section_id) {
-          studentData.section_id = value.section_id;
+          
+          // If section_id is provided and not empty, use it
+          if (value.section_id && value.section_id.trim() !== '') {
+            studentData.section_id = value.section_id;
+          } else {
+            // No section_id provided or empty, try to get first section from class
+            const { data: classSections, error: sectionsError } = await adminSupabase
+              .from('sections')
+              .select('id')
+              .eq('class_group_id', value.class_group_id)
+              .order('name', { ascending: true })
+              .limit(1);
+            
+            if (!sectionsError && classSections && classSections.length > 0) {
+              // Automatically assign first section
+              studentData.section_id = classSections[0].id;
+              console.log('[approvals/action] Auto-assigned first section:', classSections[0].id);
+            } else {
+              // No sections available, set to null
+              studentData.section_id = null;
+              console.log('[approvals/action] No sections available, setting section_id to null');
+            }
+          }
         }
         if (value.roll_number) {
           studentData.roll_number = value.roll_number;

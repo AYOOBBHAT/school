@@ -103,8 +103,15 @@ export default function StudentDashboard() {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary | null>(null);
   const [marks, setMarks] = useState<Mark[]>([]);
-  const [fees, setFees] = useState<FeeStructure[]>([]);
-  const [feeSummary, setFeeSummary] = useState<FeeSummary | null>(null);
+  const [bills, setBills] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [selectedBill, setSelectedBill] = useState<any>(null);
+  const [feeSummary, setFeeSummary] = useState<{
+    totalAssigned: number;
+    totalPaid: number;
+    totalPending: number;
+    transportFee: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -117,9 +124,11 @@ export default function StudentDashboard() {
     } else if (activeTab === 'marks') {
       loadMarks();
     } else if (activeTab === 'fees') {
-      loadFees();
+      if (profile?.id) {
+        loadFees();
+      }
     }
-  }, [activeTab]);
+  }, [activeTab, profile]);
 
   const loadProfile = async () => {
     try {
@@ -251,19 +260,172 @@ export default function StudentDashboard() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/students/fees`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      // Get student ID from profile
+      if (!profile?.id) return;
 
-      if (!response.ok) throw new Error('Failed to load fees');
+      const [billsRes, paymentsRes] = await Promise.all([
+        fetch(`${API_URL}/fees/bills?student_id=${profile.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/fees/payments?student_id=${profile.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
 
-      const data = await response.json();
-      setFees(data.fees || []);
-      setFeeSummary(data.summary || null);
+      if (billsRes.ok) {
+        const billsData = await billsRes.json();
+        setBills(billsData.bills || []);
+        
+        // Calculate summary
+        const totalAssigned = (billsData.bills || []).reduce((sum: number, b: any) => sum + parseFloat(b.net_amount || 0), 0);
+        const totalPaid = (billsData.bills || []).reduce((sum: number, b: any) => sum + parseFloat(b.total_paid || 0), 0);
+        const totalPending = (billsData.bills || []).reduce((sum: number, b: any) => sum + parseFloat(b.balance || 0), 0);
+        const transportFee = (billsData.bills || []).reduce((sum: number, b: any) => sum + parseFloat(b.transport_fee_total || 0), 0);
+        
+        setFeeSummary({
+          totalAssigned,
+          totalPaid,
+          totalPending,
+          transportFee
+        });
+      }
+
+      if (paymentsRes.ok) {
+        const paymentsData = await paymentsRes.json();
+        setPayments(paymentsData.payments || []);
+      }
     } catch (error) {
       console.error('Error loading fees:', error);
+    }
+  };
+
+  const viewBill = async (billId: string) => {
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/fees/bills/${billId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedBill(data.bill);
+      }
+    } catch (error) {
+      console.error('Error loading bill details:', error);
+    }
+  };
+
+  const downloadInvoice = (bill: any) => {
+    const invoiceHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Invoice - ${bill.bill_number}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          .header { text-align: center; margin-bottom: 30px; }
+          .invoice-details { display: flex; justify-content: space-between; margin-bottom: 30px; }
+          .student-info, .bill-info { width: 48%; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+          th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+          th { background-color: #f2f2f2; }
+          .total-row { font-weight: bold; background-color: #f9f9f9; }
+          .summary { float: right; width: 300px; margin-top: 20px; }
+          .summary div { display: flex; justify-content: space-between; margin-bottom: 10px; }
+          .text-right { text-align: right; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>FEE INVOICE</h1>
+          <h2>Bill Number: ${bill.bill_number}</h2>
+        </div>
+        <div class="invoice-details">
+          <div class="student-info">
+            <h3>Student Information</h3>
+            <p><strong>Name:</strong> ${bill.students?.profile?.full_name || '-'}</p>
+            <p><strong>Roll Number:</strong> ${bill.students?.roll_number || '-'}</p>
+            <p><strong>Class:</strong> ${bill.students?.class_groups?.name || '-'}</p>
+          </div>
+          <div class="bill-info">
+            <h3>Bill Information</h3>
+            <p><strong>Bill Date:</strong> ${new Date(bill.bill_date).toLocaleDateString()}</p>
+            <p><strong>Period:</strong> ${new Date(bill.bill_period_start).toLocaleDateString()} - ${new Date(bill.bill_period_end).toLocaleDateString()}</p>
+            <p><strong>Due Date:</strong> ${new Date(bill.due_date).toLocaleDateString()}</p>
+            <p><strong>Status:</strong> ${bill.status}</p>
+          </div>
+        </div>
+        <h3>Bill Items</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th class="text-right">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(bill.items || []).map((item: any) => `
+              <tr>
+                <td>${item.item_name}</td>
+                <td class="text-right">${item.amount < 0 ? '-' : ''}₹${Math.abs(parseFloat(item.amount || 0)).toLocaleString()}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="summary">
+          <div><span>Class Fees:</span><span>₹${parseFloat(bill.class_fees_total || 0).toLocaleString()}</span></div>
+          ${bill.transport_fee_total > 0 ? `<div><span>Transport Fee:</span><span>₹${parseFloat(bill.transport_fee_total || 0).toLocaleString()}</span></div>` : ''}
+          ${bill.optional_fees_total > 0 ? `<div><span>Optional Fees:</span><span>₹${parseFloat(bill.optional_fees_total || 0).toLocaleString()}</span></div>` : ''}
+          ${bill.custom_fees_total !== 0 ? `<div><span>Custom Fees:</span><span>${bill.custom_fees_total < 0 ? '-' : '+'}₹${Math.abs(parseFloat(bill.custom_fees_total || 0)).toLocaleString()}</span></div>` : ''}
+          ${bill.fine_total > 0 ? `<div><span>Fine:</span><span>₹${parseFloat(bill.fine_total || 0).toLocaleString()}</span></div>` : ''}
+          <div class="total-row"><span>Gross Amount:</span><span>₹${parseFloat(bill.gross_amount || 0).toLocaleString()}</span></div>
+          ${bill.discount_amount > 0 ? `<div><span>Discount:</span><span>-₹${parseFloat(bill.discount_amount || 0).toLocaleString()}</span></div>` : ''}
+          ${bill.scholarship_amount > 0 ? `<div><span>Scholarship:</span><span>-₹${parseFloat(bill.scholarship_amount || 0).toLocaleString()}</span></div>` : ''}
+          <div class="total-row" style="font-size: 1.2em; border-top: 2px solid #000; padding-top: 10px;">
+            <span>Net Amount:</span><span>₹${parseFloat(bill.net_amount || 0).toLocaleString()}</span>
+          </div>
+          <div><span>Paid:</span><span>₹${parseFloat(bill.total_paid || 0).toLocaleString()}</span></div>
+          <div class="total-row" style="border-top: 2px solid #000; padding-top: 10px;">
+            <span>Balance:</span><span>₹${parseFloat(bill.balance || 0).toLocaleString()}</span>
+          </div>
+        </div>
+        ${bill.payments && bill.payments.length > 0 ? `
+          <h3 style="clear: both; margin-top: 50px;">Payment History</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Payment Number</th>
+                <th>Amount</th>
+                <th>Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${bill.payments.map((payment: any) => `
+                <tr>
+                  <td>${new Date(payment.payment_date).toLocaleDateString()}</td>
+                  <td>${payment.payment_number}</td>
+                  <td>₹${parseFloat(payment.amount_paid || 0).toLocaleString()}</td>
+                  <td>${payment.payment_mode}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : ''}
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(invoiceHTML);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
     }
   };
 
@@ -409,10 +571,10 @@ export default function StudentDashboard() {
                   <div className="bg-purple-50 rounded-lg p-6">
                     <h3 className="text-lg font-semibold mb-2">Fees</h3>
                     <p className="text-3xl font-bold text-purple-600">
-                      ₹{feeSummary.totalRemaining.toLocaleString()}
+                      ₹{feeSummary.totalPending.toLocaleString()}
                     </p>
                     <p className="text-gray-600 text-sm mt-2">
-                      {feeSummary.totalPaid.toLocaleString()} / {feeSummary.totalFees.toLocaleString()} paid
+                      {feeSummary.totalPaid.toLocaleString()} / {feeSummary.totalAssigned.toLocaleString()} paid
                     </p>
                   </div>
                 )}
@@ -574,93 +736,370 @@ export default function StudentDashboard() {
               {feeSummary && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   <div className="bg-blue-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-600">Total Fees</p>
-                    <p className="text-2xl font-bold">₹{feeSummary.totalFees.toLocaleString()}</p>
+                    <p className="text-sm text-gray-600">Total Assigned</p>
+                    <p className="text-2xl font-bold">₹{feeSummary.totalAssigned.toLocaleString()}</p>
                   </div>
                   <div className="bg-green-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-600">Paid</p>
+                    <p className="text-sm text-gray-600">Total Paid</p>
                     <p className="text-2xl font-bold text-green-600">₹{feeSummary.totalPaid.toLocaleString()}</p>
                   </div>
                   <div className="bg-red-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-600">Remaining</p>
-                    <p className="text-2xl font-bold text-red-600">₹{feeSummary.totalRemaining.toLocaleString()}</p>
+                    <p className="text-sm text-gray-600">Pending</p>
+                    <p className="text-2xl font-bold text-red-600">₹{feeSummary.totalPending.toLocaleString()}</p>
                   </div>
                   <div className="bg-yellow-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-600">Overdue</p>
-                    <p className="text-2xl font-bold text-yellow-600">{feeSummary.overdueFees}</p>
+                    <p className="text-sm text-gray-600">Transport Fee</p>
+                    <p className="text-2xl font-bold text-yellow-600">₹{feeSummary.transportFee.toLocaleString()}</p>
                   </div>
                 </div>
               )}
-              <div className="space-y-4">
-                {fees.map((fee) => (
-                  <div
-                    key={fee.id}
-                    className={`border rounded-lg p-6 ${
-                      fee.isOverdue ? 'border-red-300 bg-red-50' : fee.isPaid ? 'border-green-300 bg-green-50' : 'border-gray-200'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="text-xl font-bold">{fee.name}</h3>
-                        <p className="text-gray-600">Amount: ₹{fee.amount.toLocaleString()}</p>
-                        {fee.due_date && (
-                          <p className="text-gray-600 text-sm">
-                            Due Date: {new Date(fee.due_date).toLocaleDateString()}
-                          </p>
-                        )}
-                        {fee.description && <p className="text-gray-600 text-sm mt-2">{fee.description}</p>}
-                      </div>
-                      <div className="text-right">
-                        <span
-                          className={`px-3 py-1 rounded-full text-sm font-medium ${
-                            fee.isPaid
-                              ? 'bg-green-100 text-green-800'
-                              : fee.isOverdue
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-yellow-100 text-yellow-800'
+              
+              {/* Bills */}
+              <div className="mb-6">
+                <h3 className="text-xl font-bold mb-4">Fee Bills</h3>
+                {bills.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                    No bills found.
+                  </div>
+                ) : (
+                    <div className="space-y-4">
+                      {bills.map((bill: any) => (
+                        <div
+                          key={bill.id}
+                          className={`border rounded-lg p-6 ${
+                            bill.status === 'overdue' ? 'border-red-300 bg-red-50' :
+                            bill.status === 'paid' ? 'border-green-300 bg-green-50' :
+                            bill.status === 'partially-paid' ? 'border-yellow-300 bg-yellow-50' :
+                            'border-gray-200'
                           }`}
                         >
-                          {fee.isPaid ? 'Paid' : fee.isOverdue ? 'Overdue' : 'Pending'}
-                        </span>
-                        <p className="text-sm text-gray-600 mt-2">
-                          Paid: ₹{fee.totalPaid.toLocaleString()} / ₹{fee.amount.toLocaleString()}
-                        </p>
-                        {fee.remaining > 0 && (
-                          <p className="text-sm text-red-600 mt-1">Remaining: ₹{fee.remaining.toLocaleString()}</p>
-                        )}
-                      </div>
-                    </div>
-                    {fee.payments.length > 0 && (
-                      <div className="mt-4">
-                        <h4 className="font-semibold mb-2">Payment History</h4>
-                        <div className="space-y-2">
-                          {fee.payments.map((payment) => (
-                            <div key={payment.id} className="bg-white rounded p-3 text-sm">
-                              <div className="flex justify-between">
-                                <span>
-                                  ₹{payment.amount_paid.toLocaleString()} on{' '}
-                                  {new Date(payment.payment_date).toLocaleDateString()}
-                                </span>
-                                <span className="text-gray-600">{payment.payment_mode}</span>
-                              </div>
-                              {payment.transaction_id && (
-                                <p className="text-gray-500 text-xs mt-1">Txn ID: {payment.transaction_id}</p>
+                          <div className="flex justify-between items-start mb-4">
+                            <div>
+                              <h3 className="text-xl font-bold">Bill: {bill.bill_number}</h3>
+                              <p className="text-gray-600">Period: {new Date(bill.bill_period_start).toLocaleDateString()} - {new Date(bill.bill_period_end).toLocaleDateString()}</p>
+                              <p className="text-gray-600 text-sm mt-1">
+                                Due Date: {new Date(bill.due_date).toLocaleDateString()}
+                              </p>
+                              <p className="text-gray-600 text-sm mt-2">
+                                Net Amount: ₹{parseFloat(bill.net_amount || 0).toLocaleString()}
+                              </p>
+                              {bill.transport_fee_total > 0 && (
+                                <p className="text-gray-600 text-sm">Transport Fee: ₹{parseFloat(bill.transport_fee_total || 0).toLocaleString()}</p>
+                              )}
+                              {bill.discount_amount > 0 && (
+                                <p className="text-green-600 text-sm">Discount: -₹{parseFloat(bill.discount_amount || 0).toLocaleString()}</p>
+                              )}
+                              {bill.scholarship_amount > 0 && (
+                                <p className="text-green-600 text-sm">Scholarship: -₹{parseFloat(bill.scholarship_amount || 0).toLocaleString()}</p>
                               )}
                             </div>
-                          ))}
+                            <div className="text-right">
+                              <span
+                                className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                  bill.status === 'paid'
+                                    ? 'bg-green-100 text-green-800'
+                                    : bill.status === 'overdue'
+                                    ? 'bg-red-100 text-red-800'
+                                    : bill.status === 'partially-paid'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}
+                              >
+                                {bill.status || 'Pending'}
+                              </span>
+                              <p className="text-sm text-gray-600 mt-2">
+                                Paid: ₹{parseFloat(bill.total_paid || 0).toLocaleString()} / ₹{parseFloat(bill.net_amount || 0).toLocaleString()}
+                              </p>
+                              {bill.balance > 0 && (
+                                <p className="text-sm text-red-600 mt-1 font-semibold">
+                                  Balance: ₹{parseFloat(bill.balance || 0).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2 mt-4">
+                            <button
+                              onClick={() => viewBill(bill.id)}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                            >
+                              View Details
+                            </button>
+                            <button
+                              onClick={() => downloadInvoice(bill)}
+                              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                            >
+                              Download/Print
+                            </button>
+                            {bill.balance > 0 && (
+                              <button
+                                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
+                                onClick={() => alert('Online payment integration coming soon!')}
+                              >
+                                Pay Online
+                              </button>
+                            )}
+                          </div>
+                          {bill.payments && bill.payments.length > 0 && (
+                            <div className="mt-4">
+                              <h4 className="font-semibold mb-2">Payment History</h4>
+                              <div className="space-y-2">
+                                {bill.payments.map((payment: any) => (
+                                  <div key={payment.id} className="bg-white rounded p-3 text-sm">
+                                    <div className="flex justify-between">
+                                      <span>
+                                        ₹{parseFloat(payment.amount_paid || 0).toLocaleString()} on{' '}
+                                        {new Date(payment.payment_date).toLocaleDateString()}
+                                      </span>
+                                      <span className="text-gray-600">{payment.payment_mode}</span>
+                                    </div>
+                                    {payment.transaction_id && (
+                                      <p className="text-gray-500 text-xs mt-1">Txn ID: {payment.transaction_id}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {fees.length === 0 && (
-                  <div className="text-center py-12 text-gray-500">No fee structures assigned yet.</div>
-                )}
+                      ))}
+                    </div>
+                  )}
               </div>
+
+              {/* Payment History Summary */}
+              {payments.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-xl font-bold mb-4">All Payments</h3>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment Number</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mode</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bill Number</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {payments.map((payment: any) => (
+                          <tr key={payment.id}>
+                            <td className="px-6 py-4">{new Date(payment.payment_date).toLocaleDateString()}</td>
+                            <td className="px-6 py-4 font-medium">{payment.payment_number}</td>
+                            <td className="px-6 py-4 text-right font-semibold">₹{parseFloat(payment.amount_paid || 0).toLocaleString()}</td>
+                            <td className="px-6 py-4">{payment.payment_mode}</td>
+                            <td className="px-6 py-4">{payment.fee_bills?.bill_number || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {/* Bill Detail Modal */}
+      {selectedBill && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-2xl font-bold">Bill Details</h3>
+              <button
+                onClick={() => setSelectedBill(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Bill Header */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Bill Number</p>
+                    <p className="font-semibold">{selectedBill.bill_number}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Period</p>
+                    <p className="font-semibold">
+                      {new Date(selectedBill.bill_period_start).toLocaleDateString()} - {new Date(selectedBill.bill_period_end).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Due Date</p>
+                    <p className="font-semibold">{new Date(selectedBill.due_date).toLocaleDateString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Status</p>
+                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                      selectedBill.status === 'paid' ? 'bg-green-100 text-green-800' :
+                      selectedBill.status === 'partially-paid' ? 'bg-yellow-100 text-yellow-800' :
+                      selectedBill.status === 'overdue' ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {selectedBill.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bill Items */}
+              <div>
+                <h4 className="text-lg font-bold mb-3">Bill Items</h4>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {selectedBill.items && selectedBill.items.length > 0 ? (
+                        selectedBill.items.map((item: any, index: number) => (
+                          <tr key={index}>
+                            <td className="px-6 py-4">{item.item_name}</td>
+                            <td className={`px-6 py-4 text-right font-semibold ${
+                              item.amount < 0 ? 'text-green-600' : 'text-gray-900'
+                            }`}>
+                              {item.amount < 0 ? '-' : ''}₹{Math.abs(parseFloat(item.amount || 0)).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={2} className="px-6 py-4 text-center text-gray-500">
+                            No items found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Bill Summary */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>Class Fees:</span>
+                    <span className="font-semibold">₹{parseFloat(selectedBill.class_fees_total || 0).toLocaleString()}</span>
+                  </div>
+                  {selectedBill.transport_fee_total > 0 && (
+                    <div className="flex justify-between">
+                      <span>Transport Fee:</span>
+                      <span className="font-semibold">₹{parseFloat(selectedBill.transport_fee_total || 0).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {selectedBill.optional_fees_total > 0 && (
+                    <div className="flex justify-between">
+                      <span>Optional Fees:</span>
+                      <span className="font-semibold">₹{parseFloat(selectedBill.optional_fees_total || 0).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {selectedBill.custom_fees_total !== 0 && (
+                    <div className="flex justify-between">
+                      <span>Custom Fees:</span>
+                      <span className={`font-semibold ${selectedBill.custom_fees_total < 0 ? 'text-green-600' : ''}`}>
+                        {selectedBill.custom_fees_total < 0 ? '-' : '+'}₹{Math.abs(parseFloat(selectedBill.custom_fees_total || 0)).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {selectedBill.fine_total > 0 && (
+                    <div className="flex justify-between">
+                      <span>Fine:</span>
+                      <span className="font-semibold text-red-600">+₹{parseFloat(selectedBill.fine_total || 0).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-gray-300 pt-2 flex justify-between">
+                    <span className="font-semibold">Gross Amount:</span>
+                    <span className="font-semibold">₹{parseFloat(selectedBill.gross_amount || 0).toLocaleString()}</span>
+                  </div>
+                  {selectedBill.discount_amount > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>Discount:</span>
+                      <span className="font-semibold">-₹{parseFloat(selectedBill.discount_amount || 0).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {selectedBill.scholarship_amount > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>Scholarship:</span>
+                      <span className="font-semibold">-₹{parseFloat(selectedBill.scholarship_amount || 0).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="border-t-2 border-gray-400 pt-2 flex justify-between text-lg">
+                    <span className="font-bold">Net Amount:</span>
+                    <span className="font-bold">₹{parseFloat(selectedBill.net_amount || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Paid:</span>
+                    <span className="font-semibold">₹{parseFloat(selectedBill.total_paid || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="border-t border-gray-300 pt-2 flex justify-between text-lg">
+                    <span className="font-bold">Balance:</span>
+                    <span className={`font-bold ${parseFloat(selectedBill.balance || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      ₹{parseFloat(selectedBill.balance || 0).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payments History */}
+              {selectedBill.payments && selectedBill.payments.length > 0 && (
+                <div>
+                  <h4 className="text-lg font-bold mb-3">Payment History</h4>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment Number</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mode</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transaction ID</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {selectedBill.payments.map((payment: any) => (
+                          <tr key={payment.id}>
+                            <td className="px-6 py-4">{new Date(payment.payment_date).toLocaleDateString()}</td>
+                            <td className="px-6 py-4 font-medium">{payment.payment_number}</td>
+                            <td className="px-6 py-4 text-right font-semibold">₹{parseFloat(payment.amount_paid || 0).toLocaleString()}</td>
+                            <td className="px-6 py-4">{payment.payment_mode}</td>
+                            <td className="px-6 py-4">{payment.transaction_id || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-4">
+                <button
+                  onClick={() => downloadInvoice(selectedBill)}
+                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                >
+                  Download/Print Invoice
+                </button>
+                {selectedBill.balance > 0 && (
+                  <button
+                    className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+                    onClick={() => alert('Online payment integration coming soon!')}
+                  >
+                    Pay Online
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

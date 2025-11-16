@@ -8,11 +8,17 @@ const router = Router();
 const supabaseUrl = process.env.SUPABASE_URL as string;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
+const scheduleEntrySchema = Joi.object({
+  subject_id: Joi.string().uuid().required(),
+  exam_date: Joi.date().required(),
+  time_from: Joi.string().pattern(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/).required(), // HH:MM format
+  time_to: Joi.string().pattern(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/).required() // HH:MM format
+});
+
 const examSchema = Joi.object({
   name: Joi.string().required(),
   term: Joi.string().allow('', null),
-  start_date: Joi.date().required(),
-  end_date: Joi.date().required(),
+  schedule: Joi.array().items(scheduleEntrySchema).min(1).required(), // At least one schedule entry
   class_group_ids: Joi.array().items(Joi.string().uuid()).optional() // If empty/null, applies to all classes
 });
 
@@ -31,14 +37,19 @@ router.post('/', requireRoles(['principal']), async (req, res) => {
   const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
+    // Calculate start_date and end_date from schedule entries
+    const dates = value.schedule.map((entry: any) => new Date(entry.exam_date));
+    const start_date = new Date(Math.min(...dates.map((d: Date) => d.getTime())));
+    const end_date = new Date(Math.max(...dates.map((d: Date) => d.getTime())));
+
     // Create exam
     const { data: exam, error: examError } = await adminSupabase
       .from('exams')
       .insert({
         name: value.name,
         term: value.term || null,
-        start_date: value.start_date,
-        end_date: value.end_date,
+        start_date: start_date.toISOString().split('T')[0],
+        end_date: end_date.toISOString().split('T')[0],
         school_id: user.schoolId
       })
       .select()
@@ -47,6 +58,27 @@ router.post('/', requireRoles(['principal']), async (req, res) => {
     if (examError) {
       console.error('[exams] Error creating exam:', examError);
       return res.status(400).json({ error: examError.message });
+    }
+
+    // Create schedule entries
+    const scheduleEntries = value.schedule.map((entry: any) => ({
+      exam_id: exam.id,
+      subject_id: entry.subject_id,
+      exam_date: entry.exam_date,
+      time_from: entry.time_from,
+      time_to: entry.time_to,
+      school_id: user.schoolId
+    }));
+
+    const { error: scheduleError } = await adminSupabase
+      .from('exam_schedule')
+      .insert(scheduleEntries);
+
+    if (scheduleError) {
+      console.error('[exams] Error creating schedule:', scheduleError);
+      // Rollback exam creation
+      await adminSupabase.from('exams').delete().eq('id', exam.id);
+      return res.status(400).json({ error: scheduleError.message });
     }
 
     // If class_group_ids provided, link exam to those classes
@@ -62,19 +94,28 @@ router.post('/', requireRoles(['principal']), async (req, res) => {
 
       if (linkError) {
         console.error('[exams] Error linking exam to classes:', linkError);
-        // Rollback exam creation
+        // Rollback exam and schedule creation
+        await adminSupabase.from('exam_schedule').delete().eq('exam_id', exam.id);
         await adminSupabase.from('exams').delete().eq('id', exam.id);
         return res.status(400).json({ error: linkError.message });
       }
     }
 
-    // Fetch exam with class links
+    // Fetch exam with class links and schedule
     const { data: examWithClasses, error: fetchError } = await adminSupabase
       .from('exams')
       .select(`
         *,
         exam_classes:exam_classes(
           class_group:class_groups(id, name)
+        ),
+        exam_schedule:exam_schedule(
+          id,
+          subject_id,
+          exam_date,
+          time_from,
+          time_to,
+          subject:subjects(id, name, code)
         )
       `)
       .eq('id', exam.id)
@@ -110,6 +151,14 @@ router.get('/', requireRoles(['principal', 'teacher', 'clerk']), async (req, res
         *,
         exam_classes:exam_classes(
           class_group:class_groups(id, name)
+        ),
+        exam_schedule:exam_schedule(
+          id,
+          subject_id,
+          exam_date,
+          time_from,
+          time_to,
+          subject:subjects(id, name, code)
         )
       `)
       .eq('school_id', user.schoolId)
@@ -157,6 +206,14 @@ router.get('/student', requireRoles(['student']), async (req, res) => {
         *,
         exam_classes:exam_classes(
           class_group:class_groups(id, name)
+        ),
+        exam_schedule:exam_schedule(
+          id,
+          subject_id,
+          exam_date,
+          time_from,
+          time_to,
+          subject:subjects(id, name, code)
         )
       `)
       .eq('school_id', user.schoolId)

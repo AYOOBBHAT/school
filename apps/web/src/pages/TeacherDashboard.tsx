@@ -44,7 +44,7 @@ interface Student {
 export default function TeacherDashboard() {
   const navigate = useNavigate();
   const [checkingRole, setCheckingRole] = useState(true);
-  const [currentView, setCurrentView] = useState<'classes' | 'attendance' | 'marks'>('classes');
+  const [currentView, setCurrentView] = useState<'classes' | 'attendance' | 'marks' | 'salary' | 'fees'>('classes');
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -63,6 +63,15 @@ export default function TeacherDashboard() {
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>('');
   const [marksData, setMarksData] = useState<Record<string, { marks_obtained: string; max_marks: string }>>({});
+
+  // Salary states
+  const [salaryStructure, setSalaryStructure] = useState<any>(null);
+  const [salaryRecords, setSalaryRecords] = useState<any[]>([]);
+  const [loadingSalary, setLoadingSalary] = useState(false);
+
+  // Fee states (read-only)
+  const [studentFeeStatus, setStudentFeeStatus] = useState<Record<string, { hasPending: boolean; totalPending: number }>>({});
+  const [loadingFees, setLoadingFees] = useState(false);
 
   useEffect(() => {
     const verifyRole = async () => {
@@ -487,6 +496,50 @@ export default function TeacherDashboard() {
     }
   }, [attendanceDate, selectedAssignment, currentView]);
 
+  const loadSalaryData = async () => {
+    setLoadingSalary(true);
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const session = await supabase.auth.getSession();
+      const userId = session.data.session?.user?.id;
+      if (!userId) return;
+
+      const [structureRes, recordsRes] = await Promise.all([
+        fetch(`${API_URL}/salary/structure/${userId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/salary/records`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      if (structureRes.ok) {
+        const data = await structureRes.json();
+        setSalaryStructure(data.structure);
+      }
+
+      if (recordsRes.ok) {
+        const data = await recordsRes.json();
+        setSalaryRecords(data.records || []);
+      }
+    } catch (error) {
+      console.error('Error loading salary data:', error);
+    } finally {
+      setLoadingSalary(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentView === 'fees') {
+      loadStudentFeeStatus();
+    }
+    if (currentView === 'salary') {
+      loadSalaryData();
+    }
+  }, [currentView]);
+
   if (checkingRole || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -530,6 +583,22 @@ export default function TeacherDashboard() {
               }`}
             >
               📊 Marks Entry
+            </button>
+            <button
+              onClick={() => setCurrentView('salary')}
+              className={`w-full text-left px-4 py-2 rounded-lg transition ${
+                currentView === 'salary' ? 'bg-blue-600' : 'hover:bg-gray-800'
+              }`}
+            >
+              💰 My Salary
+            </button>
+            <button
+              onClick={() => setCurrentView('fees')}
+              className={`w-full text-left px-4 py-2 rounded-lg transition ${
+                currentView === 'fees' ? 'bg-blue-600' : 'hover:bg-gray-800'
+              }`}
+            >
+              💵 Student Fees (View Only)
             </button>
           </nav>
           <button
@@ -850,6 +919,203 @@ export default function TeacherDashboard() {
                     </>
                   )}
                 </div>
+              )}
+            </div>
+          )}
+
+          {currentView === 'fees' && (
+            <div>
+              <h2 className="text-3xl font-bold mb-6">Student Fee Status (Read-Only)</h2>
+              <p className="text-gray-600 mb-4">View fee status for students in your assigned classes. You cannot modify fees.</p>
+              
+              {loadingFees ? (
+                <div className="text-center py-8">Loading fee status...</div>
+              ) : (
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  {students.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      No students found in your assigned classes.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Roll Number</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student Name</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Pending Fees</th>
+                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Fee Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {students.map((student) => {
+                            const status = studentFeeStatus[student.id] || { hasPending: false, totalPending: 0, studentName: student.profile.full_name, rollNumber: student.roll_number || '-' };
+                            return (
+                              <tr key={student.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap">{status.rollNumber}</td>
+                                <td className="px-6 py-4 whitespace-nowrap font-medium">{status.studentName}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right">
+                                  {status.totalPending > 0 ? (
+                                    <span className="text-red-600 font-semibold">₹{status.totalPending.toLocaleString()}</span>
+                                  ) : (
+                                    <span className="text-green-600">₹0</span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-center">
+                                  {status.hasPending ? (
+                                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                                      Pending
+                                    </span>
+                                  ) : (
+                                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                      Cleared
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {currentView === 'salary' && (
+            <div>
+              <h2 className="text-3xl font-bold mb-6">My Salary</h2>
+              
+              {loadingSalary ? (
+                <div className="text-center py-8">Loading salary information...</div>
+              ) : (
+                <>
+                  {/* Salary Structure */}
+                  <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h3 className="text-xl font-bold mb-4">Salary Structure</h3>
+                    {salaryStructure ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-sm text-gray-600">Base Salary</div>
+                          <div className="text-lg font-semibold">₹{salaryStructure.base_salary.toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">HRA (House Rent Allowance)</div>
+                          <div className="text-lg font-semibold">₹{salaryStructure.hra.toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">Other Allowances</div>
+                          <div className="text-lg font-semibold">₹{salaryStructure.other_allowances.toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">Fixed Deductions</div>
+                          <div className="text-lg font-semibold text-red-600">₹{salaryStructure.fixed_deductions.toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">Salary Cycle</div>
+                          <div className="text-lg font-semibold capitalize">{salaryStructure.salary_cycle}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">Attendance-Based Deduction</div>
+                          <div className="text-lg font-semibold">
+                            {salaryStructure.attendance_based_deduction ? '✅ Enabled' : '❌ Disabled'}
+                          </div>
+                        </div>
+                        <div className="md:col-span-2 pt-4 border-t">
+                          <div className="text-sm text-gray-600">Gross Salary (Base + HRA + Allowances)</div>
+                          <div className="text-2xl font-bold text-green-600">
+                            ₹{(salaryStructure.base_salary + salaryStructure.hra + salaryStructure.other_allowances).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        Salary structure not set yet. Please contact your principal.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Salary Records */}
+                  <div className="bg-white rounded-lg shadow-md p-6">
+                    <h3 className="text-xl font-bold mb-4">Salary History</h3>
+                    {salaryRecords.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        No salary records found.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month/Year</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gross Salary</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deductions</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Attendance Deduction</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Salary</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment Date</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {salaryRecords
+                              .sort((a, b) => {
+                                if (a.year !== b.year) return b.year - a.year;
+                                return b.month - a.month;
+                              })
+                              .map((record: any) => (
+                                <tr key={record.id} className="hover:bg-gray-50">
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    {new Date(2000, record.month - 1).toLocaleString('default', { month: 'long' })} {record.year}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    ₹{record.gross_salary.toLocaleString()}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    ₹{record.total_deductions.toLocaleString()}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-red-600">
+                                    ₹{record.attendance_deduction.toLocaleString()}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap font-semibold text-green-600">
+                                    ₹{record.net_salary.toLocaleString()}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`px-2 py-1 rounded text-xs ${
+                                      record.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                      record.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                      'bg-blue-100 text-blue-800'
+                                    }`}>
+                                      {record.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    {record.payment_date ? (
+                                      <span className="text-sm">
+                                        {new Date(record.payment_date).toLocaleDateString()}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-400">-</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Salary Slip Download Info */}
+                  {salaryRecords.length > 0 && (
+                    <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-blue-800">
+                        💡 <strong>Note:</strong> You can view your salary details above. For official salary slips, please contact your school administration.
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
