@@ -267,6 +267,8 @@ export default function App() {
       <Route path="/principal/subjects" element={<PrincipalDashboard />} />
       <Route path="/principal/students" element={<PrincipalDashboard />} />
       <Route path="/principal/exams" element={<PrincipalDashboard />} />
+      <Route path="/principal/salary" element={<PrincipalDashboard />} />
+      <Route path="/principal/fees" element={<PrincipalDashboard />} />
       <Route path="/principal/approvals" element={<PrincipalDashboard />} />
       <Route path="/clerk" element={<ClerkDashboard />} />
       <Route path="/clerk/fees" element={<ClerkDashboard />} />

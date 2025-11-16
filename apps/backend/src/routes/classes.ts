@@ -233,11 +233,18 @@ router.put('/:id', requireRoles(['principal']), async (req, res) => {
   const { error, value } = classSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  const { supabase, user } = req;
-  if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
+  const { user } = req;
+  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+
+  // Use service role key to bypass RLS for admin operations
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   // Verify the class belongs to the school
-  const { data: existingClass, error: checkError } = await supabase
+  const { data: existingClass, error: checkError } = await adminSupabase
     .from('class_groups')
     .select('id, school_id')
     .eq('id', req.params.id)
@@ -248,7 +255,8 @@ router.put('/:id', requireRoles(['principal']), async (req, res) => {
     return res.status(404).json({ error: 'Class not found or access denied' });
   }
 
-  const { data, error: dbError } = await supabase
+  // Update the class basic info
+  const { data, error: dbError } = await adminSupabase
     .from('class_groups')
     .update({
       name: value.name,
@@ -259,7 +267,94 @@ router.put('/:id', requireRoles(['principal']), async (req, res) => {
     .single();
 
   if (dbError) return res.status(400).json({ error: dbError.message });
-  return res.json({ class: data });
+
+  // Handle classification updates
+  if (value.classification_value_ids !== undefined) {
+    // Delete existing classifications
+    const { error: deleteError } = await adminSupabase
+      .from('class_classifications')
+      .delete()
+      .eq('class_group_id', req.params.id);
+
+    if (deleteError) {
+      console.error('[classes] Error deleting existing classifications:', deleteError);
+      // Continue anyway - we'll try to add new ones
+    }
+
+    // Add new classifications if provided
+    if (value.classification_value_ids && value.classification_value_ids.length > 0) {
+      // Verify all classification values belong to the school
+      const { data: values, error: valuesError } = await adminSupabase
+        .from('classification_values')
+        .select(`
+          id,
+          classification_type:classification_types!inner(id, school_id)
+        `)
+        .in('id', value.classification_value_ids);
+
+      if (valuesError) {
+        console.error('[classes] Error verifying classification values:', valuesError);
+        return res.status(400).json({ error: 'Failed to verify classification values' });
+      }
+
+      // Verify all values belong to the school
+      const invalidValues = (values || []).filter((v: any) => 
+        v.classification_type.school_id !== user.schoolId
+      );
+      if (invalidValues.length > 0) {
+        console.error('[classes] Invalid classification values:', invalidValues);
+        return res.status(403).json({ error: 'Some classification values do not belong to your school' });
+      }
+
+      // Insert new class classifications
+      const classClassifications = value.classification_value_ids.map((valueId: string) => ({
+        class_group_id: req.params.id,
+        classification_value_id: valueId
+      }));
+
+      const { error: linkError } = await adminSupabase
+        .from('class_classifications')
+        .insert(classClassifications);
+
+      if (linkError) {
+        console.error('[classes] Error linking classifications:', linkError);
+        return res.status(400).json({ error: 'Failed to update classifications' });
+      }
+    }
+  }
+
+  // Fetch the complete class with classifications
+  const { data: completeClass, error: fetchError } = await adminSupabase
+    .from('class_groups')
+    .select(`
+      *,
+      classifications:class_classifications(
+        classification_value:classification_values(
+          id,
+          value,
+          classification_type:classification_types(id, name)
+        )
+      )
+    `)
+    .eq('id', req.params.id)
+    .single();
+
+  if (fetchError) {
+    console.error('[classes] Error fetching updated class:', fetchError);
+    return res.json({ class: data });
+  }
+
+  const classWithClassifications = {
+    ...completeClass,
+    classifications: (completeClass.classifications || []).map((cc: any) => ({
+      type: cc.classification_value.classification_type.name,
+      value: cc.classification_value.value,
+      type_id: cc.classification_value.classification_type.id,
+      value_id: cc.classification_value.id
+    }))
+  };
+
+  return res.json({ class: classWithClassifications });
 });
 
 // Delete a class

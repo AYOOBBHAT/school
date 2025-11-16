@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 
 import { authMiddleware } from './middleware/auth';
-import feesRouter from './routes/fees';
+import feesRouter from './routes/fees-comprehensive';
 import paymentsRouter from './routes/payments';
 import marksRouter from './routes/marks';
 import attendanceRouter from './routes/attendance';
@@ -21,6 +21,8 @@ import teacherAssignmentsRouter from './routes/teacher-assignments';
 import teacherAttendanceRouter from './routes/teacher-attendance';
 import schoolRouter from './routes/school';
 import examsRouter from './routes/exams';
+import dashboardRouter from './routes/dashboard';
+import salaryRouter from './routes/salary';
 
 // Validate required environment variables at startup
 const requiredEnvVars = [
@@ -75,8 +77,10 @@ app.use('/teacher-assignments', teacherAssignmentsRouter);
 app.use('/teacher-attendance', teacherAttendanceRouter);
 app.use('/school', schoolRouter);
 app.use('/exams', examsRouter);
+app.use('/dashboard', dashboardRouter);
+app.use('/salary', salaryRouter);
 
-const port = process.env.PORT || 4000;
+const port = Number(process.env.PORT) || 4000;
 const host = process.env.HOST || '0.0.0.0'; // Listen on all network interfaces
 
 app.listen(port, host, () => {
