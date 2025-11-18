@@ -66,6 +66,10 @@ interface Mark {
     percentage: string;
   }>;
   overallPercentage: string;
+  total?: number;
+  totalMax?: number;
+  average?: number;
+  grade?: string;
 }
 
 interface FeeStructure {
@@ -655,7 +659,23 @@ export default function StudentDashboard() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {marks.map((examMark, index) => (
+                  {marks.map((examMark, index) => {
+                    // Calculate totals if not provided
+                    const total = examMark.total ?? examMark.subjects.reduce((sum, s) => sum + s.marks_obtained, 0);
+                    const totalMax = examMark.totalMax ?? examMark.subjects.reduce((sum, s) => sum + s.max_marks, 0);
+                    const average = examMark.average ?? (examMark.subjects.length > 0 ? total / examMark.subjects.length : 0);
+                    const percentage = parseFloat(examMark.overallPercentage) || (totalMax > 0 ? (total / totalMax) * 100 : 0);
+                    const grade = examMark.grade ?? (
+                      percentage >= 90 ? 'A+' :
+                      percentage >= 80 ? 'A' :
+                      percentage >= 70 ? 'B+' :
+                      percentage >= 60 ? 'B' :
+                      percentage >= 50 ? 'C+' :
+                      percentage >= 40 ? 'C' :
+                      'F'
+                    );
+
+                    return (
                     <div key={index} className="border border-gray-200 rounded-lg p-6">
                       <div className="flex justify-between items-start mb-4">
                         <div>
@@ -670,20 +690,20 @@ export default function StudentDashboard() {
                             <div>
                               <p className="text-xs text-gray-600">Total</p>
                               <p className="text-lg font-bold text-gray-900">
-                                {examMark.total} / {examMark.totalMax}
+                                {total.toFixed(0)} / {totalMax.toFixed(0)}
                               </p>
                             </div>
                             <div>
                               <p className="text-xs text-gray-600">Average</p>
-                              <p className="text-lg font-bold text-gray-900">{examMark.average}</p>
+                              <p className="text-lg font-bold text-gray-900">{average.toFixed(2)}</p>
                             </div>
                             <div>
                               <p className="text-xs text-gray-600">Percentage</p>
-                              <p className="text-lg font-bold text-blue-600">{examMark.overallPercentage}%</p>
+                              <p className="text-lg font-bold text-blue-600">{percentage.toFixed(2)}%</p>
                             </div>
                             <div>
                               <p className="text-xs text-gray-600">Grade</p>
-                              <p className="text-lg font-bold text-green-600">{examMark.grade}</p>
+                              <p className="text-lg font-bold text-green-600">{grade}</p>
                             </div>
                           </div>
                         </div>
@@ -724,7 +744,8 @@ export default function StudentDashboard() {
                         </table>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

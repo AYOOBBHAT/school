@@ -16,9 +16,10 @@ This guide will walk you through deploying your frontend to Cloudflare Pages.
 1. Ensure your code is pushed to GitHub, GitLab, or Bitbucket
 2. Make sure your build works locally:
    ```bash
-   cd apps/web
+   # From the root directory
    pnpm install
-   pnpm build
+   pnpm --filter web build
+   # Or alternatively: pnpm turbo run build --filter=web
    ```
 
 #### Step 2: Connect to Cloudflare Pages
@@ -35,9 +36,12 @@ Use these settings:
 - **Project name**: `school-saas-frontend` (or your preferred name)
 - **Production branch**: `main` (or `master`)
 - **Framework preset**: `Vite`
-- **Build command**: `cd apps/web && pnpm install && pnpm build`
+- **Build command**: `pnpm install && pnpm --filter web build`
 - **Build output directory**: `apps/web/dist`
 - **Root directory**: `/` (leave empty or set to root)
+
+**Alternative build command** (using Turbo directly):
+- `pnpm install && pnpm turbo run build --filter=web`
 
 #### Step 4: Set Environment Variables
 In the build settings, add these environment variables:
@@ -77,8 +81,11 @@ wrangler login
 
 #### Step 3: Deploy
 ```bash
+# From the root directory
+pnpm install
+pnpm --filter web build
+# Or: pnpm turbo run build --filter=web
 cd apps/web
-pnpm build
 wrangler pages deploy dist --project-name=school-saas-frontend
 ```
 
@@ -99,17 +106,37 @@ The build process:
 3. Builds the Vite project
 4. Outputs to `apps/web/dist`
 
-### Monorepo Considerations
-Since this is a monorepo, the build command includes `cd apps/web` to ensure we're in the correct directory. Cloudflare Pages will:
-1. Install dependencies at the root (for workspace packages)
-2. Run the build command in the web app directory
+### Turbo Repo Considerations
+Since this is a **Turbo monorepo** with pnpm workspaces, the build command leverages Turbo's build system:
+
+1. **Install dependencies at the root** (`pnpm install`) - This links all workspace packages (@school/utils, @school/ui, @school/types, etc.)
+2. **Build using Turbo** (`pnpm --filter web build` or `pnpm turbo run build --filter=web`) - Turbo automatically:
+   - Builds dependencies in the correct order
+   - Only builds what's needed (the `web` app and its dependencies)
+   - Handles the dependency graph efficiently
+
+**Why use Turbo?**
+- Turbo understands your monorepo structure and builds dependencies automatically
+- It's faster and more efficient than manually building each package
+- The `--filter=web` flag ensures only the web app and its dependencies are built
+
+**Important**: The workspace packages (@school/utils, @school/ui, @school/types) are local packages, not published to npm. They must be installed from the root to be properly linked.
 
 ## Troubleshooting
 
 ### Build Fails
+
+#### "Package not found" or "404" errors for @school/* packages
+- **Solution**: Make sure the build command starts with `pnpm install` at the root
+- The build command should be: `pnpm install && pnpm --filter web build`
+- This ensures workspace packages are linked before building
+- Make sure `pnpm-workspace.yaml` exists in the root directory
+
+#### Other build failures
 - Check that all workspace dependencies are properly linked
 - Verify environment variables are set correctly
 - Check build logs in Cloudflare dashboard for specific errors
+- Ensure you're using the correct Node.js version (Cloudflare Pages uses Node.js 18+ by default)
 
 ### Routes Not Working
 - Ensure `_redirects` file is in the `public` folder (it will be copied to `dist`)
