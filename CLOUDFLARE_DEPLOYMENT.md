@@ -1,4 +1,4 @@
-# Cloudflare Pages Deployment Guide
+git # Cloudflare Pages Deployment Guide
 
 This guide will walk you through deploying your frontend to Cloudflare Pages.
 
@@ -39,20 +39,44 @@ Use these settings:
 - **Build command**: `pnpm install && pnpm --filter web build`
 - **Build output directory**: `apps/web/dist`
 - **Root directory**: `/` (leave empty or set to root)
+- **Build for non-production branches**: ✅ **YES, TICK THIS** (enables preview deployments for PRs)
+- **Deploy command**: `echo "Deploying..."` or leave empty if allowed (Cloudflare Pages auto-deploys the build output)
 
 **Alternative build command** (using Turbo directly):
 - `pnpm install && pnpm turbo run build --filter=web`
 
+**Important Notes:**
+- The build command **must** start with `pnpm install` to link workspace packages
+- Always tick "Build for non-production branches" to get preview deployments for pull requests
+- **DO NOT** add a deploy command - Cloudflare Pages automatically deploys whatever is in the build output directory
+- If you see "npx wrangler deploy" in the deploy command field, **DELETE IT** - that's for Cloudflare Workers, not Pages
+
 #### Step 4: Set Environment Variables
 In the build settings, add these environment variables:
 
+**Required Environment Variables:**
 - `VITE_SUPABASE_URL`: Your Supabase project URL
 - `VITE_SUPABASE_ANON_KEY`: Your Supabase anonymous key
+- `VITE_API_URL`: Your Railway backend URL (e.g., `https://your-app.railway.app`)
 
-To add environment variables:
-1. Go to your project settings
-2. Click **Environment variables**
-3. Add each variable for **Production**, **Preview**, and **Branch preview** as needed
+**Example:**
+```
+VITE_SUPABASE_URL=https://xxxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+VITE_API_URL=https://your-backend.railway.app
+```
+
+**To add environment variables:**
+1. Go to your project settings in Cloudflare Pages
+2. Click **Environment variables** tab
+3. Click **Add variable**
+4. Add each variable for **Production**, **Preview**, and **Branch preview** environments
+5. **Important**: Add `VITE_API_URL` with your Railway backend URL (not `http://localhost:4000`)
+
+**Why you need VITE_API_URL:**
+- Your frontend makes API calls to your backend (Railway)
+- The code uses `import.meta.env.VITE_API_URL` to get the backend URL
+- Without this, API calls will fail in production
 
 #### Step 5: Deploy
 1. Click **Save and Deploy**
@@ -96,8 +120,11 @@ Your React app uses client-side routing. The `_redirects` file in `apps/web/publ
 
 ### Environment Variables
 Make sure to set all required environment variables in Cloudflare Pages:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+- `VITE_SUPABASE_URL` - Your Supabase project URL
+- `VITE_SUPABASE_ANON_KEY` - Your Supabase anonymous key
+- `VITE_API_URL` - Your Railway backend URL (e.g., `https://your-app.railway.app`)
+
+**Important**: All environment variables must start with `VITE_` prefix to be accessible in your frontend code.
 
 ### Build Configuration
 The build process:
@@ -132,6 +159,13 @@ Since this is a **Turbo monorepo** with pnpm workspaces, the build command lever
 - This ensures workspace packages are linked before building
 - Make sure `pnpm-workspace.yaml` exists in the root directory
 
+#### "Missing entry-point to Worker script" error during deploy
+- **Solution**: If Cloudflare requires a deploy command, use a no-op command: `echo "Deploying..."`
+- Cloudflare Pages automatically deploys the build output - the deploy command is just a placeholder
+- Go to Settings → Builds & deployments → Deploy command → Set to `echo "Deploying..."` (or leave empty if allowed)
+- This error happens when Cloudflare tries to run `npx wrangler deploy` (which is for Workers, not Pages)
+- **Note**: If the field shows "required", use `echo "Deploying..."` as a no-op command that does nothing
+
 #### Other build failures
 - Check that all workspace dependencies are properly linked
 - Verify environment variables are set correctly
@@ -141,6 +175,35 @@ Since this is a **Turbo monorepo** with pnpm workspaces, the build command lever
 ### Routes Not Working
 - Ensure `_redirects` file is in the `public` folder (it will be copied to `dist`)
 - Verify the file contains the SPA redirect rule
+
+### Seeing "Hello World" or Blank Page After Deployment
+This usually means Cloudflare Pages isn't finding your build output. Check:
+
+1. **Verify Build Output Directory Path:**
+   - Should be: `apps/web/dist` (relative to root)
+   - Make sure there's no leading slash: ✅ `apps/web/dist` ❌ `/apps/web/dist`
+   - The path is relative to your repository root
+
+2. **Check Build Logs:**
+   - Go to your deployment → View build logs
+   - Look for "Success: Build command completed"
+   - Verify it says the build output was created
+
+3. **Verify Files Were Built:**
+   - Check that `apps/web/dist/index.html` exists after build
+   - Check that `apps/web/dist/_redirects` exists
+   - Check that `apps/web/dist/assets/` folder has JS and CSS files
+
+4. **Common Issues:**
+   - **Wrong path**: If using root directory `/`, the output path should be `apps/web/dist`
+   - **Root directory mismatch**: If root directory is set to `apps/web`, then output should be `dist`
+   - **Build failed silently**: Check build logs for errors
+
+5. **Quick Fix - Try This:**
+   - **Root directory**: `/` (or leave empty)
+   - **Build output directory**: `apps/web/dist`
+   - Make sure both are set correctly and save
+   - Trigger a new deployment
 
 ### Environment Variables Not Working
 - Make sure variables start with `VITE_` prefix

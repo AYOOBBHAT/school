@@ -3,10 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 
 type Role = 'principal' | 'clerk' | 'teacher' | 'student' | 'parent';
 
-declare module 'express-serve-static-core' {
-  interface Request {
-    user?: { id: string; role: Role; schoolId: string };
-    supabase?: any;
+// Extend Express Request type
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { id: string; role: Role; schoolId: string };
+      supabase?: any;
+    }
   }
 }
 
