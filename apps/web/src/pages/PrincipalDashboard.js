@@ -175,7 +175,10 @@ function DashboardOverview() {
                             throw classesCount.error;
                         if (approvalsCount.error)
                             throw approvalsCount.error;
-                        const studentGenders = buildGenderBreakdown((studentRows.data || []).map((student) => student.profile?.gender));
+                        const studentGenders = buildGenderBreakdown((studentRows.data || []).map((student) => {
+                            const profile = Array.isArray(student.profile) ? student.profile[0] : student.profile;
+                            return profile?.gender;
+                        }));
                         const staffGenders = buildGenderBreakdown((staffRows.data || []).map((member) => member.gender));
                         setStats({
                             totalStudents: studentGenders.total,
