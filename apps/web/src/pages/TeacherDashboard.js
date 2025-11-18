@@ -449,6 +449,61 @@ export default function TeacherDashboard() {
             setLoadingSalary(false);
         }
     };
+    const loadStudentFeeStatus = async () => {
+        setLoadingFees(true);
+        try {
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            // Get all students from teacher's assigned classes
+            // assignments are already filtered for this teacher
+            const classIds = [...new Set(assignments.map((a) => a.class_group_id))];
+            if (classIds.length === 0) {
+                setStudentFeeStatus({});
+                return;
+            }
+            const statusMap = {};
+            for (const classId of classIds) {
+                const response = await fetch(`${API_URL}/students?class_group_id=${classId}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    const students = data.students || [];
+                    for (const student of students) {
+                        // Fetch fee status for each student
+                        const feeResponse = await fetch(`${API_URL}/fees/student/${student.id}/status`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        if (feeResponse.ok) {
+                            const feeData = await feeResponse.json();
+                            statusMap[student.id] = {
+                                hasPending: feeData.hasPending || false,
+                                totalPending: feeData.totalPending || 0,
+                                studentName: student.profile?.full_name || '',
+                                rollNumber: student.roll_number || '-'
+                            };
+                        }
+                        else {
+                            statusMap[student.id] = {
+                                hasPending: false,
+                                totalPending: 0,
+                                studentName: student.profile?.full_name || '',
+                                rollNumber: student.roll_number || '-'
+                            };
+                        }
+                    }
+                }
+            }
+            setStudentFeeStatus(statusMap);
+        }
+        catch (error) {
+            console.error('Error loading student fee status:', error);
+        }
+        finally {
+            setLoadingFees(false);
+        }
+    };
     useEffect(() => {
         if (currentView === 'fees') {
             loadStudentFeeStatus();
