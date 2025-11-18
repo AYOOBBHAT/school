@@ -125,8 +125,8 @@ export default function StudentDashboard() {
       loadMarks();
     } else if (activeTab === 'fees') {
       if (profile?.id) {
-        loadFees();
-      }
+      loadFees();
+    }
     }
   }, [activeTab, profile]);
 
@@ -309,7 +309,7 @@ export default function StudentDashboard() {
       });
 
       if (response.ok) {
-        const data = await response.json();
+      const data = await response.json();
         setSelectedBill(data.bill);
       }
     } catch (error) {
@@ -762,24 +762,24 @@ export default function StudentDashboard() {
                     No bills found.
                   </div>
                 ) : (
-                    <div className="space-y-4">
+              <div className="space-y-4">
                       {bills.map((bill: any) => (
-                        <div
+                  <div
                           key={bill.id}
-                          className={`border rounded-lg p-6 ${
+                    className={`border rounded-lg p-6 ${
                             bill.status === 'overdue' ? 'border-red-300 bg-red-50' :
                             bill.status === 'paid' ? 'border-green-300 bg-green-50' :
                             bill.status === 'partially-paid' ? 'border-yellow-300 bg-yellow-50' :
                             'border-gray-200'
-                          }`}
-                        >
-                          <div className="flex justify-between items-start mb-4">
-                            <div>
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
                               <h3 className="text-xl font-bold">Bill: {bill.bill_number}</h3>
                               <p className="text-gray-600">Period: {new Date(bill.bill_period_start).toLocaleDateString()} - {new Date(bill.bill_period_end).toLocaleDateString()}</p>
                               <p className="text-gray-600 text-sm mt-1">
                                 Due Date: {new Date(bill.due_date).toLocaleDateString()}
-                              </p>
+                          </p>
                               <p className="text-gray-600 text-sm mt-2">
                                 Net Amount: ₹{parseFloat(bill.net_amount || 0).toLocaleString()}
                               </p>
@@ -792,31 +792,31 @@ export default function StudentDashboard() {
                               {bill.scholarship_amount > 0 && (
                                 <p className="text-green-600 text-sm">Scholarship: -₹{parseFloat(bill.scholarship_amount || 0).toLocaleString()}</p>
                               )}
-                            </div>
-                            <div className="text-right">
-                              <span
-                                className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      </div>
+                      <div className="text-right">
+                        <span
+                          className={`px-3 py-1 rounded-full text-sm font-medium ${
                                   bill.status === 'paid'
-                                    ? 'bg-green-100 text-green-800'
+                              ? 'bg-green-100 text-green-800'
                                     : bill.status === 'overdue'
-                                    ? 'bg-red-100 text-red-800'
+                              ? 'bg-red-100 text-red-800'
                                     : bill.status === 'partially-paid'
                                     ? 'bg-yellow-100 text-yellow-800'
                                     : 'bg-gray-100 text-gray-800'
-                                }`}
-                              >
+                          }`}
+                        >
                                 {bill.status || 'Pending'}
-                              </span>
-                              <p className="text-sm text-gray-600 mt-2">
+                        </span>
+                        <p className="text-sm text-gray-600 mt-2">
                                 Paid: ₹{parseFloat(bill.total_paid || 0).toLocaleString()} / ₹{parseFloat(bill.net_amount || 0).toLocaleString()}
-                              </p>
+                        </p>
                               {bill.balance > 0 && (
                                 <p className="text-sm text-red-600 mt-1 font-semibold">
                                   Balance: ₹{parseFloat(bill.balance || 0).toLocaleString()}
                                 </p>
-                              )}
-                            </div>
-                          </div>
+                        )}
+                      </div>
+                    </div>
                           <div className="flex gap-2 mt-4">
                             <button
                               onClick={() => viewBill(bill.id)}
@@ -840,28 +840,28 @@ export default function StudentDashboard() {
                             )}
                           </div>
                           {bill.payments && bill.payments.length > 0 && (
-                            <div className="mt-4">
-                              <h4 className="font-semibold mb-2">Payment History</h4>
-                              <div className="space-y-2">
+                      <div className="mt-4">
+                        <h4 className="font-semibold mb-2">Payment History</h4>
+                        <div className="space-y-2">
                                 {bill.payments.map((payment: any) => (
-                                  <div key={payment.id} className="bg-white rounded p-3 text-sm">
-                                    <div className="flex justify-between">
-                                      <span>
+                            <div key={payment.id} className="bg-white rounded p-3 text-sm">
+                              <div className="flex justify-between">
+                                <span>
                                         ₹{parseFloat(payment.amount_paid || 0).toLocaleString()} on{' '}
-                                        {new Date(payment.payment_date).toLocaleDateString()}
-                                      </span>
-                                      <span className="text-gray-600">{payment.payment_mode}</span>
-                                    </div>
-                                    {payment.transaction_id && (
-                                      <p className="text-gray-500 text-xs mt-1">Txn ID: {payment.transaction_id}</p>
-                                    )}
-                                  </div>
-                                ))}
+                                  {new Date(payment.payment_date).toLocaleDateString()}
+                                </span>
+                                <span className="text-gray-600">{payment.payment_mode}</span>
                               </div>
+                              {payment.transaction_id && (
+                                <p className="text-gray-500 text-xs mt-1">Txn ID: {payment.transaction_id}</p>
+                              )}
                             </div>
-                          )}
+                          ))}
                         </div>
-                      ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
                     </div>
                   )}
               </div>
@@ -893,12 +893,12 @@ export default function StudentDashboard() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           )}
         </div>
+          )}
+      </div>
       </div>
 
       {/* Bill Detail Modal */}

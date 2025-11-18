@@ -4,25 +4,25 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 
-import { authMiddleware } from './middleware/auth.js';
-import feesRouter from './routes/fees-comprehensive.js';
-import paymentsRouter from './routes/payments.js';
-import marksRouter from './routes/marks.js';
-import attendanceRouter from './routes/attendance.js';
-import authRouter from './routes/auth.js';
-import approvalsRouter from './routes/approvals.js';
-import classesRouter from './routes/classes.js';
-import classificationsRouter from './routes/classifications.js';
-import subjectsRouter from './routes/subjects.js';
-import studentsRouter from './routes/students.js';
-import studentsAdminRouter from './routes/students-admin.js';
-import staffAdminRouter from './routes/staff-admin.js';
-import teacherAssignmentsRouter from './routes/teacher-assignments.js';
-import teacherAttendanceRouter from './routes/teacher-attendance.js';
-import schoolRouter from './routes/school.js';
-import examsRouter from './routes/exams.js';
-import dashboardRouter from './routes/dashboard.js';
-import salaryRouter from './routes/salary.js';
+import { authMiddleware } from './middleware/auth';
+import feesRouter from './routes/fees-comprehensive';
+import paymentsRouter from './routes/payments';
+import marksRouter from './routes/marks';
+import attendanceRouter from './routes/attendance';
+import authRouter from './routes/auth';
+import approvalsRouter from './routes/approvals';
+import classesRouter from './routes/classes';
+import classificationsRouter from './routes/classifications';
+import subjectsRouter from './routes/subjects';
+import studentsRouter from './routes/students';
+import studentsAdminRouter from './routes/students-admin';
+import staffAdminRouter from './routes/staff-admin';
+import teacherAssignmentsRouter from './routes/teacher-assignments';
+import teacherAttendanceRouter from './routes/teacher-attendance';
+import schoolRouter from './routes/school';
+import examsRouter from './routes/exams';
+import dashboardRouter from './routes/dashboard';
+import salaryRouter from './routes/salary';
 
 // Validate required environment variables at startup
 const requiredEnvVars = [
