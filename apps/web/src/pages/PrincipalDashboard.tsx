@@ -38,6 +38,8 @@ interface Profile {
   id: string;
   full_name: string;
   email: string;
+  phone?: string;
+  gender?: string;
   role: string;
   approval_status: string;
   created_at: string;
@@ -286,7 +288,10 @@ function DashboardOverview() {
             if (approvalsCount.error) throw approvalsCount.error;
 
             const studentGenders = buildGenderBreakdown(
-              (studentRows.data || []).map((student) => student.profile?.gender)
+              (studentRows.data || []).map((student: any) => {
+                const profile = Array.isArray(student.profile) ? student.profile[0] : student.profile;
+                return profile?.gender;
+              })
             );
             const staffGenders = buildGenderBreakdown(
               (staffRows.data || []).map((member) => member.gender)

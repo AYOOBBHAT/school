@@ -11,9 +11,9 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@school/types": "*",
-    "@school/ui": "*",
-    "@school/utils": "*",
+    "@school/types": "workspace:*",
+    "@school/ui": "workspace:*",
+    "@school/utils": "workspace:*",
     "@supabase/supabase-js": "^2.45.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
