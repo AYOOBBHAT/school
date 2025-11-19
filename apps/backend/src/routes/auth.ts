@@ -370,6 +370,150 @@ router.get('/schools', async (req, res) => {
   }
 });
 
+// Username-based login for students
+router.post('/login-username', async (req, res) => {
+  const { username, password, join_code, registration_number } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+
+  if (!join_code && !registration_number) {
+    return res.status(400).json({ error: 'Either join code or registration number is required' });
+  }
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+
+  try {
+    // Find school by join_code or registration_number
+    let schoolQuery = supabase
+      .from('schools')
+      .select('id');
+
+    if (join_code) {
+      schoolQuery = schoolQuery.eq('join_code', join_code.toUpperCase());
+    } else if (registration_number) {
+      schoolQuery = schoolQuery.eq('registration_number', registration_number);
+    }
+
+    const { data: school, error: schoolError } = await schoolQuery.single();
+
+    if (schoolError || !school) {
+      return res.status(401).json({ error: 'Invalid school code or registration number' });
+    }
+
+    // Find profile by username and school_id
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, email, role, password_reset_required, school_id')
+      .eq('username', username)
+      .eq('school_id', school.id)
+      .eq('role', 'student')
+      .single();
+
+    if (profileError || !profile) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // Get the auth user by email
+    const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
+    
+    if (listError) {
+      return res.status(400).json({ error: listError.message });
+    }
+
+    const authUser = users.find(u => u.email === profile.email);
+    if (!authUser) {
+      return res.status(404).json({ error: 'User account not found' });
+    }
+
+    // Try to sign in with email and password
+    const anonSupabase = createClient<any>(supabaseUrl, supabaseAnonKey);
+    const { data: authData, error: authError } = await anonSupabase.auth.signInWithPassword({
+      email: profile.email,
+      password: password
+    });
+
+    if (authError || !authData.user) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    return res.json({
+      user: { id: authData.user.id, email: profile.email },
+      session: authData.session,
+      password_reset_required: profile.password_reset_required || false
+    });
+  } catch (err: any) {
+    // eslint-disable-next-line no-console
+    console.error('[login-username] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// Password reset for first-time student login
+router.post('/reset-password', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing bearer token' });
+  }
+
+  const { new_password } = req.body;
+  if (!new_password || new_password.length < 8) {
+    return res.status(400).json({ error: 'New password is required and must be at least 8 characters' });
+  }
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  try {
+    // Verify the token and get user
+    const anonSupabase = createClient<any>(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: userError } = await anonSupabase.auth.getUser();
+    if (userError || !user) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Update password using admin API
+    const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+    const { data: updatedUser, error: updateError } = await adminSupabase.auth.admin.updateUserById(user.id, {
+      password: new_password
+    });
+
+    if (updateError) {
+      return res.status(400).json({ error: updateError.message });
+    }
+
+    // Update profile to clear password_reset_required flag
+    const { error: profileError } = await adminSupabase
+      .from('profiles')
+      .update({ password_reset_required: false })
+      .eq('id', user.id);
+
+    if (profileError) {
+      // eslint-disable-next-line no-console
+      console.error('[reset-password] Error updating profile:', profileError);
+      // Don't fail the request if profile update fails
+    }
+
+    return res.json({
+      message: 'Password reset successfully',
+      user: { id: updatedUser.user.id }
+    });
+  } catch (err: any) {
+    // eslint-disable-next-line no-console
+    console.error('[reset-password] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
 // Utility endpoint to confirm email for existing users (for fixing users created before email_confirm fix)
 // This should be called with service role key or removed after fixing existing users
 router.post('/confirm-email', async (req, res) => {
