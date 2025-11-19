@@ -96,7 +96,7 @@ function Sidebar({ currentPath }: { currentPath: string }) {
   return (
     <div className="w-64 bg-gray-900 text-white min-h-screen fixed left-0 top-0">
       <div className="p-6">
-        <h1 className="text-2xl font-bold mb-8">SchoolSaaS</h1>
+        <h1 className="text-2xl font-bold mb-8">JhelumVerse</h1>
         <nav className="space-y-2">
           {navItems.map((item) => (
             <Link

@@ -15,7 +15,9 @@ const principalSignupSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(8).required(),
   full_name: Joi.string().required(),
+  phone: Joi.string().required(),
   school_name: Joi.string().required(),
+  school_registration_number: Joi.string().required(),
   school_address: Joi.string().allow('', null),
   contact_phone: Joi.string().allow('', null),
   contact_email: Joi.string().email().allow('', null)
@@ -83,6 +85,17 @@ router.post('/signup-principal', async (req, res) => {
       return res.status(400).json({ error: authError?.message || 'Failed to create user' });
     }
 
+    // Check if registration number already exists
+    const { data: existingSchool } = await supabase
+      .from('schools')
+      .select('id')
+      .eq('registration_number', value.school_registration_number)
+      .single();
+
+    if (existingSchool) {
+      return res.status(400).json({ error: 'School registration number already exists. Please use a different registration number.' });
+    }
+
     // Generate join code
     const joinCode = generateJoinCode();
 
@@ -92,6 +105,7 @@ router.post('/signup-principal', async (req, res) => {
       .insert({
         name: value.school_name,
         address: value.school_address,
+        registration_number: value.school_registration_number,
         contact_phone: value.contact_phone,
         contact_email: value.contact_email,
         join_code: joinCode
@@ -117,6 +131,7 @@ router.post('/signup-principal', async (req, res) => {
       school_id: school.id,
       full_name: value.full_name,
       email: value.email,
+      phone: value.phone,
       approval_status: 'approved'
     });
 

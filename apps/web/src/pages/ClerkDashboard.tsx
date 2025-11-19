@@ -500,7 +500,7 @@ export default function ClerkDashboard() {
       {/* Sidebar */}
       <div className="w-64 bg-gray-900 text-white min-h-screen fixed left-0 top-0">
         <div className="p-6">
-          <h1 className="text-2xl font-bold mb-8">SchoolSaaS</h1>
+          <h1 className="text-2xl font-bold mb-8">JhelumVerse</h1>
           <div className="mb-6">
             <div className="text-sm text-gray-400">Logged in as</div>
             <div className="font-semibold">{profile?.full_name || 'Clerk'}</div>
