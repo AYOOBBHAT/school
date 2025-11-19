@@ -5,6 +5,7 @@ import { Button } from '@school/ui';
 import Signup from './pages/Signup';
 import Login from './pages/Login';
 import PendingApproval from './pages/PendingApproval';
+import ResetPassword from './pages/ResetPassword';
 import PrincipalDashboard from './pages/PrincipalDashboard';
 import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
@@ -298,6 +299,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/pending-approval" element={<PendingApproval />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/principal/dashboard" element={<PrincipalDashboard />} />
       <Route path="/principal/staff" element={<PrincipalDashboard />} />
       <Route path="/principal/classifications" element={<PrincipalDashboard />} />
