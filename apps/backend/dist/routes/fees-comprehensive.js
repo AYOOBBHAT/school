@@ -787,7 +787,7 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
             const grossAmount = classFeesTotal + transportFeeTotal + optionalFeesTotal + Math.max(0, customFeesTotal);
             const netAmount = Math.max(0, grossAmount - discountAmount - scholarshipAmount + fineTotal);
             // Get due date (default to end of period)
-            const dueDay = classFees && classFees.length > 0 ? classFees[0]?.due_day || 5 : 5; // Default to 5th of next month
+            const dueDay = classFees && classFees.length > 0 ? (classFees[0]?.due_day || 5) : 5; // Default to 5th of next month
             const dueDate = new Date(year, month, dueDay);
             // Generate bill number
             const { data: billNumberData } = await adminSupabase.rpc('generate_bill_number', {
