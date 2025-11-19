@@ -15,8 +15,10 @@ export default function Signup() {
     email: '',
     password: '',
     full_name: '',
+    phone: '',
     school_name: '',
     school_address: '',
+    school_registration_number: '',
     contact_phone: '',
     contact_email: ''
   });
@@ -391,6 +393,17 @@ export default function Signup() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Phone Number</label>
+                <input
+                  type="tel"
+                  required
+                  value={principalForm.phone}
+                  onChange={(e) => setPrincipalForm({ ...principalForm, phone: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                  placeholder="Enter your phone number"
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">School Name</label>
                 <input
                   type="text"
@@ -400,6 +413,18 @@ export default function Signup() {
                   className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
                   placeholder="Enter school name"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">School Registration Number</label>
+                <input
+                  type="text"
+                  required
+                  value={principalForm.school_registration_number}
+                  onChange={(e) => setPrincipalForm({ ...principalForm, school_registration_number: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                  placeholder="Enter school registration number (unique)"
+                />
+                <p className="text-xs text-gray-500 mt-2">This must be unique for each school</p>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">School Address</label>

@@ -22,7 +22,7 @@ function Sidebar({ currentPath }) {
         { path: '/principal/fees', label: 'Fee Management', icon: '💵' },
         { path: '/principal/approvals', label: 'Pending Approvals', icon: '⏳' },
     ];
-    return (_jsxs("div", { className: "w-64 bg-gray-900 text-white min-h-screen fixed left-0 top-0", children: [_jsxs("div", { className: "p-6", children: [_jsx("h1", { className: "text-2xl font-bold mb-8", children: "SchoolSaaS" }), _jsx("nav", { className: "space-y-2", children: navItems.map((item) => (_jsxs(Link, { to: item.path, className: `flex items-center space-x-3 px-4 py-3 rounded-lg transition ${currentPath === item.path
+    return (_jsxs("div", { className: "w-64 bg-gray-900 text-white min-h-screen fixed left-0 top-0", children: [_jsxs("div", { className: "p-6", children: [_jsx("h1", { className: "text-2xl font-bold mb-8", children: "JhelumVerse" }), _jsx("nav", { className: "space-y-2", children: navItems.map((item) => (_jsxs(Link, { to: item.path, className: `flex items-center space-x-3 px-4 py-3 rounded-lg transition ${currentPath === item.path
                                 ? 'bg-blue-600 text-white'
                                 : 'text-gray-300 hover:bg-gray-800'}`, children: [_jsx("span", { children: item.icon }), _jsx("span", { children: item.label })] }, item.path))) })] }), _jsx("div", { className: "absolute bottom-0 w-full p-6", children: _jsx("button", { onClick: handleLogout, className: "w-full bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition", children: "Logout" }) })] }));
 }

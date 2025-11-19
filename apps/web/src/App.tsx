@@ -13,17 +13,32 @@ import ClerkDashboard from './pages/ClerkDashboard';
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 function Navbar() {
+  const handleScrollTo = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+    e.preventDefault();
+    const element = document.getElementById(id);
+    if (element) {
+      const offset = 80; // Account for fixed navbar height
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - offset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
+    }
+  };
+
   return (
-    <nav className="bg-white shadow-sm border-b">
+    <nav className="bg-white shadow-sm border-b fixed w-full top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
-            <span className="text-2xl font-bold text-blue-600">SchoolSaaS</span>
+            <Link to="/" className="text-2xl font-bold text-blue-600">JhelumVerse</Link>
           </div>
           <div className="hidden md:flex space-x-8">
-            <Link to="#features" className="text-gray-700 hover:text-blue-600">Features</Link>
-            <Link to="#testimonials" className="text-gray-700 hover:text-blue-600">Testimonials</Link>
-            <Link to="#faq" className="text-gray-700 hover:text-blue-600">FAQ</Link>
+            <a href="#features" onClick={(e) => handleScrollTo(e, 'features')} className="text-gray-700 hover:text-blue-600 cursor-pointer">Features</a>
+            <a href="#testimonials" onClick={(e) => handleScrollTo(e, 'testimonials')} className="text-gray-700 hover:text-blue-600 cursor-pointer">Testimonials</a>
+            <a href="#faq" onClick={(e) => handleScrollTo(e, 'faq')} className="text-gray-700 hover:text-blue-600 cursor-pointer">FAQ</a>
             <Link to="/login" className="text-gray-700 hover:text-blue-600">Login</Link>
             <Link to="/signup" className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Sign Up</Link>
           </div>
@@ -52,10 +67,16 @@ function Hero() {
               Request Demo
             </Link>
           </div>
-          <div className="mt-12">
-            <div className="bg-white rounded-lg shadow-xl p-6 max-w-4xl mx-auto">
-              <div className="aspect-video bg-gray-200 rounded flex items-center justify-center text-gray-400">
-                Dashboard Screenshot Preview
+          <div className="mt-12 px-4">
+            <div className="bg-white rounded-lg shadow-xl p-4 sm:p-6 max-w-6xl mx-auto">
+              <div className="relative w-full overflow-hidden rounded-lg" style={{ minHeight: '400px' }}>
+                <img 
+                  src="https://res.cloudinary.com/dv0l9h188/image/upload/v1763540151/jhelumVerse_fuvbtt.png" 
+                  alt="JhelumVerse Dashboard Preview" 
+                  className="w-full h-auto rounded-lg"
+                  style={{ display: 'block', maxWidth: '100%', height: 'auto' }}
+                  crossOrigin="anonymous"
+                />
               </div>
             </div>
           </div>
@@ -76,7 +97,7 @@ function FeaturesOverview() {
   ];
 
   return (
-    <section id="features" className="py-20 bg-white">
+    <section id="features" className="py-20 bg-white scroll-mt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-4xl font-bold text-center mb-12">Key Features</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -150,7 +171,7 @@ function Testimonials() {
   ];
 
   return (
-    <section id="testimonials" className="py-20 bg-white">
+    <section id="testimonials" className="py-20 bg-white scroll-mt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-4xl font-bold text-center mb-12">What Our Users Say</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -179,7 +200,7 @@ function FAQ() {
   ];
 
   return (
-    <section id="faq" className="py-20 bg-gray-50">
+    <section id="faq" className="py-20 bg-gray-50 scroll-mt-20">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-4xl font-bold text-center mb-12">Frequently Asked Questions</h2>
         <div className="space-y-6">
@@ -196,20 +217,35 @@ function FAQ() {
 }
 
 function Footer() {
+  const handleScrollTo = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+    e.preventDefault();
+    const element = document.getElementById(id);
+    if (element) {
+      const offset = 80;
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - offset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
+    }
+  };
+
   return (
     <footer className="bg-gray-900 text-white py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
-            <h3 className="text-2xl font-bold mb-4">SchoolSaaS</h3>
+            <h3 className="text-2xl font-bold mb-4">JhelumVerse</h3>
             <p className="text-gray-400">All-in-one school management platform</p>
           </div>
           <div>
             <h4 className="font-semibold mb-4">Product</h4>
             <ul className="space-y-2 text-gray-400">
-              <li><Link to="#features" className="hover:text-white">Features</Link></li>
-              <li><Link to="#testimonials" className="hover:text-white">Testimonials</Link></li>
-              <li><Link to="#faq" className="hover:text-white">FAQ</Link></li>
+              <li><a href="#features" onClick={(e) => handleScrollTo(e, 'features')} className="hover:text-white cursor-pointer">Features</a></li>
+              <li><a href="#testimonials" onClick={(e) => handleScrollTo(e, 'testimonials')} className="hover:text-white cursor-pointer">Testimonials</a></li>
+              <li><a href="#faq" onClick={(e) => handleScrollTo(e, 'faq')} className="hover:text-white cursor-pointer">FAQ</a></li>
             </ul>
           </div>
           <div>
@@ -228,7 +264,7 @@ function Footer() {
           </div>
         </div>
         <div className="mt-8 pt-8 border-t border-gray-800 text-center text-gray-400">
-          <p>&copy; 2024 SchoolSaaS. All rights reserved.</p>
+          <p>&copy; 2024 JhelumVerse. All rights reserved.</p>
         </div>
       </div>
     </footer>
@@ -239,12 +275,14 @@ function Home() {
   return (
     <div className="min-h-screen">
       <Navbar />
-      <Hero />
-      <FeaturesOverview />
-      <FeaturesDeep />
-      <Testimonials />
-      <FAQ />
-      <Footer />
+      <div className="pt-16">
+        <Hero />
+        <FeaturesOverview />
+        <FeaturesDeep />
+        <Testimonials />
+        <FAQ />
+        <Footer />
+      </div>
     </div>
   );
 }
