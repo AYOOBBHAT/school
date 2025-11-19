@@ -71,26 +71,26 @@ export default function ResetPassword() {
       setSuccess(true);
       
       // Redirect to dashboard after 2 seconds
-      setTimeout(() => {
-        // Get user profile to determine role
-        supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .single()
-          .then(({ data: profile }) => {
-            const redirectMap: Record<string, string> = {
-              principal: '/principal/dashboard',
-              clerk: '/clerk/fees',
-              teacher: '/teacher/classes',
-              student: '/student/home',
-              parent: '/parent/home'
-            };
-            navigate(redirectMap[profile?.role || 'student'] || '/student/home');
-          })
-          .catch(() => {
-            navigate('/student/home');
-          });
+      setTimeout(async () => {
+        try {
+          // Get user profile to determine role
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .single();
+          
+          const redirectMap: Record<string, string> = {
+            principal: '/principal/dashboard',
+            clerk: '/clerk/fees',
+            teacher: '/teacher/classes',
+            student: '/student/home',
+            parent: '/parent/home'
+          };
+          navigate(redirectMap[profile?.role || 'student'] || '/student/home');
+        } catch {
+          navigate('/student/home');
+        }
       }, 2000);
     } catch (err: any) {
       setError(err.message || 'Failed to reset password');

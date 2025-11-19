@@ -229,6 +229,83 @@ router.post('/action', requireRoles(['principal', 'clerk']), async (req, res) =>
                     }
                     console.log('[approvals/action] Student record created successfully:', newStudent);
                 }
+                // Generate username and temporary password for student
+                // Username can be roll_number or a generated one based on student ID
+                let username = value.roll_number || `student_${value.profile_id.substring(0, 8)}`;
+                // Ensure username is unique within the school
+                let uniqueUsername = username;
+                let counter = 1;
+                while (true) {
+                    const { data: existingProfile } = await adminSupabase
+                        .from('profiles')
+                        .select('id')
+                        .eq('username', uniqueUsername)
+                        .eq('school_id', user.schoolId)
+                        .neq('id', value.profile_id)
+                        .maybeSingle();
+                    if (!existingProfile) {
+                        break; // Username is unique
+                    }
+                    uniqueUsername = `${username}_${counter}`;
+                    counter++;
+                }
+                // Generate temporary password (8 characters: 4 random letters + 4 random numbers)
+                const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+                const numbers = '23456789';
+                const randomLetters = Array.from({ length: 4 }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
+                const randomNumbers = Array.from({ length: 4 }, () => numbers[Math.floor(Math.random() * numbers.length)]).join('');
+                const tempPassword = randomLetters + randomNumbers;
+                // Update auth user password to temporary password
+                try {
+                    await adminSupabase.auth.admin.updateUserById(value.profile_id, {
+                        password: tempPassword
+                    });
+                }
+                catch (err) {
+                    console.error('[approvals/action] Failed to set temporary password:', err);
+                    // Continue even if password update fails
+                }
+                // Update profile with username and password_reset_required flag
+                const { error: profileUpdateError } = await adminSupabase
+                    .from('profiles')
+                    .update({
+                    username: uniqueUsername,
+                    password_reset_required: true
+                })
+                    .eq('id', value.profile_id);
+                if (profileUpdateError) {
+                    console.error('[approvals/action] Error updating profile with username:', profileUpdateError);
+                    // Don't fail the approval if username update fails
+                }
+                else {
+                    console.log('[approvals/action] Student credentials generated:', {
+                        username: uniqueUsername,
+                        temp_password: tempPassword,
+                        password_reset_required: true
+                    });
+                }
+                // Get school join code and registration number for student login instructions
+                let schoolInfo = null;
+                if (value.action === 'approve' && profile.role === 'student') {
+                    const { data: school } = await adminSupabase
+                        .from('schools')
+                        .select('join_code, registration_number')
+                        .eq('id', user.schoolId)
+                        .single();
+                    schoolInfo = school;
+                }
+                // Return username and temp password in response for admin to share with student
+                return res.json({
+                    message: `User ${value.action === 'approve' ? 'approved' : 'rejected'}`,
+                    profile: updatedProfile,
+                    student_credentials: value.action === 'approve' && profile.role === 'student' ? {
+                        username: uniqueUsername,
+                        temporary_password: tempPassword,
+                        join_code: schoolInfo?.join_code,
+                        registration_number: schoolInfo?.registration_number,
+                        login_instructions: `Student can log in using:\n- Username: ${uniqueUsername}\n- Password: ${tempPassword}\n- School Join Code: ${schoolInfo?.join_code || 'N/A'}\n- Or School Registration Number: ${schoolInfo?.registration_number || 'N/A'}`
+                    } : undefined
+                });
             }
         }
         return res.json({
