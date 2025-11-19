@@ -4,14 +4,6 @@ This document provides a comprehensive overview of all features available in the
 
 ---
 
-## 🏗️ Architecture Overview
-
-- **Backend**: Node.js + Express + TypeScript + Supabase
-- **Web App**: React + TypeScript + Vite + Tailwind CSS
-- **Mobile App**: React Native + Expo + TypeScript
-- **Database**: Supabase (PostgreSQL with Row Level Security)
-- **Authentication**: Supabase Auth with JWT tokens
-
 ---
 
 ## 👥 User Roles & Permissions
@@ -49,17 +41,6 @@ The application supports 5 distinct user roles, each with specific permissions:
 
 ---
 
-## 🏫 School Management (Principal Only)
-
-### School Setup
-- ✅ Create new school
-- ✅ School registration number validation
-- ✅ Generate unique join codes
-- ✅ School information management:
-  - Name, address, contact details
-  - Logo upload
-  - Registration number
-
 ### Dashboard & Analytics
 - ✅ **Principal Dashboard** with key metrics:
   - Total students count
@@ -79,7 +60,6 @@ The application supports 5 distinct user roles, each with specific permissions:
 
 ### Class Management
 - ✅ Create/Edit/Delete class groups
-- ✅ Class naming and description
 - ✅ Class classifications (e.g., Grade 1, Grade 2)
 - ✅ Section management within classes
 - ✅ Class-subject assignments
@@ -94,7 +74,6 @@ The application supports 5 distinct user roles, each with specific permissions:
 ### Student Management
 - ✅ Add/Edit/Remove students
 - ✅ Student profile creation
-- ✅ Roll number assignment
 - ✅ Class assignment
 - ✅ Section assignment
 - ✅ Student status management (Active, Inactive, Graduated)

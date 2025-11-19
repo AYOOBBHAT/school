@@ -290,6 +290,10 @@ router.get('/profile', async (req, res) => {
         }
         // eslint-disable-next-line no-console
         console.log('[auth/profile] Profile fetched:', { id: profile.id, role: profile.role, approval_status: profile.approval_status });
+        // Set no-cache headers to prevent caching issues
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
         return res.json({ profile });
     }
     catch (err) {

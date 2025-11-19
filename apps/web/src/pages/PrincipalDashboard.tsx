@@ -7762,8 +7762,17 @@ export default function PrincipalDashboard() {
       try {
         const session = await supabase.auth.getSession();
         const token = session.data.session?.access_token;
+        const user = session.data.session?.user;
         
-        if (!token) {
+        console.log('[PrincipalDashboard] Session check:', {
+          hasToken: !!token,
+          hasUser: !!user,
+          userId: user?.id,
+          email: user?.email
+        });
+        
+        if (!token || !user) {
+          console.warn('[PrincipalDashboard] No session or token found, redirecting to login');
           navigate('/login');
           return;
         }
@@ -7772,12 +7781,50 @@ export default function PrincipalDashboard() {
         const response = await fetch(`${API_URL}/auth/profile`, {
           headers: {
             Authorization: `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
           },
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          const role = data.profile?.role;
+        if (response.ok || response.status === 304) {
+          let data;
+          try {
+            // For 304 responses, try to get cached data or re-fetch
+            if (response.status === 304) {
+              // Re-fetch with cache-busting
+              const freshResponse = await fetch(`${API_URL}/auth/profile?t=${Date.now()}`, {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Cache-Control': 'no-cache',
+                },
+              });
+              if (freshResponse.ok) {
+                data = await freshResponse.json();
+              } else {
+                throw new Error('Failed to fetch profile');
+              }
+            } else {
+              data = await response.json();
+            }
+          } catch (parseError) {
+            console.error('[PrincipalDashboard] Error parsing profile response:', parseError);
+            // Fallback: try to get profile directly from Supabase
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('role, approval_status')
+              .eq('id', session.data.session?.user?.id)
+              .single();
+            
+            if (profileData && profileData.role === 'principal') {
+              // Profile found, allow access
+              setCheckingRole(false);
+              return;
+            } else {
+              navigate('/login');
+              return;
+            }
+          }
+          
+          const role = data?.profile?.role;
           
           // Only principals and clerks can access this dashboard
           if (role !== 'principal' && role !== 'clerk') {
@@ -7793,7 +7840,23 @@ export default function PrincipalDashboard() {
             return;
           }
         } else {
-          console.error('[PrincipalDashboard] Failed to verify role');
+          console.error('[PrincipalDashboard] Failed to verify role, status:', response.status);
+          // Try fallback: check profile directly from Supabase
+          try {
+            const { data: profileData, error: profileError } = await supabase
+              .from('profiles')
+              .select('role, approval_status')
+              .eq('id', session.data.session?.user?.id)
+              .single();
+            
+            if (!profileError && profileData && profileData.role === 'principal') {
+              // Profile found, allow access
+              setCheckingRole(false);
+              return;
+            }
+          } catch (fallbackError) {
+            console.error('[PrincipalDashboard] Fallback check failed:', fallbackError);
+          }
           navigate('/login');
           return;
         }
