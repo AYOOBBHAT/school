@@ -1004,48 +1004,50 @@ function StaffManagement() {
     return allAssignments.filter(a => a.teacher_id === teacherId).length;
   };
 
-  // Add Teacher Modal State
-  const [addTeacherModalOpen, setAddTeacherModalOpen] = useState(false);
-  const [addTeacherForm, setAddTeacherForm] = useState({
+  // Add Staff Modal State
+  const [addStaffModalOpen, setAddStaffModalOpen] = useState(false);
+  const [addStaffForm, setAddStaffForm] = useState({
     email: '',
     password: '',
     full_name: '',
+    role: 'teacher' as 'clerk' | 'teacher',
     phone: '',
     gender: '' as 'male' | 'female' | 'other' | ''
   });
 
-  const handleAddTeacher = async (e: React.FormEvent) => {
+  const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/principal-users/teachers`, {
+      const response = await fetch(`${API_URL}/principal-users/staff`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          email: addTeacherForm.email,
-          password: addTeacherForm.password,
-          full_name: addTeacherForm.full_name,
-          phone: addTeacherForm.phone || null,
-          gender: addTeacherForm.gender || null
+          email: addStaffForm.email,
+          password: addStaffForm.password,
+          full_name: addStaffForm.full_name,
+          role: addStaffForm.role,
+          phone: addStaffForm.phone || null,
+          gender: addStaffForm.gender || null
         }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to add teacher');
+        throw new Error(error.error || 'Failed to add staff member');
       }
 
-      alert('Teacher added successfully!');
-      setAddTeacherModalOpen(false);
-      setAddTeacherForm({ email: '', password: '', full_name: '', phone: '', gender: '' });
+      alert(`${addStaffForm.role === 'clerk' ? 'Clerk' : 'Teacher'} added successfully!`);
+      setAddStaffModalOpen(false);
+      setAddStaffForm({ email: '', password: '', full_name: '', role: 'teacher', phone: '', gender: '' });
       loadStaff();
     } catch (error: any) {
-      alert(error.message || 'Failed to add teacher');
+      alert(error.message || 'Failed to add staff member');
     }
   };
 
@@ -1054,10 +1056,10 @@ function StaffManagement() {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-3xl font-bold">Staff Management</h2>
         <button
-          onClick={() => setAddTeacherModalOpen(true)}
+          onClick={() => setAddStaffModalOpen(true)}
           className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
         >
-          ➕ Add Teacher
+          ➕ Add Staff
         </button>
       </div>
       
@@ -1552,29 +1554,41 @@ function StaffManagement() {
         </div>
       )}
 
-      {/* Add Teacher Modal */}
-      {addTeacherModalOpen && (
+      {/* Add Staff Modal */}
+      {addStaffModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Add New Teacher</h3>
-            <form onSubmit={handleAddTeacher} className="space-y-4">
+            <h3 className="text-xl font-bold mb-4">Add New Staff Member</h3>
+            <form onSubmit={handleAddStaff} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Full Name *</label>
                 <input
                   type="text"
                   required
-                  value={addTeacherForm.full_name}
-                  onChange={(e) => setAddTeacherForm({ ...addTeacherForm, full_name: e.target.value })}
+                  value={addStaffForm.full_name}
+                  onChange={(e) => setAddStaffForm({ ...addStaffForm, full_name: e.target.value })}
                   className="w-full px-3 py-2 border rounded-md"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Role *</label>
+                <select
+                  value={addStaffForm.role}
+                  onChange={(e) => setAddStaffForm({ ...addStaffForm, role: e.target.value as 'clerk' | 'teacher' })}
+                  className="w-full px-3 py-2 border rounded-md"
+                  required
+                >
+                  <option value="teacher">Teacher</option>
+                  <option value="clerk">Clerk</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Email *</label>
                 <input
                   type="email"
                   required
-                  value={addTeacherForm.email}
-                  onChange={(e) => setAddTeacherForm({ ...addTeacherForm, email: e.target.value })}
+                  value={addStaffForm.email}
+                  onChange={(e) => setAddStaffForm({ ...addStaffForm, email: e.target.value })}
                   className="w-full px-3 py-2 border rounded-md"
                 />
               </div>
@@ -1584,8 +1598,8 @@ function StaffManagement() {
                   type="password"
                   required
                   minLength={8}
-                  value={addTeacherForm.password}
-                  onChange={(e) => setAddTeacherForm({ ...addTeacherForm, password: e.target.value })}
+                  value={addStaffForm.password}
+                  onChange={(e) => setAddStaffForm({ ...addStaffForm, password: e.target.value })}
                   className="w-full px-3 py-2 border rounded-md"
                   placeholder="Minimum 8 characters"
                 />
@@ -1594,16 +1608,16 @@ function StaffManagement() {
                 <label className="block text-sm font-medium mb-1">Phone</label>
                 <input
                   type="tel"
-                  value={addTeacherForm.phone}
-                  onChange={(e) => setAddTeacherForm({ ...addTeacherForm, phone: e.target.value })}
+                  value={addStaffForm.phone}
+                  onChange={(e) => setAddStaffForm({ ...addStaffForm, phone: e.target.value })}
                   className="w-full px-3 py-2 border rounded-md"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Gender</label>
                 <select
-                  value={addTeacherForm.gender}
-                  onChange={(e) => setAddTeacherForm({ ...addTeacherForm, gender: e.target.value as any })}
+                  value={addStaffForm.gender}
+                  onChange={(e) => setAddStaffForm({ ...addStaffForm, gender: e.target.value as any })}
                   className="w-full px-3 py-2 border rounded-md"
                 >
                   <option value="">Select Gender</option>
@@ -1617,13 +1631,13 @@ function StaffManagement() {
                   type="submit"
                   className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
                 >
-                  Add Teacher
+                  Add Staff
                 </button>
                 <button
                   type="button"
                   onClick={() => {
-                    setAddTeacherModalOpen(false);
-                    setAddTeacherForm({ email: '', password: '', full_name: '', phone: '', gender: '' });
+                    setAddStaffModalOpen(false);
+                    setAddStaffForm({ email: '', password: '', full_name: '', role: 'teacher', phone: '', gender: '' });
                   }}
                   className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
                 >
@@ -2962,6 +2976,7 @@ function StudentsManagement() {
     email: '',
     password: '',
     full_name: '',
+    username: '', // Username must be unique per school
     phone: '',
     roll_number: '',
     class_group_id: '',
@@ -2986,6 +3001,7 @@ function StudentsManagement() {
           email: addStudentForm.email,
           password: addStudentForm.password,
           full_name: addStudentForm.full_name,
+          username: addStudentForm.username,
           phone: addStudentForm.phone || null,
           roll_number: addStudentForm.roll_number || null,
           class_group_id: addStudentForm.class_group_id || null,
@@ -3006,6 +3022,7 @@ function StudentsManagement() {
         email: '', 
         password: '', 
         full_name: '', 
+        username: '',
         phone: '', 
         roll_number: '', 
         class_group_id: '', 
@@ -3377,6 +3394,18 @@ function StudentsManagement() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium mb-1">Username *</label>
+                <input
+                  type="text"
+                  required
+                  value={addStudentForm.username}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, username: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                  placeholder="Unique username for login (unique per school)"
+                />
+                <p className="text-xs text-gray-500 mt-1">Username must be unique within your school</p>
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-1">Password *</label>
                 <input
                   type="password"
@@ -3485,6 +3514,7 @@ function StudentsManagement() {
                       email: '', 
                       password: '', 
                       full_name: '', 
+                      username: '',
                       phone: '', 
                       roll_number: '', 
                       class_group_id: '', 
