@@ -85,6 +85,9 @@ router.post('/signup-principal', async (req, res) => {
         }
         // Generate join code
         const joinCode = generateJoinCode();
+        // Use principal's email and phone as school contact if not provided separately
+        const schoolContactEmail = value.contact_email || value.email;
+        const schoolContactPhone = value.contact_phone || value.phone;
         // Create school (marked as paid by default)
         const { data: school, error: schoolError } = await supabase
             .from('schools')
@@ -92,8 +95,8 @@ router.post('/signup-principal', async (req, res) => {
             name: value.school_name,
             address: value.school_address,
             registration_number: value.school_registration_number,
-            contact_phone: value.contact_phone,
-            contact_email: value.contact_email,
+            contact_phone: schoolContactPhone,
+            contact_email: schoolContactEmail,
             join_code: joinCode,
             payment_status: 'paid' // New schools are considered paid
         })
@@ -104,9 +107,14 @@ router.post('/signup-principal', async (req, res) => {
             await supabase.auth.admin.deleteUser(authData.user.id);
             return res.status(400).json({ error: schoolError?.message || 'Failed to create school' });
         }
-        // Update user metadata with school_id
+        // Update user metadata with school_id, phone, and full_name
         await supabase.auth.admin.updateUserById(authData.user.id, {
-            user_metadata: { role: 'principal', school_id: school.id }
+            user_metadata: {
+                role: 'principal',
+                school_id: school.id,
+                phone: value.phone,
+                full_name: value.full_name
+            }
         });
         // Create profile (principal is auto-approved)
         const { error: profileError } = await supabase.from('profiles').insert({
