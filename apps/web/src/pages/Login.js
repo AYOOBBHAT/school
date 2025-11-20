@@ -148,6 +148,11 @@ export default function Login() {
                 navigate('/reset-password');
                 return;
             }
+            // Check if user is admin (admins bypass approval check)
+            if (profile.role === 'admin') {
+                navigate('/admin/dashboard');
+                return;
+            }
             // Check approval status (principals are always approved)
             if (profile.approval_status !== 'approved' && profile.role !== 'principal') {
                 console.warn('[Login] User not approved:', {
