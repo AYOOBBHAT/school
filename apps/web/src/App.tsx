@@ -69,15 +69,12 @@ function Hero() {
             Manage attendance, fees, exams, reporting & more — in one place.
           </p>
           <div className="flex gap-4 justify-center">
+            <Link to="/login" className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold border-2 border-blue-600 hover:bg-blue-50 transition">
+              Login
+            </Link>
             <Link to="/signup" className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition">
               Create School Now
             </Link>
-            <button 
-              onClick={handleRequestDemo}
-              className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold border-2 border-blue-600 hover:bg-blue-50 transition"
-            >
-              Request Demo
-            </button>
           </div>
           <div className="mt-12 px-4">
             <div className="bg-white rounded-lg shadow-xl p-4 sm:p-6 max-w-6xl mx-auto">
