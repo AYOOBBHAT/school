@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
+import { API_URL } from '../utils/api.js';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
@@ -50,7 +51,6 @@ export default function ResetPassword() {
         throw new Error('Session expired. Please log in again.');
       }
 
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
       const response = await fetch(`${API_URL}/auth/reset-password`, {
         method: 'POST',
         headers: {

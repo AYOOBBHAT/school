@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@school/ui';
 import { createClient } from '@supabase/supabase-js';
+import { API_URL } from '../utils/api.js';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
   import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 );
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export default function Signup() {
   const navigate = useNavigate();

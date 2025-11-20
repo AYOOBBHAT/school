@@ -2,8 +2,8 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
+import { API_URL } from '../utils/api.js';
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL || '', import.meta.env.VITE_SUPABASE_ANON_KEY || '');
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function Sidebar({ currentPath }) {
     const navigate = useNavigate();
     const handleLogout = async () => {

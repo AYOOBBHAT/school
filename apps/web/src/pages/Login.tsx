@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
+import { API_URL } from '../utils/api.js';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
@@ -33,7 +34,6 @@ export default function Login() {
           throw new Error('Username, password, and school code are required');
         }
 
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
         const requestBody: any = {
           username,
           password
@@ -117,7 +117,6 @@ export default function Login() {
         try {
           const token = data.session?.access_token;
           if (token) {
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
             
             // Try to get profile via backend
             const response = await fetch(`${API_URL}/auth/profile`, {
