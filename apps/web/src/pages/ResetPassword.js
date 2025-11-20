@@ -2,6 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
+import { API_URL } from '../utils/api.js';
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL || '', import.meta.env.VITE_SUPABASE_ANON_KEY || '');
 export default function ResetPassword() {
     const navigate = useNavigate();
@@ -40,7 +41,6 @@ export default function ResetPassword() {
             if (!session) {
                 throw new Error('Session expired. Please log in again.');
             }
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
             const response = await fetch(`${API_URL}/auth/reset-password`, {
                 method: 'POST',
                 headers: {
