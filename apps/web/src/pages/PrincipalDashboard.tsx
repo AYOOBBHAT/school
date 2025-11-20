@@ -647,6 +647,17 @@ function StaffManagement() {
   const [performanceData, setPerformanceData] = useState<any>(null);
   const [teacherAssignments, setTeacherAssignments] = useState<any[]>([]);
 
+  // Add Staff Modal State (must be before any early returns)
+  const [addStaffModalOpen, setAddStaffModalOpen] = useState(false);
+  const [addStaffForm, setAddStaffForm] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    role: 'teacher' as 'clerk' | 'teacher',
+    phone: '',
+    gender: '' as 'male' | 'female' | 'other' | ''
+  });
+
   useEffect(() => {
     loadStaff();
     loadAllClasses();
@@ -997,23 +1008,12 @@ function StaffManagement() {
     }
   }, [assignForm.class_group_id]);
 
-  if (loading) return <div className="p-6">Loading...</div>;
-
   // Get assignments count for each teacher
   const getTeacherAssignmentsCount = (teacherId: string) => {
     return allAssignments.filter(a => a.teacher_id === teacherId).length;
   };
 
-  // Add Staff Modal State
-  const [addStaffModalOpen, setAddStaffModalOpen] = useState(false);
-  const [addStaffForm, setAddStaffForm] = useState({
-    email: '',
-    password: '',
-    full_name: '',
-    role: 'teacher' as 'clerk' | 'teacher',
-    phone: '',
-    gender: '' as 'male' | 'female' | 'other' | ''
-  });
+  if (loading) return <div className="p-6">Loading...</div>;
 
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2728,6 +2728,21 @@ function StudentsManagement() {
     clear_sections: false
   });
 
+  // Add Student Modal State (must be before any early returns)
+  const [addStudentModalOpen, setAddStudentModalOpen] = useState(false);
+  const [addStudentForm, setAddStudentForm] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    username: '',
+    phone: '',
+    roll_number: '',
+    class_group_id: '',
+    section_id: '',
+    admission_date: '',
+    gender: '' as 'male' | 'female' | 'other' | ''
+  });
+
   useEffect(() => {
     const loadStudents = async () => {
       try {
@@ -2969,21 +2984,6 @@ function StudentsManagement() {
       </div>
     );
   }
-
-  // Add Student Modal State
-  const [addStudentModalOpen, setAddStudentModalOpen] = useState(false);
-  const [addStudentForm, setAddStudentForm] = useState({
-    email: '',
-    password: '',
-    full_name: '',
-    username: '', // Username must be unique per school
-    phone: '',
-    roll_number: '',
-    class_group_id: '',
-    section_id: '',
-    admission_date: '',
-    gender: '' as 'male' | 'female' | 'other' | ''
-  });
 
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
