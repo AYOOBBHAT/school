@@ -83,10 +83,35 @@ export default function AdminDashboard() {
           return;
         }
 
-        // Check if user is admin
-        const userRole = session.user.user_metadata?.role;
-        if (userRole !== 'admin') {
+        // Fetch profile from backend to verify admin role
+        const response = await fetch(`${API_URL}/auth/profile`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          console.error('[AdminDashboard] Failed to fetch profile');
           navigate('/login');
+          return;
+        }
+
+        const data = await response.json();
+        const profile = data.profile;
+
+        // Check if user is admin
+        if (profile?.role !== 'admin') {
+          console.warn('[AdminDashboard] User is not an admin, role:', profile?.role);
+          // Redirect based on role
+          const redirectMap: Record<string, string> = {
+            principal: '/principal/dashboard',
+            clerk: '/clerk/fees',
+            teacher: '/teacher/classes',
+            student: '/student/home',
+            parent: '/parent',
+          };
+          const redirectPath = redirectMap[profile?.role] || '/login';
+          navigate(redirectPath);
           return;
         }
 
