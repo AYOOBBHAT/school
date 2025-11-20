@@ -181,7 +181,7 @@ export default function Login() {
                                         setError('');
                                     }, className: `flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-all ${loginMode === 'email'
                                         ? 'bg-white text-blue-600 shadow-sm'
-                                        : 'text-gray-600 hover:text-gray-800'}`, children: "Email Login" }), _jsx("button", { type: "button", onClick: () => {
+                                        : 'text-gray-600 hover:text-gray-800'}`, children: "Principal/Staff Login" }), _jsx("button", { type: "button", onClick: () => {
                                         setLoginMode('username');
                                         setError('');
                                     }, className: `flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-all ${loginMode === 'username'
