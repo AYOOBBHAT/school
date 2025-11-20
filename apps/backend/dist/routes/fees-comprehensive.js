@@ -611,7 +611,7 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
     }
     const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     const { user } = req;
-    if (!user)
+    if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
     try {
         const now = new Date();

@@ -681,7 +681,49 @@ function StaffManagement() {
     const getTeacherAssignmentsCount = (teacherId) => {
         return allAssignments.filter(a => a.teacher_id === teacherId).length;
     };
-    return (_jsxs("div", { className: "p-6", children: [_jsx("h2", { className: "text-3xl font-bold mb-6", children: "Staff Management" }), _jsx("div", { className: "mb-4", children: _jsx("button", { onClick: () => {
+    // Add Teacher Modal State
+    const [addTeacherModalOpen, setAddTeacherModalOpen] = useState(false);
+    const [addTeacherForm, setAddTeacherForm] = useState({
+        email: '',
+        password: '',
+        full_name: '',
+        phone: '',
+        gender: ''
+    });
+    const handleAddTeacher = async (e) => {
+        e.preventDefault();
+        try {
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            const response = await fetch(`${API_URL}/principal-users/teachers`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    email: addTeacherForm.email,
+                    password: addTeacherForm.password,
+                    full_name: addTeacherForm.full_name,
+                    phone: addTeacherForm.phone || null,
+                    gender: addTeacherForm.gender || null
+                }),
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to add teacher');
+            }
+            alert('Teacher added successfully!');
+            setAddTeacherModalOpen(false);
+            setAddTeacherForm({ email: '', password: '', full_name: '', phone: '', gender: '' });
+            loadStaff();
+        }
+        catch (error) {
+            alert(error.message || 'Failed to add teacher');
+        }
+    };
+    return (_jsxs("div", { className: "p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-6", children: [_jsx("h2", { className: "text-3xl font-bold", children: "Staff Management" }), _jsx("button", { onClick: () => setAddTeacherModalOpen(true), className: "bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition", children: "\u2795 Add Teacher" })] }), _jsx("div", { className: "mb-4", children: _jsx("button", { onClick: () => {
                         setViewAssignmentsModalOpen(true);
                         setSelectedTeacher(null);
                         loadAllAssignments();
@@ -711,7 +753,10 @@ function StaffManagement() {
                                                                         ? 'bg-yellow-100 text-yellow-800'
                                                                         : record.status === 'leave'
                                                                             ? 'bg-blue-100 text-blue-800'
-                                                                            : 'bg-red-100 text-red-800'}`, children: record.status }) })] }, record.date))) })] }) })] })] }) })), editModalOpen && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Edit Teacher: ", selectedTeacher.full_name] }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name" }), _jsx("input", { type: "text", value: editForm.full_name, onChange: (e) => setEditForm({ ...editForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email" }), _jsx("input", { type: "email", value: editForm.email, onChange: (e) => setEditForm({ ...editForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "text", value: editForm.phone, onChange: (e) => setEditForm({ ...editForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Status" }), _jsxs("select", { value: editForm.approval_status, onChange: (e) => setEditForm({ ...editForm, approval_status: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "approved", children: "Approved" }), _jsx("option", { value: "rejected", children: "Rejected" })] })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handleUpdateTeacher, className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Update" }), _jsx("button", { onClick: () => setEditModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), viewAssignmentsModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: selectedTeacher ? `Assignments: ${selectedTeacher.full_name}` : 'All Teacher Assignments' }), _jsx("button", { onClick: () => {
+                                                                            : 'bg-red-100 text-red-800'}`, children: record.status }) })] }, record.date))) })] }) })] })] }) })), editModalOpen && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Edit Teacher: ", selectedTeacher.full_name] }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name" }), _jsx("input", { type: "text", value: editForm.full_name, onChange: (e) => setEditForm({ ...editForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email" }), _jsx("input", { type: "email", value: editForm.email, onChange: (e) => setEditForm({ ...editForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "text", value: editForm.phone, onChange: (e) => setEditForm({ ...editForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Status" }), _jsxs("select", { value: editForm.approval_status, onChange: (e) => setEditForm({ ...editForm, approval_status: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "approved", children: "Approved" }), _jsx("option", { value: "rejected", children: "Rejected" })] })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handleUpdateTeacher, className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Update" }), _jsx("button", { onClick: () => setEditModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), addTeacherModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Add New Teacher" }), _jsxs("form", { onSubmit: handleAddTeacher, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name *" }), _jsx("input", { type: "text", required: true, value: addTeacherForm.full_name, onChange: (e) => setAddTeacherForm({ ...addTeacherForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email *" }), _jsx("input", { type: "email", required: true, value: addTeacherForm.email, onChange: (e) => setAddTeacherForm({ ...addTeacherForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Password *" }), _jsx("input", { type: "password", required: true, minLength: 8, value: addTeacherForm.password, onChange: (e) => setAddTeacherForm({ ...addTeacherForm, password: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Minimum 8 characters" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "tel", value: addTeacherForm.phone, onChange: (e) => setAddTeacherForm({ ...addTeacherForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Gender" }), _jsxs("select", { value: addTeacherForm.gender, onChange: (e) => setAddTeacherForm({ ...addTeacherForm, gender: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Gender" }), _jsx("option", { value: "male", children: "Male" }), _jsx("option", { value: "female", children: "Female" }), _jsx("option", { value: "other", children: "Other" })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { type: "submit", className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Add Teacher" }), _jsx("button", { type: "button", onClick: () => {
+                                                setAddTeacherModalOpen(false);
+                                                setAddTeacherForm({ email: '', password: '', full_name: '', phone: '', gender: '' });
+                                            }, className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] })] }) })), viewAssignmentsModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: selectedTeacher ? `Assignments: ${selectedTeacher.full_name}` : 'All Teacher Assignments' }), _jsx("button", { onClick: () => {
                                         setViewAssignmentsModalOpen(false);
                                         setSelectedTeacher(null);
                                     }, className: "text-gray-500 hover:text-gray-700", children: "\u2715" })] }), _jsxs("div", { className: "overflow-x-auto", children: [_jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Class" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Section" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Subject" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Assigned" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: (selectedTeacher ? teacherAssignments : allAssignments).map((assignment) => (_jsxs("tr", { children: [_jsx("td", { className: "px-4 py-2 text-sm", children: assignment.teacher?.full_name || 'N/A' }), _jsx("td", { className: "px-4 py-2 text-sm", children: assignment.class_groups?.name || 'N/A' }), _jsx("td", { className: "px-4 py-2 text-sm", children: assignment.sections?.name || 'N/A' }), _jsxs("td", { className: "px-4 py-2 text-sm", children: [assignment.subjects?.name || 'N/A', " ", assignment.subjects?.code ? `(${assignment.subjects.code})` : ''] }), _jsx("td", { className: "px-4 py-2 text-sm text-gray-500", children: new Date(assignment.created_at).toLocaleDateString() }), _jsx("td", { className: "px-4 py-2 text-sm", children: _jsx("button", { onClick: () => handleDeleteAssignment(assignment.id), className: "text-red-600 hover:text-red-900", children: "\uD83D\uDDD1\uFE0F Remove" }) })] }, assignment.id))) })] }), (selectedTeacher ? teacherAssignments : allAssignments).length === 0 && (_jsx("div", { className: "text-center py-8 text-gray-500", children: "No assignments found." }))] })] }) }))] }));
@@ -1369,7 +1414,67 @@ function StudentsManagement() {
     if (loading) {
         return (_jsxs("div", { className: "p-6", children: [_jsx("h2", { className: "text-3xl font-bold mb-6", children: "Students Management" }), _jsx("div", { className: "bg-white rounded-lg shadow-md p-12 text-center", children: _jsx("div", { className: "text-2xl mb-4", children: "Loading..." }) })] }));
     }
-    return (_jsxs("div", { className: "p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-6", children: [_jsx("h2", { className: "text-3xl font-bold", children: "Students Management" }), _jsxs("div", { className: "text-lg text-gray-600", children: ["Total: ", _jsx("span", { className: "font-bold text-blue-600", children: totalStudents }), " students"] })] }), _jsx("div", { className: "space-y-4 mb-6", children: classesWithStudents.map((classItem) => {
+    // Add Student Modal State
+    const [addStudentModalOpen, setAddStudentModalOpen] = useState(false);
+    const [addStudentForm, setAddStudentForm] = useState({
+        email: '',
+        password: '',
+        full_name: '',
+        phone: '',
+        roll_number: '',
+        class_group_id: '',
+        section_id: '',
+        admission_date: '',
+        gender: ''
+    });
+    const handleAddStudent = async (e) => {
+        e.preventDefault();
+        try {
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            const response = await fetch(`${API_URL}/principal-users/students`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    email: addStudentForm.email,
+                    password: addStudentForm.password,
+                    full_name: addStudentForm.full_name,
+                    phone: addStudentForm.phone || null,
+                    roll_number: addStudentForm.roll_number || null,
+                    class_group_id: addStudentForm.class_group_id || null,
+                    section_id: addStudentForm.section_id || null,
+                    admission_date: addStudentForm.admission_date || null,
+                    gender: addStudentForm.gender || null
+                }),
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to add student');
+            }
+            alert('Student added successfully!');
+            setAddStudentModalOpen(false);
+            setAddStudentForm({
+                email: '',
+                password: '',
+                full_name: '',
+                phone: '',
+                roll_number: '',
+                class_group_id: '',
+                section_id: '',
+                admission_date: '',
+                gender: ''
+            });
+            window.location.reload();
+        }
+        catch (error) {
+            alert(error.message || 'Failed to add student');
+        }
+    };
+    return (_jsxs("div", { className: "p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-6", children: [_jsx("h2", { className: "text-3xl font-bold", children: "Students Management" }), _jsxs("div", { className: "flex items-center gap-4", children: [_jsxs("div", { className: "text-lg text-gray-600", children: ["Total: ", _jsx("span", { className: "font-bold text-blue-600", children: totalStudents }), " students"] }), _jsx("button", { onClick: () => setAddStudentModalOpen(true), className: "bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition", children: "\u2795 Add Student" })] })] }), _jsx("div", { className: "space-y-4 mb-6", children: classesWithStudents.map((classItem) => {
                     const isExpanded = expandedClasses.has(classItem.id);
                     const classificationText = classItem.classifications && classItem.classifications.length > 0
                         ? ` (${classItem.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
@@ -1396,7 +1501,30 @@ function StudentsManagement() {
                                                     ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
                                                     : '';
                                                 return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
-                                            })] })] }) }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handlePromoteStudentSubmit, className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Promote" }), _jsx("button", { onClick: () => setPromoteModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), promoteClassModalOpen && selectedClassId && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Promote Entire Class" }), _jsx("p", { className: "text-sm text-gray-600 mb-4", children: "This will move all active students from the current class to the target class." }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Target Class" }), _jsxs("select", { value: promoteClassForm.target_class_id, onChange: (e) => setPromoteClassForm({ ...promoteClassForm, target_class_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", required: true, children: [_jsx("option", { value: "", children: "Select Target Class" }), allClasses.filter(cls => cls.id !== selectedClassId).map((cls) => {
+                                            })] })] }) }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handlePromoteStudentSubmit, className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Promote" }), _jsx("button", { onClick: () => setPromoteModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), addStudentModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Add New Student" }), _jsxs("form", { onSubmit: handleAddStudent, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name *" }), _jsx("input", { type: "text", required: true, value: addStudentForm.full_name, onChange: (e) => setAddStudentForm({ ...addStudentForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email *" }), _jsx("input", { type: "email", required: true, value: addStudentForm.email, onChange: (e) => setAddStudentForm({ ...addStudentForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Password *" }), _jsx("input", { type: "password", required: true, minLength: 8, value: addStudentForm.password, onChange: (e) => setAddStudentForm({ ...addStudentForm, password: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Minimum 8 characters" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "tel", value: addStudentForm.phone, onChange: (e) => setAddStudentForm({ ...addStudentForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Gender" }), _jsxs("select", { value: addStudentForm.gender, onChange: (e) => setAddStudentForm({ ...addStudentForm, gender: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Gender" }), _jsx("option", { value: "male", children: "Male" }), _jsx("option", { value: "female", children: "Female" }), _jsx("option", { value: "other", children: "Other" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Roll Number" }), _jsx("input", { type: "text", value: addStudentForm.roll_number, onChange: (e) => setAddStudentForm({ ...addStudentForm, roll_number: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class" }), _jsxs("select", { value: addStudentForm.class_group_id, onChange: (e) => {
+                                                setAddStudentForm({ ...addStudentForm, class_group_id: e.target.value, section_id: '' });
+                                                if (e.target.value) {
+                                                    loadSections(e.target.value);
+                                                }
+                                            }, className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Class (Optional)" }), allClasses.map((cls) => {
+                                                    const classificationText = cls.classifications && cls.classifications.length > 0
+                                                        ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
+                                                        : '';
+                                                    return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
+                                                })] })] }), addStudentForm.class_group_id && sections[addStudentForm.class_group_id] && (_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Section" }), _jsxs("select", { value: addStudentForm.section_id, onChange: (e) => setAddStudentForm({ ...addStudentForm, section_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Section (Optional)" }), sections[addStudentForm.class_group_id].map((section) => (_jsx("option", { value: section.id, children: section.name }, section.id)))] })] })), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Admission Date" }), _jsx("input", { type: "date", value: addStudentForm.admission_date, onChange: (e) => setAddStudentForm({ ...addStudentForm, admission_date: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { type: "submit", className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Add Student" }), _jsx("button", { type: "button", onClick: () => {
+                                                setAddStudentModalOpen(false);
+                                                setAddStudentForm({
+                                                    email: '',
+                                                    password: '',
+                                                    full_name: '',
+                                                    phone: '',
+                                                    roll_number: '',
+                                                    class_group_id: '',
+                                                    section_id: '',
+                                                    admission_date: '',
+                                                    gender: ''
+                                                });
+                                            }, className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] })] }) })), promoteClassModalOpen && selectedClassId && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Promote Entire Class" }), _jsx("p", { className: "text-sm text-gray-600 mb-4", children: "This will move all active students from the current class to the target class." }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Target Class" }), _jsxs("select", { value: promoteClassForm.target_class_id, onChange: (e) => setPromoteClassForm({ ...promoteClassForm, target_class_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", required: true, children: [_jsx("option", { value: "", children: "Select Target Class" }), allClasses.filter(cls => cls.id !== selectedClassId).map((cls) => {
                                                     const classificationText = cls.classifications && cls.classifications.length > 0
                                                         ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
                                                         : '';

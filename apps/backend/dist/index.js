@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import { authMiddleware } from './middleware/auth.js';
+import { authMiddleware, checkPaymentStatus } from './middleware/auth.js';
 import feesRouter from './routes/fees-comprehensive.js';
 import paymentsRouter from './routes/payments.js';
 import marksRouter from './routes/marks.js';
@@ -22,6 +22,8 @@ import schoolRouter from './routes/school.js';
 import examsRouter from './routes/exams.js';
 import dashboardRouter from './routes/dashboard.js';
 import salaryRouter from './routes/salary.js';
+import adminRouter from './routes/admin.js';
+import principalUsersRouter from './routes/principal-users.js';
 // Validate required environment variables at startup
 const requiredEnvVars = [
     'SUPABASE_URL',
@@ -52,6 +54,10 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/auth', authRouter);
 // Protected routes (require auth middleware)
 app.use(authMiddleware);
+// Admin routes (no payment check needed)
+app.use('/admin', adminRouter);
+// All other protected routes (require payment check)
+app.use(checkPaymentStatus);
 app.use('/fees', feesRouter);
 app.use('/payments', paymentsRouter);
 app.use('/marks', marksRouter);
@@ -69,6 +75,7 @@ app.use('/school', schoolRouter);
 app.use('/exams', examsRouter);
 app.use('/dashboard', dashboardRouter);
 app.use('/salary', salaryRouter);
+app.use('/principal-users', principalUsersRouter);
 const port = Number(process.env.PORT) || 4000;
 const host = process.env.HOST || '0.0.0.0'; // Listen on all network interfaces
 app.listen(port, host, () => {
