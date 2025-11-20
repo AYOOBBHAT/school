@@ -350,6 +350,16 @@ function StaffManagement() {
     const [attendanceSummary, setAttendanceSummary] = useState(null);
     const [performanceData, setPerformanceData] = useState(null);
     const [teacherAssignments, setTeacherAssignments] = useState([]);
+    // Add Staff Modal State (must be before any early returns)
+    const [addStaffModalOpen, setAddStaffModalOpen] = useState(false);
+    const [addStaffForm, setAddStaffForm] = useState({
+        email: '',
+        password: '',
+        full_name: '',
+        role: 'teacher',
+        phone: '',
+        gender: ''
+    });
     useEffect(() => {
         loadStaff();
         loadAllClasses();
@@ -675,22 +685,12 @@ function StaffManagement() {
             loadSections(assignForm.class_group_id);
         }
     }, [assignForm.class_group_id]);
-    if (loading)
-        return _jsx("div", { className: "p-6", children: "Loading..." });
     // Get assignments count for each teacher
     const getTeacherAssignmentsCount = (teacherId) => {
         return allAssignments.filter(a => a.teacher_id === teacherId).length;
     };
-    // Add Staff Modal State
-    const [addStaffModalOpen, setAddStaffModalOpen] = useState(false);
-    const [addStaffForm, setAddStaffForm] = useState({
-        email: '',
-        password: '',
-        full_name: '',
-        role: 'teacher',
-        phone: '',
-        gender: ''
-    });
+    if (loading)
+        return _jsx("div", { className: "p-6", children: "Loading..." });
     const handleAddStaff = async (e) => {
         e.preventDefault();
         try {
@@ -1200,6 +1200,20 @@ function StudentsManagement() {
         target_class_id: '',
         clear_sections: false
     });
+    // Add Student Modal State (must be before any early returns)
+    const [addStudentModalOpen, setAddStudentModalOpen] = useState(false);
+    const [addStudentForm, setAddStudentForm] = useState({
+        email: '',
+        password: '',
+        full_name: '',
+        username: '',
+        phone: '',
+        roll_number: '',
+        class_group_id: '',
+        section_id: '',
+        admission_date: '',
+        gender: ''
+    });
     useEffect(() => {
         const loadStudents = async () => {
             try {
@@ -1416,20 +1430,6 @@ function StudentsManagement() {
     if (loading) {
         return (_jsxs("div", { className: "p-6", children: [_jsx("h2", { className: "text-3xl font-bold mb-6", children: "Students Management" }), _jsx("div", { className: "bg-white rounded-lg shadow-md p-12 text-center", children: _jsx("div", { className: "text-2xl mb-4", children: "Loading..." }) })] }));
     }
-    // Add Student Modal State
-    const [addStudentModalOpen, setAddStudentModalOpen] = useState(false);
-    const [addStudentForm, setAddStudentForm] = useState({
-        email: '',
-        password: '',
-        full_name: '',
-        username: '', // Username must be unique per school
-        phone: '',
-        roll_number: '',
-        class_group_id: '',
-        section_id: '',
-        admission_date: '',
-        gender: ''
-    });
     const handleAddStudent = async (e) => {
         e.preventDefault();
         try {
