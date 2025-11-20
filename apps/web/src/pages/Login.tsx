@@ -250,7 +250,7 @@ export default function Login() {
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
-              Email Login
+              Principal/Staff Login
             </button>
             <button
               type="button"
