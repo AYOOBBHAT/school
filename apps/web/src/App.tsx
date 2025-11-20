@@ -10,6 +10,7 @@ import PrincipalDashboard from './pages/PrincipalDashboard';
 import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
 import ClerkDashboard from './pages/ClerkDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
 
@@ -38,6 +39,7 @@ function Navbar() {
           </div>
           <div className="hidden md:flex space-x-8">
             <a href="#features" onClick={(e) => handleScrollTo(e, 'features')} className="text-gray-700 hover:text-blue-600 cursor-pointer">Features</a>
+            <a href="#demo" onClick={(e) => handleScrollTo(e, 'demo')} className="text-gray-700 hover:text-blue-600 cursor-pointer">Demo</a>
             <a href="#testimonials" onClick={(e) => handleScrollTo(e, 'testimonials')} className="text-gray-700 hover:text-blue-600 cursor-pointer">Testimonials</a>
             <a href="#faq" onClick={(e) => handleScrollTo(e, 'faq')} className="text-gray-700 hover:text-blue-600 cursor-pointer">FAQ</a>
             <Link to="/login" className="text-gray-700 hover:text-blue-600">Login</Link>
@@ -50,6 +52,12 @@ function Navbar() {
 }
 
 function Hero() {
+  const handleRequestDemo = () => {
+    const message = encodeURIComponent('Hello! I would like to request a demo of JhelumVerse School Management System.');
+    const whatsappUrl = `https://wa.me/916005568502?text=${message}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
   return (
     <section className="bg-gradient-to-br from-blue-50 to-indigo-100 py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -64,9 +72,12 @@ function Hero() {
             <Link to="/signup" className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition">
               Start Free
             </Link>
-            <Link to="#demo" className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold border-2 border-blue-600 hover:bg-blue-50 transition">
+            <button 
+              onClick={handleRequestDemo}
+              className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold border-2 border-blue-600 hover:bg-blue-50 transition"
+            >
               Request Demo
-            </Link>
+            </button>
           </div>
           <div className="mt-12 px-4">
             <div className="bg-white rounded-lg shadow-xl p-4 sm:p-6 max-w-6xl mx-auto">
@@ -193,6 +204,118 @@ function Testimonials() {
   );
 }
 
+function RequestDemo() {
+  const [formData, setFormData] = React.useState({
+    name: '',
+    email: '',
+    phone: '',
+    schoolName: '',
+    message: ''
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const message = encodeURIComponent(
+      `Hello! I would like to request a demo of JhelumVerse.\n\n` +
+      `Name: ${formData.name}\n` +
+      `Email: ${formData.email}\n` +
+      `Phone: ${formData.phone}\n` +
+      `School Name: ${formData.schoolName}\n` +
+      `Message: ${formData.message || 'I am interested in learning more about JhelumVerse.'}`
+    );
+    const whatsappUrl = `https://wa.me/916005568502?text=${message}`;
+    window.open(whatsappUrl, '_blank');
+    
+    // Reset form
+    setFormData({ name: '', email: '', phone: '', schoolName: '', message: '' });
+  };
+
+  return (
+    <section id="demo" className="py-20 bg-white scroll-mt-20">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-4xl font-bold text-center mb-4">Request a Demo</h2>
+        <p className="text-center text-gray-600 mb-8">
+          Fill out the form below and we'll contact you on WhatsApp to schedule a personalized demo.
+        </p>
+        <div className="bg-gray-50 rounded-lg p-8 shadow-md">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Your Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="John Doe"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="john@example.com"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
+                <input
+                  type="tel"
+                  required
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="+91 1234567890"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">School Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.schoolName}
+                  onChange={(e) => setFormData({ ...formData, schoolName: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="ABC School"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Additional Message (Optional)</label>
+              <textarea
+                value={formData.message}
+                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                rows={4}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Tell us more about your requirements..."
+              />
+            </div>
+            <div className="text-center">
+              <button
+                type="submit"
+                className="bg-green-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-green-700 transition inline-flex items-center gap-2"
+              >
+                <span>📱</span>
+                Send via WhatsApp
+              </button>
+              <p className="text-sm text-gray-500 mt-4">
+                Clicking this button will open WhatsApp with your message pre-filled
+              </p>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function FAQ() {
   const faqs = [
     { q: 'Is it multi-branch?', a: 'Yes! Each school operates as an independent tenant with complete data isolation. You can manage multiple schools from a single platform.' },
@@ -259,8 +382,8 @@ function Footer() {
           <div>
             <h4 className="font-semibold mb-4">Support</h4>
             <ul className="space-y-2 text-gray-400">
-              <li><a href="https://wa.me/1234567890" target="_blank" rel="noopener noreferrer" className="hover:text-white">WhatsApp Support</a></li>
-              <li><Link to="/contact" className="hover:text-white">Contact Us</Link></li>
+              <li><a href="https://wa.me/916005568502" target="_blank" rel="noopener noreferrer" className="hover:text-white">WhatsApp Support</a></li>
+              <li><a href="mailto:ayoob324005@gmail.com" className="hover:text-white">Contact Us</a></li>
             </ul>
           </div>
         </div>
@@ -281,6 +404,7 @@ function Home() {
         <FeaturesOverview />
         <FeaturesDeep />
         <Testimonials />
+        <RequestDemo />
         <FAQ />
         <Footer />
       </div>
@@ -319,6 +443,8 @@ export default function App() {
       <Route path="/student/home" element={<StudentDashboard />} />
       <Route path="/student" element={<StudentDashboard />} />
       <Route path="/parent" element={<Parent />} />
+      <Route path="/admin/dashboard" element={<AdminDashboard />} />
+      <Route path="/admin" element={<AdminDashboard />} />
     </Routes>
   );
 }

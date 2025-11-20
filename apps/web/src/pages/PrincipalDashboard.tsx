@@ -1005,9 +1005,62 @@ function StaffManagement() {
     return allAssignments.filter(a => a.teacher_id === teacherId).length;
   };
 
+  // Add Teacher Modal State
+  const [addTeacherModalOpen, setAddTeacherModalOpen] = useState(false);
+  const [addTeacherForm, setAddTeacherForm] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    phone: '',
+    gender: '' as 'male' | 'female' | 'other' | ''
+  });
+
+  const handleAddTeacher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/principal-users/teachers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          email: addTeacherForm.email,
+          password: addTeacherForm.password,
+          full_name: addTeacherForm.full_name,
+          phone: addTeacherForm.phone || null,
+          gender: addTeacherForm.gender || null
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to add teacher');
+      }
+
+      alert('Teacher added successfully!');
+      setAddTeacherModalOpen(false);
+      setAddTeacherForm({ email: '', password: '', full_name: '', phone: '', gender: '' });
+      loadStaff();
+    } catch (error: any) {
+      alert(error.message || 'Failed to add teacher');
+    }
+  };
+
   return (
     <div className="p-6">
-      <h2 className="text-3xl font-bold mb-6">Staff Management</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-bold">Staff Management</h2>
+        <button
+          onClick={() => setAddTeacherModalOpen(true)}
+          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
+        >
+          ➕ Add Teacher
+        </button>
+      </div>
       
       {/* View All Assignments Button */}
       <div className="mb-4">
@@ -1496,6 +1549,89 @@ function StaffManagement() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Teacher Modal */}
+      {addTeacherModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4">Add New Teacher</h3>
+            <form onSubmit={handleAddTeacher} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={addTeacherForm.full_name}
+                  onChange={(e) => setAddTeacherForm({ ...addTeacherForm, full_name: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={addTeacherForm.email}
+                  onChange={(e) => setAddTeacherForm({ ...addTeacherForm, email: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Password *</label>
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={addTeacherForm.password}
+                  onChange={(e) => setAddTeacherForm({ ...addTeacherForm, password: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                  placeholder="Minimum 8 characters"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone</label>
+                <input
+                  type="tel"
+                  value={addTeacherForm.phone}
+                  onChange={(e) => setAddTeacherForm({ ...addTeacherForm, phone: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Gender</label>
+                <select
+                  value={addTeacherForm.gender}
+                  onChange={(e) => setAddTeacherForm({ ...addTeacherForm, gender: e.target.value as any })}
+                  className="w-full px-3 py-2 border rounded-md"
+                >
+                  <option value="">Select Gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="submit"
+                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                >
+                  Add Teacher
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddTeacherModalOpen(false);
+                    setAddTeacherForm({ email: '', password: '', full_name: '', phone: '', gender: '' });
+                  }}
+                  className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2821,12 +2957,83 @@ function StudentsManagement() {
     );
   }
 
+  // Add Student Modal State
+  const [addStudentModalOpen, setAddStudentModalOpen] = useState(false);
+  const [addStudentForm, setAddStudentForm] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    phone: '',
+    roll_number: '',
+    class_group_id: '',
+    section_id: '',
+    admission_date: '',
+    gender: '' as 'male' | 'female' | 'other' | ''
+  });
+
+  const handleAddStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/principal-users/students`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          email: addStudentForm.email,
+          password: addStudentForm.password,
+          full_name: addStudentForm.full_name,
+          phone: addStudentForm.phone || null,
+          roll_number: addStudentForm.roll_number || null,
+          class_group_id: addStudentForm.class_group_id || null,
+          section_id: addStudentForm.section_id || null,
+          admission_date: addStudentForm.admission_date || null,
+          gender: addStudentForm.gender || null
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to add student');
+      }
+
+      alert('Student added successfully!');
+      setAddStudentModalOpen(false);
+      setAddStudentForm({ 
+        email: '', 
+        password: '', 
+        full_name: '', 
+        phone: '', 
+        roll_number: '', 
+        class_group_id: '', 
+        section_id: '', 
+        admission_date: '', 
+        gender: '' 
+      });
+      window.location.reload();
+    } catch (error: any) {
+      alert(error.message || 'Failed to add student');
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-3xl font-bold">Students Management</h2>
-        <div className="text-lg text-gray-600">
-          Total: <span className="font-bold text-blue-600">{totalStudents}</span> students
+        <div className="flex items-center gap-4">
+          <div className="text-lg text-gray-600">
+            Total: <span className="font-bold text-blue-600">{totalStudents}</span> students
+          </div>
+          <button
+            onClick={() => setAddStudentModalOpen(true)}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
+          >
+            ➕ Add Student
+          </button>
         </div>
       </div>
 
@@ -3140,6 +3347,159 @@ function StudentsManagement() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Student Modal */}
+      {addStudentModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Add New Student</h3>
+            <form onSubmit={handleAddStudent} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={addStudentForm.full_name}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, full_name: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={addStudentForm.email}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, email: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Password *</label>
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={addStudentForm.password}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, password: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                  placeholder="Minimum 8 characters"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone</label>
+                <input
+                  type="tel"
+                  value={addStudentForm.phone}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, phone: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Gender</label>
+                <select
+                  value={addStudentForm.gender}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, gender: e.target.value as any })}
+                  className="w-full px-3 py-2 border rounded-md"
+                >
+                  <option value="">Select Gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Roll Number</label>
+                <input
+                  type="text"
+                  value={addStudentForm.roll_number}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, roll_number: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Class</label>
+                <select
+                  value={addStudentForm.class_group_id}
+                  onChange={(e) => {
+                    setAddStudentForm({ ...addStudentForm, class_group_id: e.target.value, section_id: '' });
+                    if (e.target.value) {
+                      loadSections(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3 py-2 border rounded-md"
+                >
+                  <option value="">Select Class (Optional)</option>
+                  {allClasses.map((cls) => {
+                    const classificationText = cls.classifications && cls.classifications.length > 0
+                      ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
+                      : '';
+                    return (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.name}{classificationText}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              {addStudentForm.class_group_id && sections[addStudentForm.class_group_id] && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Section</label>
+                  <select
+                    value={addStudentForm.section_id}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, section_id: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md"
+                  >
+                    <option value="">Select Section (Optional)</option>
+                    {sections[addStudentForm.class_group_id].map((section) => (
+                      <option key={section.id} value={section.id}>
+                        {section.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium mb-1">Admission Date</label>
+                <input
+                  type="date"
+                  value={addStudentForm.admission_date}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, admission_date: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="submit"
+                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                >
+                  Add Student
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddStudentModalOpen(false);
+                    setAddStudentForm({ 
+                      email: '', 
+                      password: '', 
+                      full_name: '', 
+                      phone: '', 
+                      roll_number: '', 
+                      class_group_id: '', 
+                      section_id: '', 
+                      admission_date: '', 
+                      gender: '' 
+                    });
+                  }}
+                  className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

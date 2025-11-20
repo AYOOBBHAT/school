@@ -99,7 +99,7 @@ router.post('/signup-principal', async (req, res) => {
     // Generate join code
     const joinCode = generateJoinCode();
 
-    // Create school
+    // Create school (marked as paid by default)
     const { data: school, error: schoolError } = await supabase
       .from('schools')
       .insert({
@@ -108,7 +108,8 @@ router.post('/signup-principal', async (req, res) => {
         registration_number: value.school_registration_number,
         contact_phone: value.contact_phone,
         contact_email: value.contact_email,
-        join_code: joinCode
+        join_code: joinCode,
+        payment_status: 'paid' // New schools are considered paid
       })
       .select()
       .single();
@@ -140,9 +141,23 @@ router.post('/signup-principal', async (req, res) => {
       return res.status(400).json({ error: profileError.message });
     }
 
+    // Sign in the user to get a session token
+    const anonSupabase = createClient<any>(supabaseUrl, supabaseAnonKey);
+    const { data: signInData, error: signInError } = await anonSupabase.auth.signInWithPassword({
+      email: value.email,
+      password: value.password
+    });
+
+    if (signInError || !signInData.session) {
+      // Log the error but don't fail the signup - user can log in manually
+      // eslint-disable-next-line no-console
+      console.error('[signup-principal] Error signing in user after signup:', signInError);
+    }
+
     return res.status(201).json({
       user: { id: authData.user.id, email: value.email },
       school: { id: school.id, name: school.name, join_code: joinCode },
+      session: signInData?.session || null,
       redirect: '/principal/dashboard'
     });
   } catch (err: any) {
