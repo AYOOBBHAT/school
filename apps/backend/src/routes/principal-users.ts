@@ -14,6 +14,7 @@ const addStudentSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(8).required(),
   full_name: Joi.string().required(),
+  username: Joi.string().required(), // Username must be unique per school
   phone: Joi.string().allow('', null),
   roll_number: Joi.string().allow('', null),
   class_group_id: Joi.string().uuid().allow('', null),
@@ -22,11 +23,12 @@ const addStudentSchema = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').allow('', null)
 });
 
-// Schema for adding teacher
-const addTeacherSchema = Joi.object({
+// Schema for adding staff (clerk or teacher)
+const addStaffSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(8).required(),
   full_name: Joi.string().required(),
+  role: Joi.string().valid('clerk', 'teacher').required(),
   phone: Joi.string().allow('', null),
   gender: Joi.string().valid('male', 'female', 'other').allow('', null)
 });
@@ -53,6 +55,18 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
       return res.status(400).json({ error: 'User with this email already exists' });
     }
 
+    // Check if username already exists in this school
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('username', value.username)
+      .eq('school_id', user.schoolId)
+      .single();
+
+    if (existingProfile) {
+      return res.status(400).json({ error: 'Username already exists in this school. Please choose a different username.' });
+    }
+
     // Create auth user
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: value.email,
@@ -72,6 +86,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
       school_id: user.schoolId,
       full_name: value.full_name,
       email: value.email,
+      username: value.username, // Add username
       phone: value.phone || null,
       approval_status: 'approved',
       gender: value.gender || null
@@ -117,9 +132,9 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
   }
 });
 
-// Principal adds a teacher
-router.post('/teachers', requireRoles(['principal']), async (req, res) => {
-  const { error, value } = addTeacherSchema.validate(req.body);
+// Principal adds a staff member (clerk or teacher)
+router.post('/staff', requireRoles(['principal']), async (req, res) => {
+  const { error, value } = addStaffSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
   const { user } = req;
@@ -144,7 +159,7 @@ router.post('/teachers', requireRoles(['principal']), async (req, res) => {
       email: value.email,
       password: value.password,
       email_confirm: true,
-      user_metadata: { role: 'teacher', school_id: user.schoolId }
+      user_metadata: { role: value.role, school_id: user.schoolId }
     });
 
     if (authError || !authData.user) {
@@ -154,7 +169,7 @@ router.post('/teachers', requireRoles(['principal']), async (req, res) => {
     // Create profile (auto-approved for principal-added users)
     const profileData: any = {
       id: authData.user.id,
-      role: 'teacher',
+      role: value.role, // clerk or teacher
       school_id: user.schoolId,
       full_name: value.full_name,
       email: value.email,
@@ -171,8 +186,8 @@ router.post('/teachers', requireRoles(['principal']), async (req, res) => {
     }
 
     return res.status(201).json({
-      message: 'Teacher added successfully',
-      user: { id: authData.user.id, email: value.email, full_name: value.full_name }
+      message: `${value.role === 'clerk' ? 'Clerk' : 'Teacher'} added successfully`,
+      user: { id: authData.user.id, email: value.email, full_name: value.full_name, role: value.role }
     });
   } catch (err: any) {
     console.error('[principal-users] Error:', err);
