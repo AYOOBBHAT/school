@@ -20,18 +20,10 @@ interface DashboardStats {
   totalStudents: number;
   totalStaff: number;
   totalClasses: number;
-  pendingApprovals: number;
   studentsByGender: GenderBreakdown;
   staffByGender: GenderBreakdown;
 }
 
-interface PendingUser {
-  id: string;
-  full_name: string;
-  email: string;
-  role: string;
-  created_at: string;
-}
 
 interface Profile {
   id: string;
@@ -89,7 +81,6 @@ function Sidebar({ currentPath }: { currentPath: string }) {
     { path: '/principal/exams', label: 'Exams', icon: '📝' },
     { path: '/principal/salary', label: 'Salary Management', icon: '💰' },
     { path: '/principal/fees', label: 'Fee Management', icon: '💵' },
-    { path: '/principal/approvals', label: 'Pending Approvals', icon: '⏳' },
   ];
 
   return (
@@ -165,7 +156,6 @@ function DashboardOverview() {
     totalStudents: 0,
     totalStaff: 0,
     totalClasses: 0,
-    pendingApprovals: 0,
     studentsByGender: createEmptyBreakdown(),
     staffByGender: createEmptyBreakdown(),
   });
@@ -256,8 +246,7 @@ function DashboardOverview() {
             const [
               studentRows,
               staffRows,
-              classesCount,
-              approvalsCount
+              classesCount
             ] = await Promise.all([
               supabase
                 .from('students')
@@ -273,18 +262,12 @@ function DashboardOverview() {
               supabase
                 .from('class_groups')
                 .select('id', { count: 'exact', head: true })
-                .eq('school_id', schoolId),
-              supabase
-                .from('profiles')
-                .select('id', { count: 'exact', head: true })
                 .eq('school_id', schoolId)
-                .eq('approval_status', 'pending')
             ]);
 
             if (studentRows.error) throw studentRows.error;
             if (staffRows.error) throw staffRows.error;
             if (classesCount.error) throw classesCount.error;
-            if (approvalsCount.error) throw approvalsCount.error;
 
             const studentGenders = buildGenderBreakdown(
               (studentRows.data || []).map((student: any) => {
@@ -300,7 +283,6 @@ function DashboardOverview() {
               totalStudents: studentGenders.total,
               totalStaff: staffGenders.total,
               totalClasses: classesCount.count || 0,
-              pendingApprovals: approvalsCount.count || 0,
               studentsByGender: studentGenders,
               staffByGender: staffGenders,
             });
@@ -335,7 +317,6 @@ function DashboardOverview() {
               totalStudents: payload?.totalStudents ?? 0,
               totalStaff: payload?.totalStaff ?? 0,
               totalClasses: payload?.totalClasses ?? 0,
-              pendingApprovals: payload?.pendingApprovals ?? 0,
               studentsByGender: hydrateBreakdown(payload?.studentsByGender),
               staffByGender: hydrateBreakdown(payload?.staffByGender),
             });
@@ -379,7 +360,6 @@ function DashboardOverview() {
       onClick: stats.totalStaff > 0 ? () => setActiveBreakdown('staff') : undefined,
     },
     { label: 'Classes', value: stats.totalClasses, icon: '🏫', color: 'bg-purple-500' },
-    { label: 'Pending Approvals', value: stats.pendingApprovals, icon: '⏳', color: 'bg-orange-500' },
   ];
 
   const copyJoinCode = async () => {
@@ -578,14 +558,6 @@ function DashboardOverview() {
       <div className="bg-white rounded-lg shadow-md p-6">
         <h3 className="text-xl font-bold mb-4">Quick Actions</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link
-            to="/principal/approvals"
-            className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center"
-          >
-            <div className="text-2xl mb-2">⏳</div>
-            <div className="font-semibold">Review Approvals</div>
-            <div className="text-sm text-gray-600">{stats.pendingApprovals} pending</div>
-          </Link>
           <Link
             to="/principal/classes"
             className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center"
@@ -2691,6 +2663,7 @@ interface ClassWithStudents {
       id: string;
       full_name: string;
       email: string;
+      phone?: string;
       created_at: string;
     };
   }>;
@@ -2742,6 +2715,70 @@ function StudentsManagement() {
     admission_date: '',
     gender: '' as 'male' | 'female' | 'other' | ''
   });
+  const [usernameStatus, setUsernameStatus] = useState<{
+    checking: boolean;
+    available: boolean | null;
+    message: string;
+  }>({
+    checking: false,
+    available: null,
+    message: ''
+  });
+
+  // Debounced username check - real-time validation while typing
+  useEffect(() => {
+    const checkUsername = async () => {
+      const username = addStudentForm.username.trim();
+      
+      // Reset status if username is empty
+      if (!username) {
+        setUsernameStatus({ checking: false, available: null, message: '' });
+        return;
+      }
+
+      // Don't check if username is too short
+      if (username.length < 3) {
+        setUsernameStatus({ checking: false, available: null, message: 'Username must be at least 3 characters' });
+        return;
+      }
+
+      // Show checking state immediately
+      setUsernameStatus({ checking: true, available: null, message: 'Checking availability...' });
+
+      try {
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        if (!token) {
+          setUsernameStatus({ checking: false, available: null, message: '' });
+          return;
+        }
+
+        const response = await fetch(`${API_URL}/principal-users/check-username/${encodeURIComponent(username)}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          setUsernameStatus({ checking: false, available: false, message: 'Error checking username' });
+          return;
+        }
+
+        const data = await response.json();
+        setUsernameStatus({
+          checking: false,
+          available: data.available,
+          message: data.message || (data.available ? 'Username is available ✓' : 'Username already exists. Please choose another.')
+        });
+      } catch (error) {
+        console.error('Error checking username:', error);
+        setUsernameStatus({ checking: false, available: null, message: 'Error checking username' });
+      }
+    };
+
+    // Debounce the check - wait 300ms after user stops typing (reduced from 500ms for faster feedback)
+    const timeoutId = setTimeout(checkUsername, 300);
+    return () => clearTimeout(timeoutId);
+  }, [addStudentForm.username]);
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -2987,6 +3024,23 @@ function StudentsManagement() {
 
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevent submission if username is invalid or still checking
+    if (usernameStatus.checking) {
+      alert('Please wait while we check username availability...');
+      return;
+    }
+    
+    if (usernameStatus.available === false) {
+      alert('Please choose a different username. The current username is already taken.');
+      return;
+    }
+    
+    if (addStudentForm.username.trim().length < 3) {
+      alert('Username must be at least 3 characters long.');
+      return;
+    }
+    
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
@@ -3030,6 +3084,7 @@ function StudentsManagement() {
         admission_date: '', 
         gender: '' 
       });
+      setUsernameStatus({ checking: false, available: null, message: '' });
       window.location.reload();
     } catch (error: any) {
       alert(error.message || 'Failed to add student');
@@ -3118,6 +3173,9 @@ function StudentsManagement() {
                             Email
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Phone
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Status
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -3139,6 +3197,9 @@ function StudentsManagement() {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {student.profile?.email || 'N/A'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {student.profile?.phone || 'N/A'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span
@@ -3206,6 +3267,9 @@ function StudentsManagement() {
                     Email
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Phone
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -3224,6 +3288,9 @@ function StudentsManagement() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {student.profile?.email || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {student.profile?.phone || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
@@ -3395,15 +3462,60 @@ function StudentsManagement() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Username *</label>
-                <input
-                  type="text"
-                  required
-                  value={addStudentForm.username}
-                  onChange={(e) => setAddStudentForm({ ...addStudentForm, username: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md"
-                  placeholder="Unique username for login (unique per school)"
-                />
-                <p className="text-xs text-gray-500 mt-1">Username must be unique within your school</p>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={addStudentForm.username}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, username: e.target.value })}
+                    className={`w-full px-3 py-2 pr-10 border rounded-md ${
+                      usernameStatus.available === false
+                        ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                        : usernameStatus.available === true
+                        ? 'border-green-500 focus:border-green-500 focus:ring-green-500'
+                        : ''
+                    }`}
+                    placeholder="Unique username for login (unique per school)"
+                  />
+                  {addStudentForm.username.trim().length > 0 && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      {usernameStatus.checking ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                      ) : usernameStatus.available === true ? (
+                        <svg className="h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : usernameStatus.available === false ? (
+                        <svg className="h-5 w-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+                {addStudentForm.username.trim().length > 0 && (
+                  <div className="mt-1">
+                    {usernameStatus.checking ? (
+                      <p className="text-xs text-blue-600 flex items-center gap-1">
+                        <span className="animate-spin inline-block w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full"></span>
+                        Checking availability...
+                      </p>
+                    ) : usernameStatus.message ? (
+                      <p className={`text-xs font-medium ${
+                    usernameStatus.available === true
+                      ? 'text-green-600'
+                      : usernameStatus.available === false
+                      ? 'text-red-600'
+                      : 'text-gray-500'
+                  }`}>
+                    {usernameStatus.message}
+                  </p>
+                    ) : null}
+                  </div>
+                )}
+                {addStudentForm.username.trim().length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">Username must be unique within your school</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Password *</label>
@@ -3502,9 +3614,14 @@ function StudentsManagement() {
               <div className="flex gap-3 mt-6">
                 <button
                   type="submit"
-                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                  disabled={usernameStatus.checking || usernameStatus.available === false}
+                  className={`flex-1 px-4 py-2 rounded-lg ${
+                    usernameStatus.checking || usernameStatus.available === false
+                      ? 'bg-gray-400 cursor-not-allowed text-white'
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
                 >
-                  Add Student
+                  {usernameStatus.checking ? 'Checking...' : 'Add Student'}
                 </button>
                 <button
                   type="button"
@@ -3522,6 +3639,7 @@ function StudentsManagement() {
                       admission_date: '', 
                       gender: '' 
                     });
+                    setUsernameStatus({ checking: false, available: null, message: '' });
                   }}
                   className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
                 >
@@ -3985,457 +4103,6 @@ function ClassificationsManagement() {
   );
 }
 
-function PendingApprovals() {
-  const [pending, setPending] = useState<PendingUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [classes, setClasses] = useState<ClassGroup[]>([]);
-  const [classAssignments, setClassAssignments] = useState<Record<string, {
-    class_group_id: string;
-    section_id: string;
-    roll_number: string;
-  }>>({});
-  const [sections, setSections] = useState<Record<string, Array<{ id: string; name: string }>>>({});
-  const [loadingSections, setLoadingSections] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    loadPendingApprovals();
-    loadClasses();
-  }, []);
-
-  const loadPendingApprovals = async () => {
-    try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      
-      if (!token) {
-        console.error('No authentication token found');
-        setLoading(false);
-        return;
-      }
-
-      // Get current user info for debugging
-      const { data: { user } } = await supabase.auth.getUser();
-      console.log('Current user:', user?.id);
-      
-      // Get current user's profile to check school_id
-      const { data: currentProfile } = await supabase
-        .from('profiles')
-        .select('id, role, school_id, full_name')
-        .eq('id', user?.id)
-        .single();
-      
-      console.log('Current user profile:', currentProfile);
-      console.log('Loading pending approvals for school:', currentProfile?.school_id);
-
-      const response = await fetch(`${API_URL}/approvals/pending`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Failed to load pending approvals:', response.status, errorData);
-        throw new Error(errorData.error || 'Failed to load pending approvals');
-      }
-
-      const data = await response.json();
-      console.log('Pending approvals response:', data);
-      console.log('Number of pending approvals:', data.pending?.length || 0);
-      
-      if (data.pending && data.pending.length > 0) {
-        console.log('Pending approvals details:', data.pending);
-      } else {
-        console.warn('No pending approvals found. This could mean:');
-        console.warn('1. No students have signed up yet');
-        console.warn('2. All pending approvals have been processed');
-        console.warn('3. Students signed up with a different school_id');
-        console.warn('4. Students have approval_status other than "pending"');
-      }
-      
-      setPending(data.pending || []);
-    } catch (error: any) {
-      console.error('Error loading pending approvals:', error);
-      
-      // Don't show alert for 403 Forbidden - user might not have permission
-      // This can happen if a non-principal user somehow accesses this page
-      if (error.message?.includes('Forbidden') || error.message?.includes('403') || 
-          error.message?.toLowerCase().includes('forbidden')) {
-        console.warn('[PendingApprovals] Access forbidden - user may not have permission');
-        // Silently fail - the role check in PrincipalDashboard will redirect them
-        setPending([]);
-      } else {
-        // Only show alert for other errors
-        alert(`Error loading approvals: ${error.message || 'Unknown error'}`);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadClasses = async () => {
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/classes`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to load classes');
-
-      const data = await response.json();
-      console.log('[PendingApprovals] Classes loaded:', data.classes);
-      // Log classifications for debugging
-      if (data.classes && data.classes.length > 0) {
-        data.classes.forEach((cls: any) => {
-          console.log(`[PendingApprovals] Class "${cls.name}" has classifications:`, cls.classifications);
-        });
-      }
-      setClasses(data.classes || []);
-    } catch (error) {
-      console.error('Error loading classes:', error);
-    }
-  };
-
-  const loadSections = async (classId: string, userId: string) => {
-    if (!classId) {
-      setSections(prev => ({ ...prev, [userId]: [] }));
-      setLoadingSections(prev => ({ ...prev, [userId]: false }));
-      return [];
-    }
-
-    setLoadingSections(prev => ({ ...prev, [userId]: true }));
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) {
-        setLoadingSections(prev => ({ ...prev, [userId]: false }));
-        return [];
-      }
-
-      const response = await fetch(`${API_URL}/classes/${classId}/sections`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to load sections');
-
-      const data = await response.json();
-      const sectionsList = data.sections || [];
-      setSections(prev => ({ ...prev, [userId]: sectionsList }));
-      
-      // Automatically assign first section if available
-      if (sectionsList.length > 0) {
-        const firstSectionId = sectionsList[0].id;
-        setClassAssignments(prev => ({
-          ...prev,
-          [userId]: {
-            ...(prev[userId] || { class_group_id: '', section_id: '', roll_number: '' }),
-            class_group_id: classId,
-            section_id: firstSectionId
-          }
-        }));
-      } else {
-        // No sections available, set section_id to empty (will be null in backend)
-        setClassAssignments(prev => ({
-          ...prev,
-          [userId]: {
-            ...(prev[userId] || { class_group_id: '', section_id: '', roll_number: '' }),
-            class_group_id: classId,
-            section_id: ''
-          }
-        }));
-      }
-      
-      return sectionsList;
-    } catch (error) {
-      console.error('Error loading sections:', error);
-      setSections(prev => ({ ...prev, [userId]: [] }));
-      return [];
-    } finally {
-      setLoadingSections(prev => ({ ...prev, [userId]: false }));
-    }
-  };
-
-  const handleClassChange = async (userId: string, classId: string) => {
-    // Clear section when class changes (will be auto-assigned by loadSections)
-    setClassAssignments(prev => ({
-      ...prev,
-      [userId]: {
-        ...(prev[userId] || { class_group_id: '', section_id: '', roll_number: '' }),
-        class_group_id: classId,
-        section_id: '' // Will be set automatically by loadSections
-      }
-    }));
-    // Always reload sections for the new class and auto-assign first section
-    if (classId) {
-      // loadSections will automatically assign the first section if available
-      await loadSections(classId, userId);
-    } else {
-      // Clear sections if no class selected
-      setSections(prev => ({ ...prev, [userId]: [] }));
-      setClassAssignments(prev => ({
-        ...prev,
-        [userId]: {
-          ...(prev[userId] || { class_group_id: '', section_id: '', roll_number: '' }),
-          class_group_id: '',
-          section_id: ''
-        }
-      }));
-    }
-  };
-
-  const handleAssignmentChange = async (userId: string, field: 'class_group_id' | 'section_id' | 'roll_number', value: string) => {
-    if (field === 'class_group_id') {
-      await handleClassChange(userId, value);
-    } else {
-      setClassAssignments(prev => ({
-        ...prev,
-        [userId]: {
-          ...prev[userId] || { class_group_id: '', section_id: '', roll_number: '' },
-          [field]: value
-        }
-      }));
-    }
-  };
-
-  const handleApproval = async (profileId: string, action: 'approve' | 'reject', userRole?: string) => {
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const body: any = {
-        profile_id: profileId,
-        action,
-      };
-
-      // If approving a student, include class assignment
-      if (action === 'approve' && userRole === 'student') {
-        const assignment = classAssignments[profileId] || {};
-        if (assignment.class_group_id) {
-          body.class_group_id = assignment.class_group_id;
-          // Automatically assign first section if class has sections and no section is selected
-          if (!assignment.section_id) {
-            const userSections = sections[profileId] || [];
-            if (userSections.length > 0) {
-              // Assign first section automatically
-              body.section_id = userSections[0].id;
-            } else {
-              // No sections available, send null
-              body.section_id = null;
-            }
-          } else {
-            body.section_id = assignment.section_id;
-          }
-        }
-        if (assignment.roll_number) {
-          body.roll_number = assignment.roll_number;
-        }
-      }
-
-      const response = await fetch(`${API_URL}/approvals/action`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to process approval');
-      }
-
-      // Remove assignment data for this user
-      const newAssignments = { ...classAssignments };
-      delete newAssignments[profileId];
-      setClassAssignments(newAssignments);
-
-      const newSections = { ...sections };
-      delete newSections[profileId];
-      setSections(newSections);
-
-      loadPendingApprovals();
-    } catch (error: any) {
-      alert(error.message || 'Failed to process approval');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="p-6">
-        <h2 className="text-3xl font-bold mb-6">Pending Approvals</h2>
-        <div className="bg-white rounded-lg shadow-md p-12 text-center">
-          <div className="text-2xl mb-4">Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold">Pending Approvals</h2>
-        <button
-          onClick={loadPendingApprovals}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
-        >
-          <span>🔄</span>
-          <span>Refresh</span>
-        </button>
-      </div>
-      
-      {/* Debug info in development */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-sm">
-          <p className="font-semibold text-yellow-800 mb-2">Debug Info:</p>
-          <p className="text-yellow-700">Pending count: {pending.length}</p>
-          <pre className="text-xs text-yellow-700 overflow-auto mt-2">
-            {JSON.stringify(pending, null, 2)}
-          </pre>
-        </div>
-      )}
-
-      {pending.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-md p-12 text-center">
-          <div className="text-6xl mb-4">✅</div>
-          <p className="text-gray-600 text-lg">No pending approvals</p>
-          <p className="text-gray-500 text-sm mt-2">
-            All users who have signed up and are waiting for approval will appear here.
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Email
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Requested Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Class Assignment
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {pending.map((user) => {
-                const assignment = classAssignments[user.id] || { class_group_id: '', section_id: '', roll_number: '' };
-                const userSections = sections[user.id] || [];
-                const isLoadingSections = loadingSections[user.id] || false;
-
-                return (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{user.full_name || 'N/A'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{user.email}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4">
-                      {user.role === 'student' ? (
-                        <div className="space-y-2 min-w-[300px]">
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Class</label>
-                            <select
-                              value={assignment.class_group_id}
-                              onChange={(e) => handleAssignmentChange(user.id, 'class_group_id', e.target.value)}
-                              className="text-sm border border-gray-300 rounded-md px-2 py-1 w-full"
-                            >
-                              <option value="">Select Class (Optional)</option>
-                              {classes.map((cls) => {
-                                // Build display text with classifications
-                                // Backend returns classifications in format: [{ type: string, value: string }]
-                                const classificationText = cls.classifications && Array.isArray(cls.classifications) && cls.classifications.length > 0
-                                  ? ` (${cls.classifications.map((c: any) => `${c.type}: ${c.value}`).join(', ')})`
-                                  : '';
-                                return (
-                                  <option key={cls.id} value={cls.id}>
-                                    {cls.name}{classificationText}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </div>
-                          {assignment.class_group_id && (
-                            <div>
-                              {isLoadingSections ? (
-                                <p className="text-xs text-gray-500">Loading sections...</p>
-                              ) : userSections.length > 0 ? (
-                                <p className="text-xs text-gray-600">
-                                  Section: <span className="font-semibold">{userSections.find(s => s.id === assignment.section_id)?.name || userSections[0]?.name || 'Auto-assigned'}</span>
-                                </p>
-                              ) : (
-                                <p className="text-xs text-gray-500">
-                                  No sections available for this class. Section will be set to null.
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Roll Number</label>
-                            <input
-                              type="text"
-                              value={assignment.roll_number}
-                              onChange={(e) => handleAssignmentChange(user.id, 'roll_number', e.target.value)}
-                              placeholder="Optional"
-                              className="text-sm border border-gray-300 rounded-md px-2 py-1 w-full"
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-400">N/A</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => handleApproval(user.id, 'approve', user.role)}
-                          className="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-700 text-sm"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleApproval(user.id, 'reject', user.role)}
-                          className="bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 text-sm"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function ExamsManagement() {
   const [exams, setExams] = useState<any[]>([]);
@@ -8272,7 +7939,6 @@ export default function PrincipalDashboard() {
     else if (path === '/principal/exams') setCurrentView('exams');
     else if (path === '/principal/salary') setCurrentView('salary');
     else if (path === '/principal/fees') setCurrentView('fees');
-    else if (path === '/principal/approvals') setCurrentView('approvals');
   }, [location]);
 
   if (checkingRole) {
@@ -8298,7 +7964,6 @@ export default function PrincipalDashboard() {
         {currentView === 'exams' && <ExamsManagement />}
         {currentView === 'salary' && <SalaryManagement />}
         {currentView === 'fees' && <FeeManagement />}
-        {currentView === 'approvals' && <PendingApprovals />}
       </div>
     </div>
   );

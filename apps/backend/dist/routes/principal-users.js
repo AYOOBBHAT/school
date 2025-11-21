@@ -28,6 +28,43 @@ const addStaffSchema = Joi.object({
     phone: Joi.string().allow('', null),
     gender: Joi.string().valid('male', 'female', 'other').allow('', null)
 });
+// Check if username is available
+router.get('/check-username/:username', requireRoles(['principal']), async (req, res) => {
+    const { username } = req.params;
+    const { user } = req;
+    if (!user || !user.schoolId) {
+        return res.status(500).json({ error: 'Server misconfigured' });
+    }
+    if (!username || username.trim().length === 0) {
+        return res.json({ available: false, message: 'Username cannot be empty' });
+    }
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    try {
+        // Check if username already exists in this school
+        const { data: existingProfile, error } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('username', username.trim())
+            .eq('school_id', user.schoolId)
+            .maybeSingle();
+        if (error) {
+            console.error('[check-username] Error checking username:', error);
+            return res.status(500).json({ error: 'Failed to check username availability' });
+        }
+        const available = !existingProfile;
+        return res.json({
+            available,
+            message: available ? 'Username is available' : 'Username already exists'
+        });
+    }
+    catch (err) {
+        console.error('[check-username] Unexpected error:', err);
+        return res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+});
 // Principal adds a student
 router.post('/students', requireRoles(['principal']), async (req, res) => {
     const { error, value } = addStudentSchema.validate(req.body);

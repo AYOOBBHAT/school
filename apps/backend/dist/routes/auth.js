@@ -209,20 +209,19 @@ router.post('/signup-join', async (req, res) => {
             }
             return res.status(400).json({ error: authError?.message || 'Failed to create user' });
         }
-        // Create profile (pending approval)
+        // Create profile (approved by default since principals now add users directly)
         const profileData = {
             id: authData.user.id,
             role: value.role,
             school_id: school.id,
             full_name: value.full_name,
             email: value.email,
-            approval_status: 'pending'
+            approval_status: 'approved'
         };
         console.log('[signup-join] Creating profile with data:', {
             id: profileData.id,
             role: profileData.role,
             school_id: profileData.school_id,
-            approval_status: profileData.approval_status,
             email: profileData.email
         });
         const { error: profileError, data: profileDataResult } = await supabase.from('profiles').insert(profileData).select();
@@ -232,19 +231,19 @@ router.post('/signup-join', async (req, res) => {
             return res.status(400).json({ error: profileError.message });
         }
         console.log('[signup-join] Profile created successfully:', profileDataResult);
-        // For students: always create student record with pending status (will be activated on approval)
+        // For students: create student record with active status
         if (value.role === 'student') {
             const studentData = {
                 profile_id: authData.user.id,
                 school_id: school.id,
-                status: 'pending' // Student status is pending until approved by principal
+                status: 'active'
             };
             if (value.roll_number) {
                 studentData.roll_number = value.roll_number;
             }
             const { error: studentError } = await supabase.from('students').insert(studentData);
             if (studentError) {
-                // Log error but don't fail the signup - student record can be created during approval
+                // Log error but don't fail the signup
                 // eslint-disable-next-line no-console
                 console.error('[signup-join] Error creating student record:', studentError);
             }
@@ -265,9 +264,8 @@ router.post('/signup-join', async (req, res) => {
         };
         return res.status(201).json({
             user: { id: authData.user.id, email: value.email },
-            message: 'Account created. Waiting for approval from school administrator.',
-            redirect: redirectMap[value.role] || '/pending-approval',
-            approval_required: true
+            message: 'Account created successfully.',
+            redirect: redirectMap[value.role] || '/login'
         });
     }
     catch (err) {
@@ -463,6 +461,282 @@ router.post('/reset-password', async (req, res) => {
     catch (err) {
         // eslint-disable-next-line no-console
         console.error('[reset-password] Error:', err);
+        return res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+});
+const otpStore = new Map();
+// Clean up expired OTPs every 5 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [otp, data] of otpStore.entries()) {
+        if (data.expiresAt < now) {
+            otpStore.delete(otp);
+        }
+    }
+}, 5 * 60 * 1000);
+// Generate 6-digit OTP
+function generateOTP() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
+// Forgot password - Request OTP
+router.post('/forgot-password-request', async (req, res) => {
+    const { username, join_code, registration_number } = req.body;
+    if (!username) {
+        return res.status(400).json({ error: 'Username is required' });
+    }
+    if (!join_code && !registration_number) {
+        return res.status(400).json({ error: 'Either join code or registration number is required' });
+    }
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    try {
+        // Find school by join_code or registration_number
+        let schoolQuery = supabase
+            .from('schools')
+            .select('id, name');
+        if (join_code) {
+            schoolQuery = schoolQuery.eq('join_code', join_code.toUpperCase());
+        }
+        else if (registration_number) {
+            schoolQuery = schoolQuery.eq('registration_number', registration_number);
+        }
+        const { data: school, error: schoolError } = await schoolQuery.single();
+        if (schoolError || !school) {
+            // Don't reveal if school exists for security
+            return res.json({
+                message: 'If a student account exists with this username, an OTP has been sent to the registered email address.'
+            });
+        }
+        // Find profile by username and school_id
+        const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, email, role, full_name')
+            .eq('username', username.trim())
+            .eq('school_id', school.id)
+            .eq('role', 'student')
+            .single();
+        if (profileError || !profile) {
+            // Don't reveal if username exists for security
+            return res.json({
+                message: 'If a student account exists with this username, an OTP has been sent to the registered email address.'
+            });
+        }
+        // Generate OTP
+        const otp = generateOTP();
+        const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+        // Store OTP
+        otpStore.set(otp, {
+            username: username.trim(),
+            schoolId: school.id,
+            email: profile.email,
+            profileId: profile.id,
+            expiresAt,
+            type: 'student'
+        });
+        // Send OTP via email using Supabase's email service
+        // Note: This requires Supabase email templates to be configured
+        // For now, we'll use a simple approach - in production, use a proper email service
+        const emailSubject = `Password Reset OTP - ${school.name}`;
+        const emailBody = `
+Hello ${profile.full_name},
+
+You have requested to reset your password for your student account.
+
+Your OTP code is: ${otp}
+
+This code will expire in 10 minutes.
+
+If you did not request this password reset, please ignore this email.
+
+Best regards,
+${school.name}
+    `;
+        // Use Supabase's email sending (requires email templates to be set up)
+        // For development, you might want to log the OTP instead
+        // eslint-disable-next-line no-console
+        console.log(`[OTP for ${profile.email}]: ${otp}`);
+        // Try to send email via Supabase
+        try {
+            // You can use Supabase's email functionality here
+            // For now, we'll just return success (OTP is logged for development)
+            // In production, integrate with an email service like SendGrid, AWS SES, etc.
+        }
+        catch (emailError) {
+            // eslint-disable-next-line no-console
+            console.error('[forgot-password-request] Error sending email:', emailError);
+        }
+        // Always return the same message for security
+        return res.json({
+            message: 'If a student account exists with this username, an OTP has been sent to the registered email address.',
+            // In development, you might want to return the OTP for testing
+            // Remove this in production!
+            ...(process.env.NODE_ENV === 'development' && { otp })
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[forgot-password-request] Error:', err);
+        // Return generic message for security
+        return res.json({
+            message: 'If a student account exists with this username, an OTP has been sent to the registered email address.'
+        });
+    }
+});
+// Forgot password - Request OTP (Email-based for principals/teachers)
+router.post('/forgot-password-request-email', async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+    }
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    try {
+        // Find profile by email (principals and teachers have unique emails)
+        const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, email, role, full_name, school_id')
+            .eq('email', email.trim().toLowerCase())
+            .in('role', ['principal', 'teacher', 'clerk'])
+            .single();
+        if (profileError || !profile) {
+            // Don't reveal if email exists for security
+            return res.json({
+                message: 'If an account exists with this email, an OTP has been sent.'
+            });
+        }
+        // Get school name for email
+        const { data: school } = await supabase
+            .from('schools')
+            .select('name')
+            .eq('id', profile.school_id)
+            .single();
+        // Generate OTP
+        const otp = generateOTP();
+        const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+        // Store OTP
+        otpStore.set(otp, {
+            email: profile.email,
+            profileId: profile.id,
+            expiresAt,
+            type: 'email'
+        });
+        // Send OTP via email
+        const emailSubject = `Password Reset OTP${school?.name ? ` - ${school.name}` : ''}`;
+        const emailBody = `
+Hello ${profile.full_name},
+
+You have requested to reset your password for your ${profile.role} account.
+
+Your OTP code is: ${otp}
+
+This code will expire in 10 minutes.
+
+If you did not request this password reset, please ignore this email.
+
+Best regards,
+School Management System
+    `;
+        // eslint-disable-next-line no-console
+        console.log(`[OTP for ${profile.email}]: ${otp}`);
+        // Always return the same message for security
+        return res.json({
+            message: 'If an account exists with this email, an OTP has been sent.',
+            // In development, you might want to return the OTP for testing
+            // Remove this in production!
+            ...(process.env.NODE_ENV === 'development' && { otp })
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[forgot-password-request-email] Error:', err);
+        // Return generic message for security
+        return res.json({
+            message: 'If an account exists with this email, an OTP has been sent.'
+        });
+    }
+});
+// Forgot password - Verify OTP and Reset Password (handles both student and email flows)
+router.post('/forgot-password-verify', async (req, res) => {
+    const { username, join_code, registration_number, email, otp, new_password } = req.body;
+    if (!otp || !new_password) {
+        return res.status(400).json({ error: 'OTP and new password are required' });
+    }
+    if (new_password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    try {
+        // Verify OTP
+        const otpData = otpStore.get(otp);
+        if (!otpData) {
+            return res.status(400).json({ error: 'Invalid or expired OTP' });
+        }
+        if (otpData.expiresAt < Date.now()) {
+            otpStore.delete(otp);
+            return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
+        }
+        // Handle student flow (username-based)
+        if (otpData.type === 'student') {
+            if (!username || (!join_code && !registration_number)) {
+                return res.status(400).json({ error: 'Username and school code are required for student password reset' });
+            }
+            // Verify username matches
+            if (otpData.username !== username.trim()) {
+                return res.status(400).json({ error: 'Invalid OTP for this username' });
+            }
+            // Verify school
+            let schoolQuery = supabase
+                .from('schools')
+                .select('id');
+            if (join_code) {
+                schoolQuery = schoolQuery.eq('join_code', join_code.toUpperCase());
+            }
+            else if (registration_number) {
+                schoolQuery = schoolQuery.eq('registration_number', registration_number);
+            }
+            const { data: school, error: schoolError } = await schoolQuery.single();
+            if (schoolError || !school || school.id !== otpData.schoolId) {
+                return res.status(400).json({ error: 'Invalid school code or registration number' });
+            }
+        }
+        // Handle email flow (principals/teachers)
+        else if (otpData.type === 'email') {
+            if (!email) {
+                return res.status(400).json({ error: 'Email is required for email-based password reset' });
+            }
+            // Verify email matches
+            if (otpData.email.toLowerCase() !== email.trim().toLowerCase()) {
+                return res.status(400).json({ error: 'Invalid OTP for this email' });
+            }
+        }
+        // Update password using admin API
+        const { data: updatedUser, error: updateError } = await supabase.auth.admin.updateUserById(otpData.profileId, {
+            password: new_password
+        });
+        if (updateError) {
+            return res.status(400).json({ error: updateError.message || 'Failed to reset password' });
+        }
+        // Clear password_reset_required flag
+        await supabase
+            .from('profiles')
+            .update({ password_reset_required: false })
+            .eq('id', otpData.profileId);
+        // Delete used OTP
+        otpStore.delete(otp);
+        return res.json({
+            message: 'Password reset successfully. You can now login with your new password.'
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[forgot-password-verify] Error:', err);
         return res.status(500).json({ error: err.message || 'Internal server error' });
     }
 });

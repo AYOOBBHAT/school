@@ -4,8 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 import { Button } from '@school/ui';
 import Signup from './pages/Signup';
 import Login from './pages/Login';
-import PendingApproval from './pages/PendingApproval';
 import ResetPassword from './pages/ResetPassword';
+import ForgotPassword from './pages/ForgotPassword';
 import PrincipalDashboard from './pages/PrincipalDashboard';
 import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
@@ -419,8 +419,8 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
-      <Route path="/pending-approval" element={<PendingApproval />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/principal/dashboard" element={<PrincipalDashboard />} />
       <Route path="/principal/staff" element={<PrincipalDashboard />} />
       <Route path="/principal/classifications" element={<PrincipalDashboard />} />
@@ -430,7 +430,6 @@ export default function App() {
       <Route path="/principal/exams" element={<PrincipalDashboard />} />
       <Route path="/principal/salary" element={<PrincipalDashboard />} />
       <Route path="/principal/fees" element={<PrincipalDashboard />} />
-      <Route path="/principal/approvals" element={<PrincipalDashboard />} />
       <Route path="/clerk" element={<ClerkDashboard />} />
       <Route path="/clerk/fees" element={<ClerkDashboard />} />
       <Route path="/clerk/payments" element={<ClerkDashboard />} />

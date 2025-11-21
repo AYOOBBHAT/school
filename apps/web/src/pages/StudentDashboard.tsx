@@ -150,20 +150,7 @@ export default function StudentDashboard() {
         },
       });
 
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json();
-        const approvalStatus = profileData.profile?.approval_status;
-        const role = profileData.profile?.role;
-
-        console.log('[StudentDashboard] Profile check:', { role, approval_status: approvalStatus });
-
-        // If not approved, redirect to pending approval
-        if (approvalStatus !== 'approved' && role !== 'principal') {
-          console.log('[StudentDashboard] Student not approved, redirecting to pending approval');
-          navigate('/pending-approval');
-          return;
-        }
-      }
+      // All users are approved by default (principals add users directly)
 
       // Now try to load student profile
       const response = await fetch(`${API_URL}/students/profile`, {
@@ -177,11 +164,8 @@ export default function StudentDashboard() {
         const errorMessage = errorData.error || 'Failed to load profile';
         
         if (response.status === 404) {
-          // Student record not found - but profile is approved
-          // This might mean student record wasn't created properly
-          console.error('[StudentDashboard] Student record not found but profile is approved:', errorMessage);
-          // Don't redirect to pending-approval if already approved
-          // Just show an error message
+          // Student record not found - this might mean student record wasn't created properly
+          console.error('[StudentDashboard] Student record not found:', errorMessage);
           setLoading(false);
           return;
         }
