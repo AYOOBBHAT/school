@@ -48,8 +48,7 @@ router.get('/stats', requireRoles(['principal']), async (req, res) => {
     const [
       studentsResponse,
       staffResponse,
-      classesResponse,
-      approvalsResponse
+      classesResponse
     ] = await Promise.all([
       adminSupabase
         .from('students')
@@ -65,12 +64,7 @@ router.get('/stats', requireRoles(['principal']), async (req, res) => {
       adminSupabase
         .from('class_groups')
         .select('id', { count: 'exact', head: true })
-        .eq('school_id', user.schoolId),
-      adminSupabase
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
         .eq('school_id', user.schoolId)
-        .eq('approval_status', 'pending')
     ]);
 
     if (studentsResponse.error) {
@@ -86,11 +80,6 @@ router.get('/stats', requireRoles(['principal']), async (req, res) => {
     if (classesResponse.error) {
       console.error('[dashboard] Error fetching classes:', classesResponse.error);
       return res.status(400).json({ error: classesResponse.error.message });
-    }
-
-    if (approvalsResponse.error) {
-      console.error('[dashboard] Error fetching approvals:', approvalsResponse.error);
-      return res.status(400).json({ error: approvalsResponse.error.message });
     }
 
     const studentGenderCounts = getInitialGenderCounts();
@@ -111,7 +100,6 @@ router.get('/stats', requireRoles(['principal']), async (req, res) => {
       totalStudents: studentGenderCounts.total,
       totalStaff: staffGenderCounts.total,
       totalClasses: classesResponse.count || 0,
-      pendingApprovals: approvalsResponse.count || 0,
       studentsByGender: studentGenderCounts,
       staffByGender: staffGenderCounts
     };

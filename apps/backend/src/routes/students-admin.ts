@@ -74,6 +74,7 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
           id,
           full_name,
           email,
+          phone,
           created_at
         ),
         class_groups:class_group_id(

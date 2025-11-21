@@ -177,16 +177,7 @@ export default function Login() {
         return;
       }
 
-      // Check approval status (principals are always approved)
-      if (profile.approval_status !== 'approved' && profile.role !== 'principal') {
-        console.warn('[Login] User not approved:', {
-          role: profile.role,
-          approval_status: profile.approval_status,
-          profile_id: profile.id
-        });
-        navigate('/pending-approval');
-        return;
-      }
+      // All users are approved by default (principals add users directly)
 
       // Role-based redirects
       const redirectMap: Record<string, string> = {
@@ -352,7 +343,15 @@ export default function Login() {
               </>
             )}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-semibold text-gray-700">Password</label>
+                <Link
+                  to="/forgot-password"
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline transition"
+                >
+                  Forgot Password?
+                </Link>
+              </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

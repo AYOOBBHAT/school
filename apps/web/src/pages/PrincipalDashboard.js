@@ -20,7 +20,6 @@ function Sidebar({ currentPath }) {
         { path: '/principal/exams', label: 'Exams', icon: '📝' },
         { path: '/principal/salary', label: 'Salary Management', icon: '💰' },
         { path: '/principal/fees', label: 'Fee Management', icon: '💵' },
-        { path: '/principal/approvals', label: 'Pending Approvals', icon: '⏳' },
     ];
     return (_jsxs("div", { className: "w-64 bg-gray-900 text-white min-h-screen fixed left-0 top-0", children: [_jsxs("div", { className: "p-6", children: [_jsx("h1", { className: "text-2xl font-bold mb-8", children: "JhelumVerse" }), _jsx("nav", { className: "space-y-2", children: navItems.map((item) => (_jsxs(Link, { to: item.path, className: `flex items-center space-x-3 px-4 py-3 rounded-lg transition ${currentPath === item.path
                                 ? 'bg-blue-600 text-white'
@@ -66,7 +65,6 @@ function DashboardOverview() {
         totalStudents: 0,
         totalStaff: 0,
         totalClasses: 0,
-        pendingApprovals: 0,
         studentsByGender: createEmptyBreakdown(),
         staffByGender: createEmptyBreakdown(),
     });
@@ -145,7 +143,7 @@ function DashboardOverview() {
                 };
                 const loadStatsFallback = async () => {
                     try {
-                        const [studentRows, staffRows, classesCount, approvalsCount] = await Promise.all([
+                        const [studentRows, staffRows, classesCount] = await Promise.all([
                             supabase
                                 .from('students')
                                 .select('id, status, profile:profiles!students_profile_id_fkey(gender)')
@@ -160,12 +158,7 @@ function DashboardOverview() {
                             supabase
                                 .from('class_groups')
                                 .select('id', { count: 'exact', head: true })
-                                .eq('school_id', schoolId),
-                            supabase
-                                .from('profiles')
-                                .select('id', { count: 'exact', head: true })
                                 .eq('school_id', schoolId)
-                                .eq('approval_status', 'pending')
                         ]);
                         if (studentRows.error)
                             throw studentRows.error;
@@ -173,8 +166,6 @@ function DashboardOverview() {
                             throw staffRows.error;
                         if (classesCount.error)
                             throw classesCount.error;
-                        if (approvalsCount.error)
-                            throw approvalsCount.error;
                         const studentGenders = buildGenderBreakdown((studentRows.data || []).map((student) => {
                             const profile = Array.isArray(student.profile) ? student.profile[0] : student.profile;
                             return profile?.gender;
@@ -184,7 +175,6 @@ function DashboardOverview() {
                             totalStudents: studentGenders.total,
                             totalStaff: staffGenders.total,
                             totalClasses: classesCount.count || 0,
-                            pendingApprovals: approvalsCount.count || 0,
                             studentsByGender: studentGenders,
                             staffByGender: staffGenders,
                         });
@@ -216,7 +206,6 @@ function DashboardOverview() {
                             totalStudents: payload?.totalStudents ?? 0,
                             totalStaff: payload?.totalStaff ?? 0,
                             totalClasses: payload?.totalClasses ?? 0,
-                            pendingApprovals: payload?.pendingApprovals ?? 0,
                             studentsByGender: hydrateBreakdown(payload?.studentsByGender),
                             staffByGender: hydrateBreakdown(payload?.staffByGender),
                         });
@@ -259,7 +248,6 @@ function DashboardOverview() {
             onClick: stats.totalStaff > 0 ? () => setActiveBreakdown('staff') : undefined,
         },
         { label: 'Classes', value: stats.totalClasses, icon: '🏫', color: 'bg-purple-500' },
-        { label: 'Pending Approvals', value: stats.pendingApprovals, icon: '⏳', color: 'bg-orange-500' },
     ];
     const copyJoinCode = async () => {
         if (schoolInfo?.join_code) {
@@ -311,7 +299,7 @@ function DashboardOverview() {
                         }
                     };
                     return (_jsxs("div", { className: `bg-white rounded-lg shadow-md p-6 transition ${isInteractive ? 'cursor-pointer hover:-translate-y-1 hover:shadow-lg focus-within:ring-2 focus-within:ring-blue-500' : ''}`, onClick: stat.onClick, role: isInteractive ? 'button' : undefined, tabIndex: isInteractive ? 0 : undefined, onKeyDown: handleKeyDown, title: isInteractive ? 'Click to view detailed breakdown' : undefined, children: [_jsxs("div", { className: "flex items-center justify-between", children: [_jsxs("div", { children: [_jsx("p", { className: "text-gray-600 text-sm", children: stat.label }), _jsx("p", { className: "text-3xl font-bold text-gray-900 mt-2", children: stat.value })] }), _jsx("div", { className: `${stat.color} text-white p-4 rounded-full text-2xl`, children: stat.icon })] }), isInteractive && (_jsx("p", { className: "text-xs text-gray-500 mt-3", children: stat.description || 'Click to view more details' }))] }, stat.label));
-                }) }), renderBreakdownModal(), _jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Quick Actions" }), _jsxs("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4", children: [_jsxs(Link, { to: "/principal/approvals", className: "p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center", children: [_jsx("div", { className: "text-2xl mb-2", children: "\u23F3" }), _jsx("div", { className: "font-semibold", children: "Review Approvals" }), _jsxs("div", { className: "text-sm text-gray-600", children: [stats.pendingApprovals, " pending"] })] }), _jsxs(Link, { to: "/principal/classes", className: "p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center", children: [_jsx("div", { className: "text-2xl mb-2", children: "\uD83C\uDFEB" }), _jsx("div", { className: "font-semibold", children: "Manage Classes" })] }), _jsxs(Link, { to: "/principal/staff", className: "p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center", children: [_jsx("div", { className: "text-2xl mb-2", children: "\uD83D\uDC65" }), _jsx("div", { className: "font-semibold", children: "Manage Staff" })] })] })] })] }));
+                }) }), renderBreakdownModal(), _jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Quick Actions" }), _jsxs("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4", children: [_jsxs(Link, { to: "/principal/classes", className: "p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center", children: [_jsx("div", { className: "text-2xl mb-2", children: "\uD83C\uDFEB" }), _jsx("div", { className: "font-semibold", children: "Manage Classes" })] }), _jsxs(Link, { to: "/principal/staff", className: "p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center", children: [_jsx("div", { className: "text-2xl mb-2", children: "\uD83D\uDC65" }), _jsx("div", { className: "font-semibold", children: "Manage Staff" })] })] })] })] }));
 }
 function StaffManagement() {
     const [staff, setStaff] = useState([]);
@@ -1214,6 +1202,58 @@ function StudentsManagement() {
         admission_date: '',
         gender: ''
     });
+    const [usernameStatus, setUsernameStatus] = useState({
+        checking: false,
+        available: null,
+        message: ''
+    });
+    // Debounced username check - real-time validation while typing
+    useEffect(() => {
+        const checkUsername = async () => {
+            const username = addStudentForm.username.trim();
+            // Reset status if username is empty
+            if (!username) {
+                setUsernameStatus({ checking: false, available: null, message: '' });
+                return;
+            }
+            // Don't check if username is too short
+            if (username.length < 3) {
+                setUsernameStatus({ checking: false, available: null, message: 'Username must be at least 3 characters' });
+                return;
+            }
+            // Show checking state immediately
+            setUsernameStatus({ checking: true, available: null, message: 'Checking availability...' });
+            try {
+                const token = (await supabase.auth.getSession()).data.session?.access_token;
+                if (!token) {
+                    setUsernameStatus({ checking: false, available: null, message: '' });
+                    return;
+                }
+                const response = await fetch(`${API_URL}/principal-users/check-username/${encodeURIComponent(username)}`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+                if (!response.ok) {
+                    setUsernameStatus({ checking: false, available: false, message: 'Error checking username' });
+                    return;
+                }
+                const data = await response.json();
+                setUsernameStatus({
+                    checking: false,
+                    available: data.available,
+                    message: data.message || (data.available ? 'Username is available ✓' : 'Username already exists. Please choose another.')
+                });
+            }
+            catch (error) {
+                console.error('Error checking username:', error);
+                setUsernameStatus({ checking: false, available: null, message: 'Error checking username' });
+            }
+        };
+        // Debounce the check - wait 300ms after user stops typing (reduced from 500ms for faster feedback)
+        const timeoutId = setTimeout(checkUsername, 300);
+        return () => clearTimeout(timeoutId);
+    }, [addStudentForm.username]);
     useEffect(() => {
         const loadStudents = async () => {
             try {
@@ -1432,6 +1472,19 @@ function StudentsManagement() {
     }
     const handleAddStudent = async (e) => {
         e.preventDefault();
+        // Prevent submission if username is invalid or still checking
+        if (usernameStatus.checking) {
+            alert('Please wait while we check username availability...');
+            return;
+        }
+        if (usernameStatus.available === false) {
+            alert('Please choose a different username. The current username is already taken.');
+            return;
+        }
+        if (addStudentForm.username.trim().length < 3) {
+            alert('Username must be at least 3 characters long.');
+            return;
+        }
         try {
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
@@ -1473,6 +1526,7 @@ function StudentsManagement() {
                 admission_date: '',
                 gender: ''
             });
+            setUsernameStatus({ checking: false, available: null, message: '' });
             window.location.reload();
         }
         catch (error) {
@@ -1487,10 +1541,10 @@ function StudentsManagement() {
                     return (_jsxs("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: [_jsxs("button", { onClick: () => toggleClass(classItem.id), className: "w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors text-left", children: [_jsxs("div", { className: "flex items-center gap-4", children: [_jsx("span", { className: "text-2xl", children: isExpanded ? '▼' : '▶' }), _jsxs("div", { children: [_jsxs("h3", { className: "text-xl font-bold text-gray-900", children: [classItem.name, classificationText] }), classItem.description && (_jsx("p", { className: "text-sm text-gray-500 mt-1", children: classItem.description }))] })] }), _jsxs("div", { className: "flex items-center gap-4", children: [_jsx("button", { onClick: (e) => {
                                                     e.stopPropagation();
                                                     handlePromoteClass(classItem.id);
-                                                }, className: "px-3 py-1 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700 transition", title: "Promote entire class", children: "\u2B06 Promote Class" }), _jsxs("span", { className: "px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold", children: [classItem.student_count, " ", classItem.student_count === 1 ? 'student' : 'students'] })] })] }), isExpanded && (_jsx("div", { className: "border-t border-gray-200", children: _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Roll No." }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Section" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Email" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Status" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: classItem.students.map((student) => (_jsxs("tr", { className: "hover:bg-gray-50", children: [_jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900", children: student.roll_number || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-900", children: student.profile?.full_name || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: student.section_name || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: student.profile?.email || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("span", { className: `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${student.status === 'active'
+                                                }, className: "px-3 py-1 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700 transition", title: "Promote entire class", children: "\u2B06 Promote Class" }), _jsxs("span", { className: "px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold", children: [classItem.student_count, " ", classItem.student_count === 1 ? 'student' : 'students'] })] })] }), isExpanded && (_jsx("div", { className: "border-t border-gray-200", children: _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Roll No." }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Section" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Email" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Phone" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Status" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: classItem.students.map((student) => (_jsxs("tr", { className: "hover:bg-gray-50", children: [_jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900", children: student.roll_number || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-900", children: student.profile?.full_name || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: student.section_name || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: student.profile?.email || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: student.profile?.phone || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("span", { className: `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${student.status === 'active'
                                                                     ? 'bg-green-100 text-green-800'
                                                                     : 'bg-red-100 text-red-800'}`, children: student.status }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium", children: _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: () => handleEditStudent(student), className: "text-blue-600 hover:text-blue-900", title: "Edit student", children: "\u270F\uFE0F Edit" }), _jsx("button", { onClick: () => handlePromoteStudent(student), className: "text-green-600 hover:text-green-900", title: "Promote/Demote student", children: "\u2B06 Promote" })] }) })] }, student.id))) })] }) }) }))] }, classItem.id));
-                }) }), unassignedStudents.length > 0 && (_jsxs("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: [_jsxs("div", { className: "px-6 py-4 bg-yellow-50 border-b border-yellow-200", children: [_jsxs("h3", { className: "text-lg font-semibold text-yellow-800", children: ["Unassigned Students (", unassignedStudents.length, ")"] }), _jsx("p", { className: "text-sm text-yellow-700 mt-1", children: "These students haven't been assigned to a class yet." })] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Roll No." }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Email" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Status" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: unassignedStudents.map((student) => (_jsxs("tr", { className: "hover:bg-gray-50", children: [_jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900", children: student.roll_number || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-900", children: student.profile?.full_name || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: student.profile?.email || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("span", { className: `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${student.status === 'active'
+                }) }), unassignedStudents.length > 0 && (_jsxs("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: [_jsxs("div", { className: "px-6 py-4 bg-yellow-50 border-b border-yellow-200", children: [_jsxs("h3", { className: "text-lg font-semibold text-yellow-800", children: ["Unassigned Students (", unassignedStudents.length, ")"] }), _jsx("p", { className: "text-sm text-yellow-700 mt-1", children: "These students haven't been assigned to a class yet." })] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Roll No." }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Email" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Phone" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Status" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: unassignedStudents.map((student) => (_jsxs("tr", { className: "hover:bg-gray-50", children: [_jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900", children: student.roll_number || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-900", children: student.profile?.full_name || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: student.profile?.email || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: student.profile?.phone || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("span", { className: `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${student.status === 'active'
                                                         ? 'bg-green-100 text-green-800'
                                                         : 'bg-red-100 text-red-800'}`, children: student.status }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium", children: _jsx("button", { onClick: () => handleEditStudent(student), className: "text-blue-600 hover:text-blue-900", title: "Assign class to student", children: "\u270F\uFE0F Assign Class" }) })] }, student.id))) })] }) })] })), classesWithStudents.length === 0 && unassignedStudents.length === 0 && (_jsxs("div", { className: "bg-white rounded-lg shadow-md p-12 text-center", children: [_jsx("div", { className: "text-gray-500 text-lg", children: "No students found." }), _jsx("div", { className: "text-gray-400 text-sm mt-2", children: "Students will appear here once they are approved and assigned to classes." })] })), editModalOpen && selectedStudent && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Edit Student: ", selectedStudent.profile?.full_name] }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class" }), _jsxs("select", { value: editForm.class_group_id, onChange: (e) => {
                                                 setEditForm({ ...editForm, class_group_id: e.target.value, section_id: '' });
@@ -1506,7 +1560,15 @@ function StudentsManagement() {
                                                     ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
                                                     : '';
                                                 return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
-                                            })] })] }) }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handlePromoteStudentSubmit, className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Promote" }), _jsx("button", { onClick: () => setPromoteModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), addStudentModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Add New Student" }), _jsxs("form", { onSubmit: handleAddStudent, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name *" }), _jsx("input", { type: "text", required: true, value: addStudentForm.full_name, onChange: (e) => setAddStudentForm({ ...addStudentForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email *" }), _jsx("input", { type: "email", required: true, value: addStudentForm.email, onChange: (e) => setAddStudentForm({ ...addStudentForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Username *" }), _jsx("input", { type: "text", required: true, value: addStudentForm.username, onChange: (e) => setAddStudentForm({ ...addStudentForm, username: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Unique username for login (unique per school)" }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Username must be unique within your school" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Password *" }), _jsx("input", { type: "password", required: true, minLength: 8, value: addStudentForm.password, onChange: (e) => setAddStudentForm({ ...addStudentForm, password: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Minimum 8 characters" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "tel", value: addStudentForm.phone, onChange: (e) => setAddStudentForm({ ...addStudentForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Gender" }), _jsxs("select", { value: addStudentForm.gender, onChange: (e) => setAddStudentForm({ ...addStudentForm, gender: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Gender" }), _jsx("option", { value: "male", children: "Male" }), _jsx("option", { value: "female", children: "Female" }), _jsx("option", { value: "other", children: "Other" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Roll Number" }), _jsx("input", { type: "text", value: addStudentForm.roll_number, onChange: (e) => setAddStudentForm({ ...addStudentForm, roll_number: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class" }), _jsxs("select", { value: addStudentForm.class_group_id, onChange: (e) => {
+                                            })] })] }) }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handlePromoteStudentSubmit, className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Promote" }), _jsx("button", { onClick: () => setPromoteModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), addStudentModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Add New Student" }), _jsxs("form", { onSubmit: handleAddStudent, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name *" }), _jsx("input", { type: "text", required: true, value: addStudentForm.full_name, onChange: (e) => setAddStudentForm({ ...addStudentForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email *" }), _jsx("input", { type: "email", required: true, value: addStudentForm.email, onChange: (e) => setAddStudentForm({ ...addStudentForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Username *" }), _jsxs("div", { className: "relative", children: [_jsx("input", { type: "text", required: true, value: addStudentForm.username, onChange: (e) => setAddStudentForm({ ...addStudentForm, username: e.target.value }), className: `w-full px-3 py-2 pr-10 border rounded-md ${usernameStatus.available === false
+                                                        ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                                                        : usernameStatus.available === true
+                                                            ? 'border-green-500 focus:border-green-500 focus:ring-green-500'
+                                                            : ''}`, placeholder: "Unique username for login (unique per school)" }), addStudentForm.username.trim().length > 0 && (_jsx("div", { className: "absolute right-3 top-1/2 transform -translate-y-1/2", children: usernameStatus.checking ? (_jsx("div", { className: "animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" })) : usernameStatus.available === true ? (_jsx("svg", { className: "h-5 w-5 text-green-500", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M5 13l4 4L19 7" }) })) : usernameStatus.available === false ? (_jsx("svg", { className: "h-5 w-5 text-red-500", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M6 18L18 6M6 6l12 12" }) })) : null }))] }), addStudentForm.username.trim().length > 0 && (_jsx("div", { className: "mt-1", children: usernameStatus.checking ? (_jsxs("p", { className: "text-xs text-blue-600 flex items-center gap-1", children: [_jsx("span", { className: "animate-spin inline-block w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full" }), "Checking availability..."] })) : usernameStatus.message ? (_jsx("p", { className: `text-xs font-medium ${usernameStatus.available === true
+                                                    ? 'text-green-600'
+                                                    : usernameStatus.available === false
+                                                        ? 'text-red-600'
+                                                        : 'text-gray-500'}`, children: usernameStatus.message })) : null })), addStudentForm.username.trim().length === 0 && (_jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Username must be unique within your school" }))] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Password *" }), _jsx("input", { type: "password", required: true, minLength: 8, value: addStudentForm.password, onChange: (e) => setAddStudentForm({ ...addStudentForm, password: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Minimum 8 characters" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "tel", value: addStudentForm.phone, onChange: (e) => setAddStudentForm({ ...addStudentForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Gender" }), _jsxs("select", { value: addStudentForm.gender, onChange: (e) => setAddStudentForm({ ...addStudentForm, gender: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Gender" }), _jsx("option", { value: "male", children: "Male" }), _jsx("option", { value: "female", children: "Female" }), _jsx("option", { value: "other", children: "Other" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Roll Number" }), _jsx("input", { type: "text", value: addStudentForm.roll_number, onChange: (e) => setAddStudentForm({ ...addStudentForm, roll_number: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class" }), _jsxs("select", { value: addStudentForm.class_group_id, onChange: (e) => {
                                                 setAddStudentForm({ ...addStudentForm, class_group_id: e.target.value, section_id: '' });
                                                 if (e.target.value) {
                                                     loadSections(e.target.value);
@@ -1516,7 +1578,9 @@ function StudentsManagement() {
                                                         ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
                                                         : '';
                                                     return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
-                                                })] })] }), addStudentForm.class_group_id && sections[addStudentForm.class_group_id] && (_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Section" }), _jsxs("select", { value: addStudentForm.section_id, onChange: (e) => setAddStudentForm({ ...addStudentForm, section_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Section (Optional)" }), sections[addStudentForm.class_group_id].map((section) => (_jsx("option", { value: section.id, children: section.name }, section.id)))] })] })), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Admission Date" }), _jsx("input", { type: "date", value: addStudentForm.admission_date, onChange: (e) => setAddStudentForm({ ...addStudentForm, admission_date: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { type: "submit", className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Add Student" }), _jsx("button", { type: "button", onClick: () => {
+                                                })] })] }), addStudentForm.class_group_id && sections[addStudentForm.class_group_id] && (_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Section" }), _jsxs("select", { value: addStudentForm.section_id, onChange: (e) => setAddStudentForm({ ...addStudentForm, section_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Section (Optional)" }), sections[addStudentForm.class_group_id].map((section) => (_jsx("option", { value: section.id, children: section.name }, section.id)))] })] })), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Admission Date" }), _jsx("input", { type: "date", value: addStudentForm.admission_date, onChange: (e) => setAddStudentForm({ ...addStudentForm, admission_date: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { type: "submit", disabled: usernameStatus.checking || usernameStatus.available === false, className: `flex-1 px-4 py-2 rounded-lg ${usernameStatus.checking || usernameStatus.available === false
+                                                ? 'bg-gray-400 cursor-not-allowed text-white'
+                                                : 'bg-green-600 text-white hover:bg-green-700'}`, children: usernameStatus.checking ? 'Checking...' : 'Add Student' }), _jsx("button", { type: "button", onClick: () => {
                                                 setAddStudentModalOpen(false);
                                                 setAddStudentForm({
                                                     email: '',
@@ -1530,6 +1594,7 @@ function StudentsManagement() {
                                                     admission_date: '',
                                                     gender: ''
                                                 });
+                                                setUsernameStatus({ checking: false, available: null, message: '' });
                                             }, className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] })] }) })), promoteClassModalOpen && selectedClassId && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Promote Entire Class" }), _jsx("p", { className: "text-sm text-gray-600 mb-4", children: "This will move all active students from the current class to the target class." }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Target Class" }), _jsxs("select", { value: promoteClassForm.target_class_id, onChange: (e) => setPromoteClassForm({ ...promoteClassForm, target_class_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", required: true, children: [_jsx("option", { value: "", children: "Select Target Class" }), allClasses.filter(cls => cls.id !== selectedClassId).map((cls) => {
                                                     const classificationText = cls.classifications && cls.classifications.length > 0
                                                         ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
@@ -1730,282 +1795,6 @@ function ClassificationsManagement() {
                                                 setShowValueModal(false);
                                                 setSelectedTypeId(null);
                                             }, className: "flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300", children: "Cancel" })] })] })] }) }))] }));
-}
-function PendingApprovals() {
-    const [pending, setPending] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [classes, setClasses] = useState([]);
-    const [classAssignments, setClassAssignments] = useState({});
-    const [sections, setSections] = useState({});
-    const [loadingSections, setLoadingSections] = useState({});
-    useEffect(() => {
-        loadPendingApprovals();
-        loadClasses();
-    }, []);
-    const loadPendingApprovals = async () => {
-        try {
-            const session = await supabase.auth.getSession();
-            const token = session.data.session?.access_token;
-            if (!token) {
-                console.error('No authentication token found');
-                setLoading(false);
-                return;
-            }
-            // Get current user info for debugging
-            const { data: { user } } = await supabase.auth.getUser();
-            console.log('Current user:', user?.id);
-            // Get current user's profile to check school_id
-            const { data: currentProfile } = await supabase
-                .from('profiles')
-                .select('id, role, school_id, full_name')
-                .eq('id', user?.id)
-                .single();
-            console.log('Current user profile:', currentProfile);
-            console.log('Loading pending approvals for school:', currentProfile?.school_id);
-            const response = await fetch(`${API_URL}/approvals/pending`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-                console.error('Failed to load pending approvals:', response.status, errorData);
-                throw new Error(errorData.error || 'Failed to load pending approvals');
-            }
-            const data = await response.json();
-            console.log('Pending approvals response:', data);
-            console.log('Number of pending approvals:', data.pending?.length || 0);
-            if (data.pending && data.pending.length > 0) {
-                console.log('Pending approvals details:', data.pending);
-            }
-            else {
-                console.warn('No pending approvals found. This could mean:');
-                console.warn('1. No students have signed up yet');
-                console.warn('2. All pending approvals have been processed');
-                console.warn('3. Students signed up with a different school_id');
-                console.warn('4. Students have approval_status other than "pending"');
-            }
-            setPending(data.pending || []);
-        }
-        catch (error) {
-            console.error('Error loading pending approvals:', error);
-            // Don't show alert for 403 Forbidden - user might not have permission
-            // This can happen if a non-principal user somehow accesses this page
-            if (error.message?.includes('Forbidden') || error.message?.includes('403') ||
-                error.message?.toLowerCase().includes('forbidden')) {
-                console.warn('[PendingApprovals] Access forbidden - user may not have permission');
-                // Silently fail - the role check in PrincipalDashboard will redirect them
-                setPending([]);
-            }
-            else {
-                // Only show alert for other errors
-                alert(`Error loading approvals: ${error.message || 'Unknown error'}`);
-            }
-        }
-        finally {
-            setLoading(false);
-        }
-    };
-    const loadClasses = async () => {
-        try {
-            const token = (await supabase.auth.getSession()).data.session?.access_token;
-            if (!token)
-                return;
-            const response = await fetch(`${API_URL}/classes`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-            if (!response.ok)
-                throw new Error('Failed to load classes');
-            const data = await response.json();
-            console.log('[PendingApprovals] Classes loaded:', data.classes);
-            // Log classifications for debugging
-            if (data.classes && data.classes.length > 0) {
-                data.classes.forEach((cls) => {
-                    console.log(`[PendingApprovals] Class "${cls.name}" has classifications:`, cls.classifications);
-                });
-            }
-            setClasses(data.classes || []);
-        }
-        catch (error) {
-            console.error('Error loading classes:', error);
-        }
-    };
-    const loadSections = async (classId, userId) => {
-        if (!classId) {
-            setSections(prev => ({ ...prev, [userId]: [] }));
-            setLoadingSections(prev => ({ ...prev, [userId]: false }));
-            return [];
-        }
-        setLoadingSections(prev => ({ ...prev, [userId]: true }));
-        try {
-            const token = (await supabase.auth.getSession()).data.session?.access_token;
-            if (!token) {
-                setLoadingSections(prev => ({ ...prev, [userId]: false }));
-                return [];
-            }
-            const response = await fetch(`${API_URL}/classes/${classId}/sections`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-            if (!response.ok)
-                throw new Error('Failed to load sections');
-            const data = await response.json();
-            const sectionsList = data.sections || [];
-            setSections(prev => ({ ...prev, [userId]: sectionsList }));
-            // Automatically assign first section if available
-            if (sectionsList.length > 0) {
-                const firstSectionId = sectionsList[0].id;
-                setClassAssignments(prev => ({
-                    ...prev,
-                    [userId]: {
-                        ...(prev[userId] || { class_group_id: '', section_id: '', roll_number: '' }),
-                        class_group_id: classId,
-                        section_id: firstSectionId
-                    }
-                }));
-            }
-            else {
-                // No sections available, set section_id to empty (will be null in backend)
-                setClassAssignments(prev => ({
-                    ...prev,
-                    [userId]: {
-                        ...(prev[userId] || { class_group_id: '', section_id: '', roll_number: '' }),
-                        class_group_id: classId,
-                        section_id: ''
-                    }
-                }));
-            }
-            return sectionsList;
-        }
-        catch (error) {
-            console.error('Error loading sections:', error);
-            setSections(prev => ({ ...prev, [userId]: [] }));
-            return [];
-        }
-        finally {
-            setLoadingSections(prev => ({ ...prev, [userId]: false }));
-        }
-    };
-    const handleClassChange = async (userId, classId) => {
-        // Clear section when class changes (will be auto-assigned by loadSections)
-        setClassAssignments(prev => ({
-            ...prev,
-            [userId]: {
-                ...(prev[userId] || { class_group_id: '', section_id: '', roll_number: '' }),
-                class_group_id: classId,
-                section_id: '' // Will be set automatically by loadSections
-            }
-        }));
-        // Always reload sections for the new class and auto-assign first section
-        if (classId) {
-            // loadSections will automatically assign the first section if available
-            await loadSections(classId, userId);
-        }
-        else {
-            // Clear sections if no class selected
-            setSections(prev => ({ ...prev, [userId]: [] }));
-            setClassAssignments(prev => ({
-                ...prev,
-                [userId]: {
-                    ...(prev[userId] || { class_group_id: '', section_id: '', roll_number: '' }),
-                    class_group_id: '',
-                    section_id: ''
-                }
-            }));
-        }
-    };
-    const handleAssignmentChange = async (userId, field, value) => {
-        if (field === 'class_group_id') {
-            await handleClassChange(userId, value);
-        }
-        else {
-            setClassAssignments(prev => ({
-                ...prev,
-                [userId]: {
-                    ...prev[userId] || { class_group_id: '', section_id: '', roll_number: '' },
-                    [field]: value
-                }
-            }));
-        }
-    };
-    const handleApproval = async (profileId, action, userRole) => {
-        try {
-            const token = (await supabase.auth.getSession()).data.session?.access_token;
-            if (!token)
-                return;
-            const body = {
-                profile_id: profileId,
-                action,
-            };
-            // If approving a student, include class assignment
-            if (action === 'approve' && userRole === 'student') {
-                const assignment = classAssignments[profileId] || {};
-                if (assignment.class_group_id) {
-                    body.class_group_id = assignment.class_group_id;
-                    // Automatically assign first section if class has sections and no section is selected
-                    if (!assignment.section_id) {
-                        const userSections = sections[profileId] || [];
-                        if (userSections.length > 0) {
-                            // Assign first section automatically
-                            body.section_id = userSections[0].id;
-                        }
-                        else {
-                            // No sections available, send null
-                            body.section_id = null;
-                        }
-                    }
-                    else {
-                        body.section_id = assignment.section_id;
-                    }
-                }
-                if (assignment.roll_number) {
-                    body.roll_number = assignment.roll_number;
-                }
-            }
-            const response = await fetch(`${API_URL}/approvals/action`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify(body),
-            });
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to process approval');
-            }
-            // Remove assignment data for this user
-            const newAssignments = { ...classAssignments };
-            delete newAssignments[profileId];
-            setClassAssignments(newAssignments);
-            const newSections = { ...sections };
-            delete newSections[profileId];
-            setSections(newSections);
-            loadPendingApprovals();
-        }
-        catch (error) {
-            alert(error.message || 'Failed to process approval');
-        }
-    };
-    if (loading) {
-        return (_jsxs("div", { className: "p-6", children: [_jsx("h2", { className: "text-3xl font-bold mb-6", children: "Pending Approvals" }), _jsx("div", { className: "bg-white rounded-lg shadow-md p-12 text-center", children: _jsx("div", { className: "text-2xl mb-4", children: "Loading..." }) })] }));
-    }
-    return (_jsxs("div", { className: "p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-6", children: [_jsx("h2", { className: "text-3xl font-bold", children: "Pending Approvals" }), _jsxs("button", { onClick: loadPendingApprovals, className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center gap-2", children: [_jsx("span", { children: "\uD83D\uDD04" }), _jsx("span", { children: "Refresh" })] })] }), process.env.NODE_ENV === 'development' && (_jsxs("div", { className: "bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-sm", children: [_jsx("p", { className: "font-semibold text-yellow-800 mb-2", children: "Debug Info:" }), _jsxs("p", { className: "text-yellow-700", children: ["Pending count: ", pending.length] }), _jsx("pre", { className: "text-xs text-yellow-700 overflow-auto mt-2", children: JSON.stringify(pending, null, 2) })] })), pending.length === 0 ? (_jsxs("div", { className: "bg-white rounded-lg shadow-md p-12 text-center", children: [_jsx("div", { className: "text-6xl mb-4", children: "\u2705" }), _jsx("p", { className: "text-gray-600 text-lg", children: "No pending approvals" }), _jsx("p", { className: "text-gray-500 text-sm mt-2", children: "All users who have signed up and are waiting for approval will appear here." })] })) : (_jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Email" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Role" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Requested Date" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Class Assignment" }), _jsx("th", { className: "px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: pending.map((user) => {
-                                const assignment = classAssignments[user.id] || { class_group_id: '', section_id: '', roll_number: '' };
-                                const userSections = sections[user.id] || [];
-                                const isLoadingSections = loadingSections[user.id] || false;
-                                return (_jsxs("tr", { className: "hover:bg-gray-50", children: [_jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("div", { className: "text-sm font-medium text-gray-900", children: user.full_name || 'N/A' }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("div", { className: "text-sm text-gray-900", children: user.email }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("span", { className: "px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800", children: user.role }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: new Date(user.created_at).toLocaleDateString() }), _jsx("td", { className: "px-6 py-4", children: user.role === 'student' ? (_jsxs("div", { className: "space-y-2 min-w-[300px]", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Class" }), _jsxs("select", { value: assignment.class_group_id, onChange: (e) => handleAssignmentChange(user.id, 'class_group_id', e.target.value), className: "text-sm border border-gray-300 rounded-md px-2 py-1 w-full", children: [_jsx("option", { value: "", children: "Select Class (Optional)" }), classes.map((cls) => {
-                                                                        // Build display text with classifications
-                                                                        // Backend returns classifications in format: [{ type: string, value: string }]
-                                                                        const classificationText = cls.classifications && Array.isArray(cls.classifications) && cls.classifications.length > 0
-                                                                            ? ` (${cls.classifications.map((c) => `${c.type}: ${c.value}`).join(', ')})`
-                                                                            : '';
-                                                                        return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
-                                                                    })] })] }), assignment.class_group_id && (_jsx("div", { children: isLoadingSections ? (_jsx("p", { className: "text-xs text-gray-500", children: "Loading sections..." })) : userSections.length > 0 ? (_jsxs("p", { className: "text-xs text-gray-600", children: ["Section: ", _jsx("span", { className: "font-semibold", children: userSections.find(s => s.id === assignment.section_id)?.name || userSections[0]?.name || 'Auto-assigned' })] })) : (_jsx("p", { className: "text-xs text-gray-500", children: "No sections available for this class. Section will be set to null." })) })), _jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Roll Number" }), _jsx("input", { type: "text", value: assignment.roll_number, onChange: (e) => handleAssignmentChange(user.id, 'roll_number', e.target.value), placeholder: "Optional", className: "text-sm border border-gray-300 rounded-md px-2 py-1 w-full" })] })] })) : (_jsx("span", { className: "text-sm text-gray-400", children: "N/A" })) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-right text-sm font-medium", children: _jsxs("div", { className: "flex justify-end gap-2", children: [_jsx("button", { onClick: () => handleApproval(user.id, 'approve', user.role), className: "bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-700 text-sm", children: "Approve" }), _jsx("button", { onClick: () => handleApproval(user.id, 'reject', user.role), className: "bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 text-sm", children: "Reject" })] }) })] }, user.id));
-                            }) })] }) }))] }));
 }
 function ExamsManagement() {
     const [exams, setExams] = useState([]);
@@ -3422,11 +3211,9 @@ export default function PrincipalDashboard() {
             setCurrentView('salary');
         else if (path === '/principal/fees')
             setCurrentView('fees');
-        else if (path === '/principal/approvals')
-            setCurrentView('approvals');
     }, [location]);
     if (checkingRole) {
         return (_jsx("div", { className: "min-h-screen bg-gray-50 flex items-center justify-center", children: _jsx("div", { className: "text-center", children: _jsx("div", { className: "text-2xl font-bold text-gray-600", children: "Loading..." }) }) }));
     }
-    return (_jsxs("div", { className: "flex min-h-screen bg-gray-50", children: [_jsx(Sidebar, { currentPath: location.pathname }), _jsxs("div", { className: "ml-64 flex-1", children: [currentView === 'dashboard' && _jsx(DashboardOverview, {}), currentView === 'staff' && _jsx(StaffManagement, {}), currentView === 'classifications' && _jsx(ClassificationsManagement, {}), currentView === 'classes' && _jsx(ClassesManagement, {}), currentView === 'subjects' && _jsx(SubjectsManagement, {}), currentView === 'students' && _jsx(StudentsManagement, {}), currentView === 'exams' && _jsx(ExamsManagement, {}), currentView === 'salary' && _jsx(SalaryManagement, {}), currentView === 'fees' && _jsx(FeeManagement, {}), currentView === 'approvals' && _jsx(PendingApprovals, {})] })] }));
+    return (_jsxs("div", { className: "flex min-h-screen bg-gray-50", children: [_jsx(Sidebar, { currentPath: location.pathname }), _jsxs("div", { className: "ml-64 flex-1", children: [currentView === 'dashboard' && _jsx(DashboardOverview, {}), currentView === 'staff' && _jsx(StaffManagement, {}), currentView === 'classifications' && _jsx(ClassificationsManagement, {}), currentView === 'classes' && _jsx(ClassesManagement, {}), currentView === 'subjects' && _jsx(SubjectsManagement, {}), currentView === 'students' && _jsx(StudentsManagement, {}), currentView === 'exams' && _jsx(ExamsManagement, {}), currentView === 'salary' && _jsx(SalaryManagement, {}), currentView === 'fees' && _jsx(FeeManagement, {})] })] }));
 }

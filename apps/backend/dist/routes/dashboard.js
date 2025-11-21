@@ -33,7 +33,7 @@ router.get('/stats', requireRoles(['principal']), async (req, res) => {
     }
     const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
-        const [studentsResponse, staffResponse, classesResponse, approvalsResponse] = await Promise.all([
+        const [studentsResponse, staffResponse, classesResponse] = await Promise.all([
             adminSupabase
                 .from('students')
                 .select('id, status, profile:profiles!students_profile_id_fkey(gender)')
@@ -48,12 +48,7 @@ router.get('/stats', requireRoles(['principal']), async (req, res) => {
             adminSupabase
                 .from('class_groups')
                 .select('id', { count: 'exact', head: true })
-                .eq('school_id', user.schoolId),
-            adminSupabase
-                .from('profiles')
-                .select('id', { count: 'exact', head: true })
                 .eq('school_id', user.schoolId)
-                .eq('approval_status', 'pending')
         ]);
         if (studentsResponse.error) {
             console.error('[dashboard] Error fetching students:', studentsResponse.error);
@@ -66,10 +61,6 @@ router.get('/stats', requireRoles(['principal']), async (req, res) => {
         if (classesResponse.error) {
             console.error('[dashboard] Error fetching classes:', classesResponse.error);
             return res.status(400).json({ error: classesResponse.error.message });
-        }
-        if (approvalsResponse.error) {
-            console.error('[dashboard] Error fetching approvals:', approvalsResponse.error);
-            return res.status(400).json({ error: approvalsResponse.error.message });
         }
         const studentGenderCounts = getInitialGenderCounts();
         (studentsResponse.data || []).forEach((student) => {
@@ -87,7 +78,6 @@ router.get('/stats', requireRoles(['principal']), async (req, res) => {
             totalStudents: studentGenderCounts.total,
             totalStaff: staffGenderCounts.total,
             totalClasses: classesResponse.count || 0,
-            pendingApprovals: approvalsResponse.count || 0,
             studentsByGender: studentGenderCounts,
             staffByGender: staffGenderCounts
         };
