@@ -5279,9 +5279,10 @@ function SalaryManagement() {
   );
 }
 
-function FeeManagement() {
-  const [activeTab, setActiveTab] = useState<'categories' | 'class-fees' | 'transport' | 'optional' | 'custom' | 'bills' | 'payments' | 'tracking' | 'hikes'>('categories');
+function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'clerk' }) {
+  const [activeTab, setActiveTab] = useState<'categories' | 'class-fees' | 'transport' | 'optional' | 'custom' | 'bills' | 'payments' | 'tracking' | 'hikes'>('bills');
   const [loading, setLoading] = useState(false);
+  const isClerk = userRole === 'clerk';
 
   // Fee Categories
   const [feeCategories, setFeeCategories] = useState<any[]>([]);
@@ -6187,15 +6188,17 @@ function FeeManagement() {
         <div className="border-b border-gray-200">
           <nav className="flex -mb-px">
             {[
-              { id: 'categories', label: 'Fee Categories' },
-              { id: 'class-fees', label: 'Class Fees' },
-              { id: 'transport', label: 'Transport' },
-              { id: 'optional', label: 'Optional Fees' },
-              { id: 'custom', label: 'Custom Fees' },
+              ...(isClerk ? [] : [
+                { id: 'categories', label: 'Fee Categories' },
+                { id: 'class-fees', label: 'Class Fees' },
+                { id: 'transport', label: 'Transport' },
+                { id: 'optional', label: 'Optional Fees' },
+                { id: 'custom', label: 'Custom Fees' },
+                { id: 'hikes', label: 'Fee Hikes' }
+              ]),
               { id: 'bills', label: 'Fee Bills' },
               { id: 'payments', label: 'Payments' },
-              { id: 'tracking', label: 'Fee Tracking' },
-              { id: 'hikes', label: 'Fee Hikes' }
+              { id: 'tracking', label: 'Fee Tracking' }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -6213,8 +6216,8 @@ function FeeManagement() {
         </div>
       </div>
 
-      {/* Fee Categories Tab */}
-      {activeTab === 'categories' && (
+      {/* Fee Categories Tab - Only for Principal */}
+      {activeTab === 'categories' && !isClerk && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-bold">Fee Categories</h3>
@@ -6261,17 +6264,19 @@ function FeeManagement() {
         </div>
       )}
 
-      {/* Class Fees Tab */}
-      {activeTab === 'class-fees' && (
+      {/* Class Fees Tab - Only for Principal */}
+      {activeTab === 'class-fees' && !isClerk && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-bold">Class Fees</h3>
-            <button
-              onClick={() => setShowClassFeeModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              + Add Class Fee
-            </button>
+            {!isClerk && (
+              <button
+                onClick={() => setShowClassFeeModal(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+              >
+                + Add Class Fee
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">
@@ -6366,12 +6371,14 @@ function FeeManagement() {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">Transport Fees</h3>
-              <button
-                onClick={() => setShowTransportFeeModal(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-              >
-                + Add Transport Fee
-              </button>
+              {!isClerk && (
+                <button
+                  onClick={() => setShowTransportFeeModal(true)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                >
+                  + Add Transport Fee
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -6414,8 +6421,8 @@ function FeeManagement() {
         </div>
       )}
 
-      {/* Optional Fees Tab */}
-      {activeTab === 'optional' && (
+      {/* Optional Fees Tab - Only for Principal */}
+      {activeTab === 'optional' && !isClerk && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-bold">Optional Fees</h3>
@@ -6462,8 +6469,8 @@ function FeeManagement() {
         </div>
       )}
 
-      {/* Custom Fees Tab */}
-      {activeTab === 'custom' && (
+      {/* Custom Fees Tab - Only for Principal */}
+      {activeTab === 'custom' && !isClerk && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-bold">Student Custom Fees</h3>
@@ -8177,6 +8184,9 @@ function FeeManagement() {
   );
 }
 
+// Export FeeManagement for use in ClerkDashboard
+export { FeeManagement };
+
 export default function PrincipalDashboard() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -8334,7 +8344,7 @@ export default function PrincipalDashboard() {
         {currentView === 'students' && <StudentsManagement />}
         {currentView === 'exams' && <ExamsManagement />}
         {currentView === 'salary' && <SalaryManagement />}
-        {currentView === 'fees' && <FeeManagement />}
+        {currentView === 'fees' && <FeeManagement userRole="principal" />}
       </div>
     </div>
   );
