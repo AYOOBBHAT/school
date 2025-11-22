@@ -5280,7 +5280,7 @@ function SalaryManagement() {
 }
 
 function FeeManagement() {
-  const [activeTab, setActiveTab] = useState<'categories' | 'class-fees' | 'transport' | 'optional' | 'custom' | 'bills' | 'payments' | 'tracking'>('categories');
+  const [activeTab, setActiveTab] = useState<'categories' | 'class-fees' | 'transport' | 'optional' | 'custom' | 'bills' | 'payments' | 'tracking' | 'hikes'>('categories');
   const [loading, setLoading] = useState(false);
 
   // Fee Categories
@@ -5371,6 +5371,16 @@ function FeeManagement() {
     notes: ''
   });
 
+  // Fee Hikes
+  const [selectedFeeForHike, setSelectedFeeForHike] = useState<any>(null);
+  const [showHikeModal, setShowHikeModal] = useState(false);
+  const [hikeForm, setHikeForm] = useState({
+    new_amount: '',
+    effective_from_date: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
+  const [feeVersions, setFeeVersions] = useState<any[]>([]);
+
   useEffect(() => {
     loadInitialData();
   }, []);
@@ -5387,6 +5397,11 @@ function FeeManagement() {
     else if (activeTab === 'bills') loadBills();
     else if (activeTab === 'payments') loadPayments();
     else if (activeTab === 'tracking') loadFeeTracking();
+    else if (activeTab === 'hikes') {
+      loadClassFees();
+      loadTransportData();
+      loadOptionalFees();
+    }
   }, [activeTab]);
 
   useEffect(() => {
@@ -5949,6 +5964,96 @@ function FeeManagement() {
     }
   };
 
+  const handleHikeFee = async (fee: any, feeType: 'class' | 'transport' | 'optional') => {
+    setSelectedFeeForHike({ ...fee, feeType });
+    setHikeForm({
+      new_amount: fee.amount?.toString() || fee.default_amount?.toString() || '',
+      effective_from_date: new Date().toISOString().split('T')[0],
+      notes: ''
+    });
+    setShowHikeModal(true);
+    
+    // Load version history
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      let url = '';
+      if (feeType === 'class') {
+        url = `${API_URL}/fees/class-fees/${fee.id}/versions`;
+      } else if (feeType === 'transport') {
+        url = `${API_URL}/fees/transport/fees/${fee.id}/versions`;
+      } else if (feeType === 'optional') {
+        url = `${API_URL}/fees/optional/${fee.id}/versions`;
+      }
+
+      if (url) {
+        const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (response.ok) {
+          const data = await response.json();
+          setFeeVersions(data.versions || []);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading fee versions:', error);
+    }
+  };
+
+  const handleSubmitHike = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedFeeForHike) return;
+
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      let url = '';
+      if (selectedFeeForHike.feeType === 'class') {
+        url = `${API_URL}/fees/class-fees/${selectedFeeForHike.id}/hike`;
+      } else if (selectedFeeForHike.feeType === 'transport') {
+        url = `${API_URL}/fees/transport/fees/${selectedFeeForHike.id}/hike`;
+      } else if (selectedFeeForHike.feeType === 'optional') {
+        url = `${API_URL}/fees/optional/${selectedFeeForHike.id}/hike`;
+      }
+
+      if (!url) return;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          new_amount: parseFloat(hikeForm.new_amount),
+          effective_from_date: hikeForm.effective_from_date,
+          notes: hikeForm.notes
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to hike fee');
+      }
+
+      alert('Fee hike applied successfully! Future bills will use the new amount.');
+      setShowHikeModal(false);
+      setSelectedFeeForHike(null);
+      setHikeForm({
+        new_amount: '',
+        effective_from_date: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+      
+      // Reload fees
+      if (activeTab === 'class-fees') loadClassFees();
+      else if (activeTab === 'transport') loadTransportData();
+      else if (activeTab === 'optional') loadOptionalFees();
+    } catch (error: any) {
+      alert(error.message || 'Failed to hike fee');
+    }
+  };
+
   const downloadInvoice = (bill: any) => {
     // Create invoice HTML
     const invoiceHTML = `
@@ -6089,7 +6194,8 @@ function FeeManagement() {
               { id: 'custom', label: 'Custom Fees' },
               { id: 'bills', label: 'Fee Bills' },
               { id: 'payments', label: 'Payments' },
-              { id: 'tracking', label: 'Fee Tracking' }
+              { id: 'tracking', label: 'Fee Tracking' },
+              { id: 'hikes', label: 'Fee Hikes' }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -7815,6 +7921,255 @@ function FeeManagement() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fee Hikes Tab */}
+      {activeTab === 'hikes' && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-xl font-bold mb-4">Fee Hikes & Version History</h3>
+          <p className="text-gray-600 mb-6">
+            Increase or decrease fees for future billing periods. Past bills remain unchanged.
+          </p>
+
+          {/* Class Fees Section */}
+          <div className="mb-8">
+            <h4 className="text-lg font-semibold mb-4">Class Fees</h4>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {classFees.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                        No class fees found.
+                      </td>
+                    </tr>
+                  ) : (
+                    classFees.map((fee) => (
+                      <tr key={fee.id}>
+                        <td className="px-6 py-4">{fee.class_groups?.name || '-'}</td>
+                        <td className="px-6 py-4">{fee.fee_categories?.name || '-'}</td>
+                        <td className="px-6 py-4">₹{parseFloat(fee.amount || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4">{fee.fee_cycle}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                            onClick={() => handleHikeFee(fee, 'class')}
+                            className="text-blue-600 hover:text-blue-800 mr-4"
+                          >
+                            Hike Fee
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Transport Fees Section */}
+          <div className="mb-8">
+            <h4 className="text-lg font-semibold mb-4">Transport Fees</h4>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Route</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {transportFees.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
+                        No transport fees found.
+                      </td>
+                    </tr>
+                  ) : (
+                    transportFees.map((fee) => {
+                      const totalAmount = parseFloat(fee.base_fee || 0) + 
+                                         parseFloat(fee.escort_fee || 0) + 
+                                         parseFloat(fee.fuel_surcharge || 0);
+                      return (
+                        <tr key={fee.id}>
+                          <td className="px-6 py-4">{fee.transport_routes?.route_name || '-'}</td>
+                          <td className="px-6 py-4">₹{totalAmount.toLocaleString()}</td>
+                          <td className="px-6 py-4">{fee.fee_cycle}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <button
+                              onClick={() => handleHikeFee({ ...fee, amount: totalAmount }, 'transport')}
+                              className="text-blue-600 hover:text-blue-800 mr-4"
+                            >
+                              Hike Fee
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Optional Fees Section */}
+          <div>
+            <h4 className="text-lg font-semibold mb-4">Optional Fees</h4>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {optionalFees.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
+                        No optional fees found.
+                      </td>
+                    </tr>
+                  ) : (
+                    optionalFees.map((fee) => (
+                      <tr key={fee.id}>
+                        <td className="px-6 py-4">{fee.name}</td>
+                        <td className="px-6 py-4">₹{parseFloat(fee.default_amount || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4">{fee.fee_cycle}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                            onClick={() => handleHikeFee(fee, 'optional')}
+                            className="text-blue-600 hover:text-blue-800 mr-4"
+                          >
+                            Hike Fee
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fee Hike Modal */}
+      {showHikeModal && selectedFeeForHike && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4">Hike Fee</h3>
+            <form onSubmit={handleSubmitHike}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Current Amount
+                </label>
+                <input
+                  type="text"
+                  value={selectedFeeForHike.amount || selectedFeeForHike.default_amount || ''}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  New Amount *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={hikeForm.new_amount}
+                  onChange={(e) => setHikeForm({ ...hikeForm, new_amount: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Effective From Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={hikeForm.effective_from_date}
+                  onChange={(e) => setHikeForm({ ...hikeForm, effective_from_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Bills generated after this date will use the new amount. Past bills remain unchanged.
+                </p>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notes (Optional)
+                </label>
+                <textarea
+                  value={hikeForm.notes}
+                  onChange={(e) => setHikeForm({ ...hikeForm, notes: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  rows={3}
+                />
+              </div>
+
+              {/* Version History */}
+              {feeVersions.length > 0 && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Version History
+                  </label>
+                  <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2">
+                    {feeVersions.map((version: any, idx: number) => (
+                      <div key={version.id} className="text-xs mb-2 pb-2 border-b last:border-0">
+                        <div className="flex justify-between">
+                          <span className="font-medium">Version {version.version_number}</span>
+                          <span>₹{parseFloat(version.amount || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="text-gray-500">
+                          {new Date(version.effective_from_date).toLocaleDateString()} -{' '}
+                          {version.effective_to_date 
+                            ? new Date(version.effective_to_date).toLocaleDateString()
+                            : 'Active'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowHikeModal(false);
+                    setSelectedFeeForHike(null);
+                    setFeeVersions([]);
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Apply Fee Hike
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

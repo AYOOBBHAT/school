@@ -124,22 +124,54 @@ router.post('/class-fees', requireRoles(['principal', 'clerk']), async (req, res
     const { error, value } = classFeeSchema.validate(req.body);
     if (error)
         return res.status(400).json({ error: error.message });
-    const { supabase, user } = req;
-    if (!supabase || !user)
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
-    const payload = { ...value, school_id: user.schoolId };
-    const { data, error: dbError } = await supabase
-        .from('class_fee_defaults')
-        .insert(payload)
-        .select(`
-      *,
-      class_groups:class_group_id(id, name),
-      fee_categories:fee_category_id(id, name, description)
-    `)
-        .single();
-    if (dbError)
-        return res.status(400).json({ error: dbError.message });
-    return res.status(201).json({ class_fee: data });
+    try {
+        // Create class fee default
+        const payload = { ...value, school_id: user.schoolId };
+        const { data: classFee, error: dbError } = await adminSupabase
+            .from('class_fee_defaults')
+            .insert(payload)
+            .select(`
+        *,
+        class_groups:class_group_id(id, name),
+        fee_categories:fee_category_id(id, name, description)
+      `)
+            .single();
+        if (dbError)
+            return res.status(400).json({ error: dbError.message });
+        // Create initial version (effective from today)
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const { error: versionError } = await adminSupabase
+            .from('class_fee_versions')
+            .insert({
+            school_id: user.schoolId,
+            class_group_id: value.class_group_id,
+            fee_category_id: value.fee_category_id,
+            version_number: 1,
+            amount: value.amount,
+            fee_cycle: value.fee_cycle,
+            effective_from_date: todayStr,
+            effective_to_date: null,
+            is_active: true,
+            created_by: user.id
+        });
+        if (versionError) {
+            console.error('[create-class-fee] Error creating initial version:', versionError);
+            // Don't fail the request, but log the error
+        }
+        return res.status(201).json({ class_fee: classFee });
+    }
+    catch (err) {
+        console.error('[create-class-fee] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to create class fee' });
+    }
 });
 // Update class fee
 router.put('/class-fees/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
@@ -364,18 +396,55 @@ router.post('/optional', requireRoles(['principal', 'clerk']), async (req, res) 
     const { error, value } = optionalFeeSchema.validate(req.body);
     if (error)
         return res.status(400).json({ error: error.message });
-    const { supabase, user } = req;
-    if (!supabase || !user)
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
-    const payload = { ...value, school_id: user.schoolId };
-    const { data, error: dbError } = await supabase
-        .from('optional_fee_definitions')
-        .insert(payload)
-        .select()
-        .single();
-    if (dbError)
-        return res.status(400).json({ error: dbError.message });
-    return res.status(201).json({ optional_fee: data });
+    try {
+        const payload = { ...value, school_id: user.schoolId };
+        const { data: optionalFee, error: dbError } = await adminSupabase
+            .from('optional_fee_definitions')
+            .insert(payload)
+            .select()
+            .single();
+        if (dbError)
+            return res.status(400).json({ error: dbError.message });
+        // Get first class for class_group_id (optional fees can be school-wide)
+        const { data: firstClass } = await adminSupabase
+            .from('class_groups')
+            .select('id')
+            .eq('school_id', user.schoolId)
+            .limit(1)
+            .single();
+        // Create initial version
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const { error: versionError } = await adminSupabase
+            .from('optional_fee_versions')
+            .insert({
+            school_id: user.schoolId,
+            class_group_id: firstClass?.id || null,
+            fee_category_id: optionalFee.fee_category_id || null,
+            version_number: 1,
+            amount: value.default_amount,
+            fee_cycle: value.fee_cycle,
+            effective_from_date: todayStr,
+            effective_to_date: null,
+            is_active: true,
+            created_by: user.id
+        });
+        if (versionError) {
+            console.error('[create-optional-fee] Error creating initial version:', versionError);
+        }
+        return res.status(201).json({ optional_fee: optionalFee });
+    }
+    catch (err) {
+        console.error('[create-optional-fee] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to create optional fee' });
+    }
 });
 // Update optional fee
 router.put('/optional/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
@@ -1185,6 +1254,352 @@ router.get('/dues/:studentId', requireRoles(['principal', 'clerk', 'student', 'p
     catch (err) {
         console.error('[student-dues] Error:', err);
         return res.status(500).json({ error: err.message || 'Failed to get student dues' });
+    }
+});
+// ============================================
+// FEE HIKE / VERSIONING ENDPOINTS
+// ============================================
+const feeHikeSchema = Joi.object({
+    new_amount: Joi.number().min(0).required(),
+    effective_from_date: Joi.date().required(),
+    notes: Joi.string().allow('', null).optional()
+});
+// Hike Class Fee (Create New Version)
+router.post('/class-fees/:id/hike', requireRoles(['principal', 'clerk']), async (req, res) => {
+    const { error, value } = feeHikeSchema.validate(req.body);
+    if (error)
+        return res.status(400).json({ error: error.message });
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        // Get the class fee default to get class_group_id, fee_category_id, fee_cycle
+        const { data: classFee, error: feeError } = await adminSupabase
+            .from('class_fee_defaults')
+            .select('*')
+            .eq('id', req.params.id)
+            .eq('school_id', user.schoolId)
+            .single();
+        if (feeError || !classFee) {
+            return res.status(404).json({ error: 'Class fee not found' });
+        }
+        // Import fee versioning utilities
+        const { hikeClassFee } = await import('../utils/feeVersioning.js');
+        const effectiveFromDate = new Date(value.effective_from_date);
+        const versionId = await hikeClassFee(user.schoolId, classFee.class_group_id, classFee.fee_category_id, classFee.fee_cycle, value.new_amount, effectiveFromDate, user.id, adminSupabase);
+        // Update the class_fee_defaults amount to reflect current version
+        await adminSupabase
+            .from('class_fee_defaults')
+            .update({ amount: value.new_amount, updated_at: new Date().toISOString() })
+            .eq('id', req.params.id);
+        return res.json({
+            success: true,
+            message: 'Fee hike applied successfully',
+            version_id: versionId,
+            new_amount: value.new_amount,
+            effective_from_date: effectiveFromDate.toISOString().split('T')[0]
+        });
+    }
+    catch (err) {
+        console.error('[fee-hike] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to hike fee' });
+    }
+});
+// Hike Transport Fee
+router.post('/transport/fees/:id/hike', requireRoles(['principal', 'clerk']), async (req, res) => {
+    const { error, value } = feeHikeSchema.validate(req.body);
+    if (error)
+        return res.status(400).json({ error: error.message });
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        // Get transport fee default
+        const { data: transportFee, error: feeError } = await adminSupabase
+            .from('transport_fee_defaults')
+            .select('*, transport_routes:route_id(route_name)')
+            .eq('id', req.params.id)
+            .eq('school_id', user.schoolId)
+            .single();
+        if (feeError || !transportFee) {
+            return res.status(404).json({ error: 'Transport fee not found' });
+        }
+        // Get class_group_id from route or use default
+        const { data: route } = await adminSupabase
+            .from('transport_routes')
+            .select('class_group_id')
+            .eq('id', transportFee.route_id)
+            .single();
+        const classGroupId = route?.class_group_id || transportFee.class_group_id;
+        const routeName = transportFee.transport_routes?.route_name || null;
+        const totalAmount = parseFloat(transportFee.base_fee || 0) +
+            parseFloat(transportFee.escort_fee || 0) +
+            parseFloat(transportFee.fuel_surcharge || 0);
+        // Import fee versioning utilities
+        const { hikeTransportFee } = await import('../utils/feeVersioning.js');
+        const effectiveFromDate = new Date(value.effective_from_date);
+        const versionId = await hikeTransportFee(user.schoolId, classGroupId, routeName, transportFee.fee_cycle, value.new_amount, effectiveFromDate, user.id, adminSupabase);
+        // Update transport_fee_defaults
+        await adminSupabase
+            .from('transport_fee_defaults')
+            .update({
+            base_fee: value.new_amount,
+            updated_at: new Date().toISOString()
+        })
+            .eq('id', req.params.id);
+        return res.json({
+            success: true,
+            message: 'Transport fee hike applied successfully',
+            version_id: versionId,
+            new_amount: value.new_amount,
+            effective_from_date: effectiveFromDate.toISOString().split('T')[0]
+        });
+    }
+    catch (err) {
+        console.error('[transport-fee-hike] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to hike transport fee' });
+    }
+});
+// Hike Optional Fee
+router.post('/optional/:id/hike', requireRoles(['principal', 'clerk']), async (req, res) => {
+    const { error, value } = feeHikeSchema.validate(req.body);
+    if (error)
+        return res.status(400).json({ error: error.message });
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        // Get optional fee definition
+        const { data: optionalFee, error: feeError } = await adminSupabase
+            .from('optional_fee_definitions')
+            .select('*')
+            .eq('id', req.params.id)
+            .eq('school_id', user.schoolId)
+            .single();
+        if (feeError || !optionalFee) {
+            return res.status(404).json({ error: 'Optional fee not found' });
+        }
+        // Get class_group_id (optional fees can be class-specific or school-wide)
+        // For now, we'll use a default or get from the first class
+        const { data: firstClass } = await adminSupabase
+            .from('class_groups')
+            .select('id')
+            .eq('school_id', user.schoolId)
+            .limit(1)
+            .single();
+        const classGroupId = firstClass?.id || null;
+        // Get current max version number for optional fee
+        const { data: currentVersion, error: versionError } = await adminSupabase
+            .from('optional_fee_versions')
+            .select('version_number')
+            .eq('school_id', user.schoolId)
+            .eq('class_group_id', classGroupId)
+            .eq('fee_category_id', optionalFee.fee_category_id || null)
+            .eq('fee_cycle', optionalFee.fee_cycle)
+            .order('version_number', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        const newVersionNumber = currentVersion ? currentVersion.version_number + 1 : 1;
+        const effectiveFromDate = new Date(value.effective_from_date);
+        const effectiveFromStr = effectiveFromDate.toISOString().split('T')[0];
+        const previousEffectiveTo = new Date(effectiveFromDate);
+        previousEffectiveTo.setDate(previousEffectiveTo.getDate() - 1);
+        const previousEffectiveToStr = previousEffectiveTo.toISOString().split('T')[0];
+        // Close previous active version
+        await adminSupabase
+            .from('optional_fee_versions')
+            .update({
+            effective_to_date: previousEffectiveToStr,
+            is_active: false,
+            updated_at: new Date().toISOString()
+        })
+            .eq('school_id', user.schoolId)
+            .eq('class_group_id', classGroupId)
+            .eq('fee_category_id', optionalFee.fee_category_id || null)
+            .eq('fee_cycle', optionalFee.fee_cycle)
+            .eq('is_active', true)
+            .or(`effective_to_date.is.null,effective_to_date.gte.${effectiveFromStr}`);
+        // Create new version
+        const { data: newVersion, error: createError } = await adminSupabase
+            .from('optional_fee_versions')
+            .insert({
+            school_id: user.schoolId,
+            class_group_id: classGroupId,
+            fee_category_id: optionalFee.fee_category_id || null,
+            version_number: newVersionNumber,
+            amount: value.new_amount,
+            fee_cycle: optionalFee.fee_cycle,
+            effective_from_date: effectiveFromStr,
+            effective_to_date: null,
+            is_active: true,
+            created_by: user.id
+        })
+            .select()
+            .single();
+        if (createError) {
+            throw new Error(`Failed to create new version: ${createError.message}`);
+        }
+        // Update optional_fee_definitions
+        await adminSupabase
+            .from('optional_fee_definitions')
+            .update({
+            default_amount: value.new_amount,
+            updated_at: new Date().toISOString()
+        })
+            .eq('id', req.params.id);
+        return res.json({
+            success: true,
+            message: 'Optional fee hike applied successfully',
+            version_id: newVersion.id,
+            new_amount: value.new_amount,
+            effective_from_date: effectiveFromStr
+        });
+    }
+    catch (err) {
+        console.error('[optional-fee-hike] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to hike optional fee' });
+    }
+});
+// Get Class Fee Version History
+router.get('/class-fees/:id/versions', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        // Get class fee default to get identifiers
+        const { data: classFee, error: feeError } = await adminSupabase
+            .from('class_fee_defaults')
+            .select('class_group_id, fee_category_id, fee_cycle')
+            .eq('id', req.params.id)
+            .eq('school_id', user.schoolId)
+            .single();
+        if (feeError || !classFee) {
+            return res.status(404).json({ error: 'Class fee not found' });
+        }
+        // Get all versions
+        const { data: versions, error: versionsError } = await adminSupabase
+            .from('class_fee_versions')
+            .select('*')
+            .eq('class_group_id', classFee.class_group_id)
+            .eq('fee_category_id', classFee.fee_category_id)
+            .eq('fee_cycle', classFee.fee_cycle)
+            .eq('school_id', user.schoolId)
+            .order('version_number', { ascending: false });
+        if (versionsError) {
+            throw new Error(versionsError.message);
+        }
+        return res.json({ versions: versions || [] });
+    }
+    catch (err) {
+        console.error('[fee-versions] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to get fee versions' });
+    }
+});
+// Get Transport Fee Version History
+router.get('/transport/fees/:id/versions', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        // Get transport fee default
+        const { data: transportFee, error: feeError } = await adminSupabase
+            .from('transport_fee_defaults')
+            .select('route_id, fee_cycle, transport_routes:route_id(route_name, class_group_id)')
+            .eq('id', req.params.id)
+            .eq('school_id', user.schoolId)
+            .single();
+        if (feeError || !transportFee) {
+            return res.status(404).json({ error: 'Transport fee not found' });
+        }
+        // Handle transport_routes which could be an object or array
+        const transportRoute = Array.isArray(transportFee.transport_routes)
+            ? transportFee.transport_routes[0]
+            : transportFee.transport_routes;
+        const routeName = transportRoute?.route_name || null;
+        const classGroupId = transportRoute?.class_group_id || null;
+        // Get all versions
+        let query = adminSupabase
+            .from('transport_fee_versions')
+            .select('*')
+            .eq('school_id', user.schoolId)
+            .eq('fee_cycle', transportFee.fee_cycle)
+            .order('version_number', { ascending: false });
+        if (classGroupId) {
+            query = query.eq('class_group_id', classGroupId);
+        }
+        if (routeName) {
+            query = query.eq('route_name', routeName);
+        }
+        else {
+            query = query.is('route_name', null);
+        }
+        const { data: versions, error: versionsError } = await query;
+        if (versionsError) {
+            throw new Error(versionsError.message);
+        }
+        return res.json({ versions: versions || [] });
+    }
+    catch (err) {
+        console.error('[transport-versions] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to get transport fee versions' });
+    }
+});
+// Get Optional Fee Version History
+router.get('/optional/:id/versions', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        // Get optional fee definition
+        const { data: optionalFee, error: feeError } = await adminSupabase
+            .from('optional_fee_definitions')
+            .select('fee_category_id, fee_cycle')
+            .eq('id', req.params.id)
+            .eq('school_id', user.schoolId)
+            .single();
+        if (feeError || !optionalFee) {
+            return res.status(404).json({ error: 'Optional fee not found' });
+        }
+        // Get all versions
+        const { data: versions, error: versionsError } = await adminSupabase
+            .from('optional_fee_versions')
+            .select('*')
+            .eq('school_id', user.schoolId)
+            .eq('fee_category_id', optionalFee.fee_category_id || null)
+            .eq('fee_cycle', optionalFee.fee_cycle)
+            .order('version_number', { ascending: false });
+        if (versionsError) {
+            throw new Error(versionsError.message);
+        }
+        return res.json({ versions: versions || [] });
+    }
+    catch (err) {
+        console.error('[optional-versions] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to get optional fee versions' });
     }
 });
 export default router;
