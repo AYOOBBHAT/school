@@ -154,6 +154,90 @@ router.get('/', requireRoles(['principal', 'teacher', 'clerk']), async (req, res
         return res.status(500).json({ error: err.message || 'Internal server error' });
     }
 });
+// Add subjects to an exam
+router.post('/:examId/subjects', requireRoles(['principal']), async (req, res) => {
+    const { error, value } = Joi.object({
+        subject_ids: Joi.array().items(Joi.string().uuid()).min(1).required()
+    }).validate(req.body);
+    if (error)
+        return res.status(400).json({ error: error.message });
+    const { user } = req;
+    if (!user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { examId } = req.params;
+    try {
+        // Verify exam belongs to school
+        const { data: exam, error: examError } = await adminSupabase
+            .from('exams')
+            .select('id, school_id')
+            .eq('id', examId)
+            .eq('school_id', user.schoolId)
+            .single();
+        if (examError || !exam) {
+            return res.status(404).json({ error: 'Exam not found' });
+        }
+        // Create exam_subjects entries
+        const examSubjects = value.subject_ids.map((subjectId) => ({
+            exam_id: examId,
+            subject_id: subjectId,
+            school_id: user.schoolId
+        }));
+        const { data, error: insertError } = await adminSupabase
+            .from('exam_subjects')
+            .upsert(examSubjects, {
+            onConflict: 'exam_id,subject_id',
+            ignoreDuplicates: false
+        })
+            .select();
+        if (insertError) {
+            console.error('[exams] Error adding subjects:', insertError);
+            return res.status(400).json({ error: insertError.message });
+        }
+        return res.json({ exam_subjects: data });
+    }
+    catch (err) {
+        console.error('[exams] Error:', err);
+        return res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+});
+// Get subjects for an exam
+router.get('/:examId/subjects', requireRoles(['principal', 'teacher', 'clerk', 'student', 'parent']), async (req, res) => {
+    const { user } = req;
+    if (!user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { examId } = req.params;
+    try {
+        const { data, error } = await adminSupabase
+            .from('exam_subjects')
+            .select(`
+        subject_id,
+        subjects:subject_id(
+          id,
+          name,
+          code
+        )
+      `)
+            .eq('exam_id', examId)
+            .eq('school_id', user.schoolId);
+        if (error) {
+            console.error('[exams] Error fetching subjects:', error);
+            return res.status(400).json({ error: error.message });
+        }
+        return res.json({ subjects: data || [] });
+    }
+    catch (err) {
+        console.error('[exams] Error:', err);
+        return res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+});
 // Get exams for a specific student (only exams assigned to their class or all classes)
 router.get('/student', requireRoles(['student']), async (req, res) => {
     const { user } = req;

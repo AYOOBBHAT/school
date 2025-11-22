@@ -126,6 +126,17 @@ router.get('/marks', requireRoles(['student']), async (req, res) => {
       return res.status(400).json({ error: marksError.message });
     }
 
+    // Pass threshold (40%)
+    const PASS_THRESHOLD = 40;
+
+    // Helper function to calculate grade from percentage (A/B/C/Fail)
+    const calculateGrade = (percentage: number): string => {
+      if (percentage >= 80) return 'A';
+      if (percentage >= 60) return 'B';
+      if (percentage >= 40) return 'C';
+      return 'Fail';
+    };
+
     // Group marks by exam
     const marksByExam: Record<string, any> = {};
     marks?.forEach((mark: any) => {
@@ -136,26 +147,24 @@ router.get('/marks', requireRoles(['student']), async (req, res) => {
           subjects: []
         };
       }
+      
+      const marksObtained = parseFloat(mark.marks_obtained) || 0;
+      const maxMarks = parseFloat(mark.max_marks) || 0;
+      const percentage = maxMarks > 0 
+        ? parseFloat(((marksObtained / maxMarks) * 100).toFixed(2))
+        : 0;
+      const status = percentage >= PASS_THRESHOLD ? 'Pass' : 'Fail';
+
       marksByExam[examId].subjects.push({
         subject: mark.subjects,
-        marks_obtained: mark.marks_obtained,
-        max_marks: mark.max_marks,
-        percentage: mark.max_marks > 0 ? ((mark.marks_obtained / mark.max_marks) * 100).toFixed(2) : 0
+        marks_obtained: marksObtained,
+        max_marks: maxMarks,
+        percentage: percentage.toFixed(2),
+        status
       });
     });
 
-    // Helper function to calculate grade from percentage
-    const calculateGrade = (percentage: number): string => {
-      if (percentage >= 90) return 'A+';
-      if (percentage >= 80) return 'A';
-      if (percentage >= 70) return 'B+';
-      if (percentage >= 60) return 'B';
-      if (percentage >= 50) return 'C+';
-      if (percentage >= 40) return 'C';
-      return 'F';
-    };
-
-    // Calculate overall percentage, total, average, and grade for each exam
+    // Calculate overall percentage, total, grade, and overall result for each exam
     Object.keys(marksByExam).forEach(examId => {
       const examMarks = marksByExam[examId];
       const totalObtained = examMarks.subjects.reduce((sum: number, s: any) => sum + (s.marks_obtained || 0), 0);
@@ -165,16 +174,147 @@ router.get('/marks', requireRoles(['student']), async (req, res) => {
         ? parseFloat((totalObtained / examMarks.subjects.length).toFixed(2))
         : 0;
       
+      // Calculate overall result (Pass if all subjects passed)
+      const allPassed = examMarks.subjects.length > 0 && examMarks.subjects.every((s: any) => s.status === 'Pass');
+      
+      examMarks.total_obtained = totalObtained;
+      examMarks.total_max = totalMax;
+      examMarks.average = average;
+      examMarks.total_percentage = percentage.toFixed(2);
+      examMarks.grade = calculateGrade(percentage);
+      examMarks.overall_result = allPassed ? 'Pass' : 'Fail';
+      
+      // Keep backward compatibility
       examMarks.total = totalObtained;
       examMarks.totalMax = totalMax;
-      examMarks.average = average;
       examMarks.overallPercentage = percentage.toFixed(2);
-      examMarks.grade = calculateGrade(percentage);
     });
 
     return res.json({
       marks: Object.values(marksByExam),
       raw: marks || []
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// Get student's exam results for a specific exam
+router.get('/exam-results/:examId', requireRoles(['student']), async (req, res) => {
+  const { supabase, user } = req;
+  if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
+
+  const { examId } = req.params;
+
+  try {
+    // Get student record
+    const { data: student, error: studentError } = await supabase
+      .from('students')
+      .select('id')
+      .eq('profile_id', user.id)
+      .eq('school_id', user.schoolId)
+      .single();
+
+    if (studentError || !student) {
+      return res.status(404).json({ error: 'Student record not found' });
+    }
+
+    // Get exam details
+    const { data: exam, error: examError } = await supabase
+      .from('exams')
+      .select('id, name, term, start_date, end_date')
+      .eq('id', examId)
+      .eq('school_id', user.schoolId)
+      .single();
+
+    if (examError || !exam) {
+      return res.status(404).json({ error: 'Exam not found' });
+    }
+
+    // Get verified marks for this exam
+    const { data: marks, error: marksError } = await supabase
+      .from('marks')
+      .select(`
+        id,
+        marks_obtained,
+        max_marks,
+        subject_id,
+        subjects:subject_id (
+          id,
+          name,
+          code
+        )
+      `)
+      .eq('student_id', student.id)
+      .eq('exam_id', examId)
+      .eq('school_id', user.schoolId)
+      .not('verified_by', 'is', null)
+      .order('subjects.name', { ascending: true });
+
+    if (marksError) {
+      return res.status(400).json({ error: marksError.message });
+    }
+
+    // Pass threshold (40%)
+    const PASS_THRESHOLD = 40;
+
+    // Calculate subject-wise results
+    const subjects = (marks || []).map((mark: any) => {
+      const marksObtained = parseFloat(mark.marks_obtained) || 0;
+      const maxMarks = parseFloat(mark.max_marks) || 0;
+      const percentage = maxMarks > 0 
+        ? parseFloat(((marksObtained / maxMarks) * 100).toFixed(2))
+        : 0;
+      const status = percentage >= PASS_THRESHOLD ? 'Pass' : 'Fail';
+
+      return {
+        subject: mark.subjects,
+        marks_obtained: marksObtained,
+        max_marks: maxMarks,
+        percentage: percentage.toFixed(2),
+        status
+      };
+    });
+
+    // Calculate overall summary
+    const totalObtained = subjects.reduce((sum: number, s: any) => sum + s.marks_obtained, 0);
+    const totalMax = subjects.reduce((sum: number, s: any) => sum + s.max_marks, 0);
+    const totalPercentage = totalMax > 0 
+      ? parseFloat(((totalObtained / totalMax) * 100).toFixed(2))
+      : 0;
+
+    // Calculate grade
+    let grade: string;
+    if (totalPercentage >= 80) {
+      grade = 'A';
+    } else if (totalPercentage >= 60) {
+      grade = 'B';
+    } else if (totalPercentage >= 40) {
+      grade = 'C';
+    } else {
+      grade = 'Fail';
+    }
+
+    // Calculate overall result (Pass if all subjects passed)
+    const allPassed = subjects.length > 0 && subjects.every((s: any) => s.status === 'Pass');
+    const overallResult = allPassed ? 'Pass' : 'Fail';
+
+    return res.json({
+      exam: {
+        id: exam.id,
+        name: exam.name,
+        term: exam.term,
+        start_date: exam.start_date,
+        end_date: exam.end_date
+      },
+      subjects,
+      summary: {
+        total_obtained: totalObtained,
+        total_max: totalMax,
+        total_percentage: totalPercentage.toFixed(2),
+        grade,
+        overall_result: overallResult
+      }
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Internal server error' });

@@ -1028,4 +1028,163 @@ router.get('/payments', requireRoles(['principal', 'clerk', 'student', 'parent']
         return res.status(400).json({ error: error.message });
     return res.json({ payments: data || [] });
 });
+// ============================================
+// STUDENT FEE CYCLES
+// ============================================
+const studentFeeCycleSchema = Joi.object({
+    student_id: Joi.string().uuid().required(),
+    fee_cycle: Joi.string().valid('monthly', 'quarterly', 'yearly', 'one-time').required(),
+    effective_from: Joi.date().required(),
+    effective_to: Joi.date().allow(null).optional(),
+    fee_category_id: Joi.string().uuid().allow(null).optional()
+});
+// Set student fee cycle
+router.post('/student-cycles', requireRoles(['principal', 'clerk']), async (req, res) => {
+    const { error, value } = studentFeeCycleSchema.validate(req.body);
+    if (error)
+        return res.status(400).json({ error: error.message });
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    // Verify student belongs to school
+    const { data: student, error: studentError } = await adminSupabase
+        .from('students')
+        .select('id, school_id')
+        .eq('id', value.student_id)
+        .eq('school_id', user.schoolId)
+        .single();
+    if (studentError || !student) {
+        return res.status(404).json({ error: 'Student not found' });
+    }
+    // Deactivate existing cycles for this student/category
+    await adminSupabase
+        .from('student_fee_cycles')
+        .update({ is_active: false })
+        .eq('student_id', value.student_id)
+        .eq('school_id', user.schoolId)
+        .eq('fee_category_id', value.fee_category_id || null);
+    // Create new cycle
+    const payload = {
+        ...value,
+        school_id: user.schoolId,
+        is_active: true
+    };
+    const { data, error: dbError } = await adminSupabase
+        .from('student_fee_cycles')
+        .insert(payload)
+        .select()
+        .single();
+    if (dbError)
+        return res.status(400).json({ error: dbError.message });
+    return res.status(201).json({ cycle: data });
+});
+// Get student fee cycles
+router.get('/student-cycles/:studentId', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+    const { supabase, user } = req;
+    if (!supabase || !user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    const { data, error } = await supabase
+        .from('student_fee_cycles')
+        .select('*')
+        .eq('student_id', req.params.studentId)
+        .eq('school_id', user.schoolId)
+        .eq('is_active', true)
+        .order('effective_from', { ascending: false });
+    if (error)
+        return res.status(400).json({ error: error.message });
+    return res.json({ cycles: data || [] });
+});
+// ============================================
+// FEE BILL PERIODS
+// ============================================
+// Generate fee schedule for student
+router.post('/generate-schedule', requireRoles(['principal', 'clerk']), async (req, res) => {
+    const { student_id, academic_year } = req.body;
+    if (!student_id || !academic_year) {
+        return res.status(400).json({ error: 'student_id and academic_year are required' });
+    }
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        const { generateStudentFeeSchedule } = await import('../utils/feeBilling.js');
+        if (!user.schoolId) {
+            return res.status(500).json({ error: 'School ID not found' });
+        }
+        const periods = await generateStudentFeeSchedule(student_id, user.schoolId, academic_year, adminSupabase);
+        return res.json({
+            message: 'Fee schedule generated successfully',
+            periods: periods.length
+        });
+    }
+    catch (err) {
+        console.error('[generate-schedule] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to generate schedule' });
+    }
+});
+// Get pending periods for student
+router.get('/periods/pending/:studentId', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        const { getPendingPeriods } = await import('../utils/feeBilling.js');
+        const periods = await getPendingPeriods(req.params.studentId, adminSupabase);
+        return res.json({ periods });
+    }
+    catch (err) {
+        console.error('[pending-periods] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to get pending periods' });
+    }
+});
+// Get overdue periods for student
+router.get('/periods/overdue/:studentId', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        const { getOverduePeriods } = await import('../utils/feeBilling.js');
+        const periods = await getOverduePeriods(req.params.studentId, adminSupabase);
+        return res.json({ periods });
+    }
+    catch (err) {
+        console.error('[overdue-periods] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to get overdue periods' });
+    }
+});
+// Get total dues for student
+router.get('/dues/:studentId', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        const { getStudentTotalDues } = await import('../utils/feeBilling.js');
+        const dues = await getStudentTotalDues(req.params.studentId, adminSupabase);
+        return res.json({ dues });
+    }
+    catch (err) {
+        console.error('[student-dues] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to get student dues' });
+    }
+});
 export default router;
