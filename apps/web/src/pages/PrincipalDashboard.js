@@ -2321,6 +2321,15 @@ function FeeManagement() {
         bank_name: '',
         notes: ''
     });
+    // Fee Hikes
+    const [selectedFeeForHike, setSelectedFeeForHike] = useState(null);
+    const [showHikeModal, setShowHikeModal] = useState(false);
+    const [hikeForm, setHikeForm] = useState({
+        new_amount: '',
+        effective_from_date: new Date().toISOString().split('T')[0],
+        notes: ''
+    });
+    const [feeVersions, setFeeVersions] = useState([]);
     useEffect(() => {
         loadInitialData();
     }, []);
@@ -2343,6 +2352,11 @@ function FeeManagement() {
             loadPayments();
         else if (activeTab === 'tracking')
             loadFeeTracking();
+        else if (activeTab === 'hikes') {
+            loadClassFees();
+            loadTransportData();
+            loadOptionalFees();
+        }
     }, [activeTab]);
     useEffect(() => {
         if (selectedStudent && activeTab === 'custom') {
@@ -2877,6 +2891,97 @@ function FeeManagement() {
             setLoading(false);
         }
     };
+    const handleHikeFee = async (fee, feeType) => {
+        setSelectedFeeForHike({ ...fee, feeType });
+        setHikeForm({
+            new_amount: fee.amount?.toString() || fee.default_amount?.toString() || '',
+            effective_from_date: new Date().toISOString().split('T')[0],
+            notes: ''
+        });
+        setShowHikeModal(true);
+        // Load version history
+        try {
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            let url = '';
+            if (feeType === 'class') {
+                url = `${API_URL}/fees/class-fees/${fee.id}/versions`;
+            }
+            else if (feeType === 'transport') {
+                url = `${API_URL}/fees/transport/fees/${fee.id}/versions`;
+            }
+            else if (feeType === 'optional') {
+                url = `${API_URL}/fees/optional/${fee.id}/versions`;
+            }
+            if (url) {
+                const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                if (response.ok) {
+                    const data = await response.json();
+                    setFeeVersions(data.versions || []);
+                }
+            }
+        }
+        catch (error) {
+            console.error('Error loading fee versions:', error);
+        }
+    };
+    const handleSubmitHike = async (e) => {
+        e.preventDefault();
+        if (!selectedFeeForHike)
+            return;
+        try {
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            let url = '';
+            if (selectedFeeForHike.feeType === 'class') {
+                url = `${API_URL}/fees/class-fees/${selectedFeeForHike.id}/hike`;
+            }
+            else if (selectedFeeForHike.feeType === 'transport') {
+                url = `${API_URL}/fees/transport/fees/${selectedFeeForHike.id}/hike`;
+            }
+            else if (selectedFeeForHike.feeType === 'optional') {
+                url = `${API_URL}/fees/optional/${selectedFeeForHike.id}/hike`;
+            }
+            if (!url)
+                return;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    new_amount: parseFloat(hikeForm.new_amount),
+                    effective_from_date: hikeForm.effective_from_date,
+                    notes: hikeForm.notes
+                }),
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to hike fee');
+            }
+            alert('Fee hike applied successfully! Future bills will use the new amount.');
+            setShowHikeModal(false);
+            setSelectedFeeForHike(null);
+            setHikeForm({
+                new_amount: '',
+                effective_from_date: new Date().toISOString().split('T')[0],
+                notes: ''
+            });
+            // Reload fees
+            if (activeTab === 'class-fees')
+                loadClassFees();
+            else if (activeTab === 'transport')
+                loadTransportData();
+            else if (activeTab === 'optional')
+                loadOptionalFees();
+        }
+        catch (error) {
+            alert(error.message || 'Failed to hike fee');
+        }
+    };
     const downloadInvoice = (bill) => {
         // Create invoice HTML
         const invoiceHTML = `
@@ -3000,7 +3105,8 @@ function FeeManagement() {
                             { id: 'custom', label: 'Custom Fees' },
                             { id: 'bills', label: 'Fee Bills' },
                             { id: 'payments', label: 'Payments' },
-                            { id: 'tracking', label: 'Fee Tracking' }
+                            { id: 'tracking', label: 'Fee Tracking' },
+                            { id: 'hikes', label: 'Fee Hikes' }
                         ].map((tab) => (_jsx("button", { onClick: () => setActiveTab(tab.id), className: `px-6 py-4 text-sm font-medium border-b-2 ${activeTab === tab.id
                                 ? 'border-blue-500 text-blue-600'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`, children: tab.label }, tab.id))) }) }) }), activeTab === 'categories' && (_jsxs("div", { className: "bg-white rounded-lg shadow p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: "Fee Categories" }), _jsx("button", { onClick: () => setShowCategoryModal(true), className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "+ Add Category" })] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Description" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Order" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: feeCategories.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 4, className: "px-6 py-4 text-center text-gray-500", children: "No fee categories found. Click \"Add Category\" to get started." }) })) : (feeCategories.map((category) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4 whitespace-nowrap font-medium", children: category.name }), _jsx("td", { className: "px-6 py-4", children: category.description || '-' }), _jsx("td", { className: "px-6 py-4", children: category.display_order }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("button", { className: "text-blue-600 hover:text-blue-800", children: "Edit" }) })] }, category.id)))) })] }) })] })), activeTab === 'class-fees' && (_jsxs("div", { className: "bg-white rounded-lg shadow p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: "Class Fees" }), _jsx("button", { onClick: () => setShowClassFeeModal(true), className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "+ Add Class Fee" })] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Class" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Category" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Amount" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Cycle" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Due Day" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: classFees.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 6, className: "px-6 py-4 text-center text-gray-500", children: "No class fees found. Click \"Add Class Fee\" to get started." }) })) : (classFees.map((fee) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: fee.class_groups?.name || '-' }), _jsx("td", { className: "px-6 py-4", children: fee.fee_categories?.name || '-' }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(fee.amount || 0).toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: fee.fee_cycle }), _jsx("td", { className: "px-6 py-4", children: fee.due_day || '-' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("button", { className: "text-blue-600 hover:text-blue-800", children: "Edit" }) })] }, fee.id)))) })] }) })] })), activeTab === 'transport' && (_jsxs("div", { className: "space-y-6", children: [_jsxs("div", { className: "bg-white rounded-lg shadow p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: "Transport Routes" }), _jsx("button", { onClick: () => setShowRouteModal(true), className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "+ Add Route" })] }), _jsx("div", { className: "overflow-x-auto mb-6", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Route Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Bus Number" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Zone" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Distance" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: transportRoutes.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 5, className: "px-6 py-4 text-center text-gray-500", children: "No transport routes found." }) })) : (transportRoutes.map((route) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4 font-medium", children: route.route_name }), _jsx("td", { className: "px-6 py-4", children: route.bus_number || '-' }), _jsx("td", { className: "px-6 py-4", children: route.zone || '-' }), _jsx("td", { className: "px-6 py-4", children: route.distance_km ? `${route.distance_km} km` : '-' }), _jsx("td", { className: "px-6 py-4", children: _jsx("button", { className: "text-blue-600 hover:text-blue-800", children: "Edit" }) })] }, route.id)))) })] }) })] }), _jsxs("div", { className: "bg-white rounded-lg shadow p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: "Transport Fees" }), _jsx("button", { onClick: () => setShowTransportFeeModal(true), className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "+ Add Transport Fee" })] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Route" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Base Fee" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Escort Fee" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Fuel Surcharge" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Cycle" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: transportFees.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 6, className: "px-6 py-4 text-center text-gray-500", children: "No transport fees found." }) })) : (transportFees.map((fee) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: fee.transport_routes?.route_name || '-' }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(fee.base_fee || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(fee.escort_fee || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(fee.fuel_surcharge || 0).toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: fee.fee_cycle }), _jsx("td", { className: "px-6 py-4", children: _jsx("button", { className: "text-blue-600 hover:text-blue-800", children: "Edit" }) })] }, fee.id)))) })] }) })] })] })), activeTab === 'optional' && (_jsxs("div", { className: "bg-white rounded-lg shadow p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: "Optional Fees" }), _jsx("button", { onClick: () => setShowOptionalFeeModal(true), className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "+ Add Optional Fee" })] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Default Amount" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Cycle" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: optionalFees.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 4, className: "px-6 py-4 text-center text-gray-500", children: "No optional fees found." }) })) : (optionalFees.map((fee) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4 font-medium", children: fee.name }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(fee.default_amount || 0).toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: fee.fee_cycle }), _jsx("td", { className: "px-6 py-4", children: _jsx("button", { className: "text-blue-600 hover:text-blue-800", children: "Edit" }) })] }, fee.id)))) })] }) })] })), activeTab === 'custom' && (_jsxs("div", { className: "bg-white rounded-lg shadow p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: "Student Custom Fees" }), _jsx("button", { onClick: () => setShowCustomFeeModal(true), className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "+ Add Custom Fee" })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Filter by Student" }), _jsxs("select", { value: selectedStudent, onChange: (e) => setSelectedStudent(e.target.value), className: "w-full md:w-64 border border-gray-300 rounded-lg px-4 py-2", children: [_jsx("option", { value: "", children: "All Students" }), students.map((student) => (_jsxs("option", { value: student.id, children: [student.profile?.full_name, " (", student.roll_number, ")"] }, student.id)))] })] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Student" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Type" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Description" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Amount" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Cycle" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: customFees.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 6, className: "px-6 py-4 text-center text-gray-500", children: "No custom fees found." }) })) : (customFees.map((fee) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: fee.students?.profile?.full_name || '-' }), _jsx("td", { className: "px-6 py-4", children: _jsx("span", { className: `px-2 py-1 rounded text-xs ${['discount', 'scholarship', 'concession', 'waiver'].includes(fee.fee_type)
@@ -3070,7 +3176,18 @@ function FeeManagement() {
                                                 });
                                                 setSelectedBill(null);
                                                 setShowPaymentModal(true);
-                                            }, className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Record Payment" }))] })] })] }) }))] }));
+                                            }, className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Record Payment" }))] })] })] }) })), activeTab === 'hikes' && (_jsxs("div", { className: "bg-white rounded-lg shadow p-6", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Fee Hikes & Version History" }), _jsx("p", { className: "text-gray-600 mb-6", children: "Increase or decrease fees for future billing periods. Past bills remain unchanged." }), _jsxs("div", { className: "mb-8", children: [_jsx("h4", { className: "text-lg font-semibold mb-4", children: "Class Fees" }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Class" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Category" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Current Amount" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Cycle" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: classFees.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 5, className: "px-6 py-4 text-center text-gray-500", children: "No class fees found." }) })) : (classFees.map((fee) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: fee.class_groups?.name || '-' }), _jsx("td", { className: "px-6 py-4", children: fee.fee_categories?.name || '-' }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(fee.amount || 0).toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: fee.fee_cycle }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("button", { onClick: () => handleHikeFee(fee, 'class'), className: "text-blue-600 hover:text-blue-800 mr-4", children: "Hike Fee" }) })] }, fee.id)))) })] }) })] }), _jsxs("div", { className: "mb-8", children: [_jsx("h4", { className: "text-lg font-semibold mb-4", children: "Transport Fees" }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Route" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Current Amount" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Cycle" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: transportFees.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 4, className: "px-6 py-4 text-center text-gray-500", children: "No transport fees found." }) })) : (transportFees.map((fee) => {
+                                                const totalAmount = parseFloat(fee.base_fee || 0) +
+                                                    parseFloat(fee.escort_fee || 0) +
+                                                    parseFloat(fee.fuel_surcharge || 0);
+                                                return (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: fee.transport_routes?.route_name || '-' }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", totalAmount.toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: fee.fee_cycle }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("button", { onClick: () => handleHikeFee({ ...fee, amount: totalAmount }, 'transport'), className: "text-blue-600 hover:text-blue-800 mr-4", children: "Hike Fee" }) })] }, fee.id));
+                                            })) })] }) })] }), _jsxs("div", { children: [_jsx("h4", { className: "text-lg font-semibold mb-4", children: "Optional Fees" }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Current Amount" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Cycle" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: optionalFees.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 4, className: "px-6 py-4 text-center text-gray-500", children: "No optional fees found." }) })) : (optionalFees.map((fee) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: fee.name }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(fee.default_amount || 0).toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: fee.fee_cycle }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("button", { onClick: () => handleHikeFee(fee, 'optional'), className: "text-blue-600 hover:text-blue-800 mr-4", children: "Hike Fee" }) })] }, fee.id)))) })] }) })] })] })), showHikeModal && selectedFeeForHike && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Hike Fee" }), _jsxs("form", { onSubmit: handleSubmitHike, children: [_jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Current Amount" }), _jsx("input", { type: "text", value: selectedFeeForHike.amount || selectedFeeForHike.default_amount || '', disabled: true, className: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100" })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "New Amount *" }), _jsx("input", { type: "number", step: "0.01", required: true, value: hikeForm.new_amount, onChange: (e) => setHikeForm({ ...hikeForm, new_amount: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-lg" })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Effective From Date *" }), _jsx("input", { type: "date", required: true, value: hikeForm.effective_from_date, onChange: (e) => setHikeForm({ ...hikeForm, effective_from_date: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-lg" }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Bills generated after this date will use the new amount. Past bills remain unchanged." })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Notes (Optional)" }), _jsx("textarea", { value: hikeForm.notes, onChange: (e) => setHikeForm({ ...hikeForm, notes: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-lg", rows: 3 })] }), feeVersions.length > 0 && (_jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Version History" }), _jsx("div", { className: "max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2", children: feeVersions.map((version, idx) => (_jsxs("div", { className: "text-xs mb-2 pb-2 border-b last:border-0", children: [_jsxs("div", { className: "flex justify-between", children: [_jsxs("span", { className: "font-medium", children: ["Version ", version.version_number] }), _jsxs("span", { children: ["\u20B9", parseFloat(version.amount || 0).toLocaleString()] })] }), _jsxs("div", { className: "text-gray-500", children: [new Date(version.effective_from_date).toLocaleDateString(), " -", ' ', version.effective_to_date
+                                                                ? new Date(version.effective_to_date).toLocaleDateString()
+                                                                : 'Active'] })] }, version.id))) })] })), _jsxs("div", { className: "flex justify-end space-x-3", children: [_jsx("button", { type: "button", onClick: () => {
+                                                setShowHikeModal(false);
+                                                setSelectedFeeForHike(null);
+                                                setFeeVersions([]);
+                                            }, className: "px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50", children: "Cancel" }), _jsx("button", { type: "submit", className: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700", children: "Apply Fee Hike" })] })] })] }) }))] }));
 }
 export default function PrincipalDashboard() {
     const location = useLocation();
