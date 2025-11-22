@@ -10,7 +10,7 @@ router.get('/info', requireRoles(['principal', 'clerk']), async (req, res) => {
         // Get school info for the user's school
         const { data: school, error: schoolError } = await supabase
             .from('schools')
-            .select('id, name, join_code, address, contact_email, contact_phone, logo_url, created_at')
+            .select('id, name, join_code, registration_number, address, contact_email, contact_phone, logo_url, created_at')
             .eq('id', user.schoolId)
             .single();
         if (schoolError) {

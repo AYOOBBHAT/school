@@ -201,7 +201,7 @@ function DashboardOverview() {
         const loadSchoolInfoFromSupabase = async () => {
           const { data: school, error: schoolError } = await supabase
             .from('schools')
-            .select('id, name, join_code, address, contact_email, contact_phone, logo_url, created_at')
+            .select('id, name, join_code, registration_number, address, contact_email, contact_phone, logo_url, created_at')
             .eq('id', schoolId)
             .single();
 
@@ -447,9 +447,25 @@ function DashboardOverview() {
       <div className="mb-6">
         <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>
         {schoolInfo && (
-          <p className="text-gray-600 mt-2">
-            Welcome to {schoolInfo.name}
-          </p>
+          <div className="mt-4 space-y-2">
+            <p className="text-gray-600">
+              Welcome to <span className="font-semibold text-gray-900">{schoolInfo.name}</span>
+            </p>
+            <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+              {schoolInfo.join_code && (
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">School Code:</span>
+                  <span className="font-mono font-semibold text-gray-900">{schoolInfo.join_code}</span>
+                </div>
+              )}
+              {schoolInfo.registration_number && (
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">Registration No:</span>
+                  <span className="font-semibold text-gray-900">{schoolInfo.registration_number}</span>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

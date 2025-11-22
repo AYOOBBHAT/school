@@ -92,13 +92,6 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
   const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
-    // Check if email already exists
-    const { data: existingUser } = await supabase.auth.admin.listUsers();
-    const userExists = existingUser?.users?.find((u: any) => u.email === value.email);
-    if (userExists) {
-      return res.status(400).json({ error: 'User with this email already exists' });
-    }
-
     // Check if username already exists in this school
     const { data: existingProfile } = await supabase
       .from('profiles')
@@ -111,9 +104,37 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
       return res.status(400).json({ error: 'Username already exists in this school. Please choose a different username.' });
     }
 
-    // Create auth user
+    // For students, email can be duplicated within the same school (e.g., siblings)
+    // But Supabase Auth requires unique emails globally, so we generate a unique email for auth
+    // while storing the original email in the profile
+    let authEmail = value.email;
+    let emailSuffix = 1;
+    
+    // Check if email already exists in auth, and if so, generate a unique one
+    const { data: existingUsers } = await supabase.auth.admin.listUsers();
+    const emailExists = existingUsers?.users?.some((u: any) => u.email === authEmail);
+    
+    if (emailExists) {
+      // Generate unique email for auth: email+username@domain or email.username@domain
+      const emailParts = value.email.split('@');
+      if (emailParts.length === 2) {
+        const [localPart, domain] = emailParts;
+        // Use username to make it unique
+        authEmail = `${localPart}+${value.username}@${domain}`;
+        
+        // If that still exists, add a number
+        let stillExists = existingUsers?.users?.some((u: any) => u.email === authEmail);
+        while (stillExists && emailSuffix < 100) {
+          authEmail = `${localPart}+${value.username}${emailSuffix}@${domain}`;
+          stillExists = existingUsers?.users?.some((u: any) => u.email === authEmail);
+          emailSuffix++;
+        }
+      }
+    }
+
+    // Create auth user with potentially modified email
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: value.email,
+      email: authEmail,
       password: value.password,
       email_confirm: true,
       user_metadata: { role: 'student', school_id: user.schoolId }
