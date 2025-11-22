@@ -102,7 +102,7 @@ router.get('/class-fees', requireRoles(['principal', 'clerk', 'student', 'parent
         return res.status(500).json({ error: 'Server misconfigured' });
     const classGroupId = req.query.class_group_id;
     let query = supabase
-        .from('class_fees')
+        .from('class_fee_defaults')
         .select(`
       *,
       class_groups:class_group_id(id, name),
@@ -129,7 +129,7 @@ router.post('/class-fees', requireRoles(['principal', 'clerk']), async (req, res
         return res.status(500).json({ error: 'Server misconfigured' });
     const payload = { ...value, school_id: user.schoolId };
     const { data, error: dbError } = await supabase
-        .from('class_fees')
+        .from('class_fee_defaults')
         .insert(payload)
         .select(`
       *,
@@ -150,7 +150,7 @@ router.put('/class-fees/:id', requireRoles(['principal', 'clerk']), async (req, 
     if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { data, error: dbError } = await supabase
-        .from('class_fees')
+        .from('class_fee_defaults')
         .update(value)
         .eq('id', req.params.id)
         .eq('school_id', user.schoolId)
@@ -172,7 +172,7 @@ router.delete('/class-fees/:id', requireRoles(['principal', 'clerk']), async (re
     if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { error } = await supabase
-        .from('class_fees')
+        .from('class_fee_defaults')
         .delete()
         .eq('id', req.params.id)
         .eq('school_id', user.schoolId);
@@ -264,7 +264,7 @@ router.get('/transport/fees', requireRoles(['principal', 'clerk', 'student', 'pa
     if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { data, error } = await supabase
-        .from('transport_fees')
+        .from('transport_fee_defaults')
         .select(`
       *,
       transport_routes:route_id(id, route_name, bus_number, zone)
@@ -299,7 +299,7 @@ router.post('/transport/fees', requireRoles(['principal', 'clerk']), async (req,
     }
     const payload = { ...value, school_id: user.schoolId };
     const { data, error: dbError } = await adminSupabase
-        .from('transport_fees')
+        .from('transport_fee_defaults')
         .insert(payload)
         .select(`
       *,
@@ -319,7 +319,7 @@ router.put('/transport/fees/:id', requireRoles(['principal', 'clerk']), async (r
     if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { data, error: dbError } = await supabase
-        .from('transport_fees')
+        .from('transport_fee_defaults')
         .update(value)
         .eq('id', req.params.id)
         .eq('school_id', user.schoolId)
@@ -350,7 +350,7 @@ router.get('/optional', requireRoles(['principal', 'clerk', 'student', 'parent']
     if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { data, error } = await supabase
-        .from('optional_fees')
+        .from('optional_fee_definitions')
         .select('*')
         .eq('school_id', user.schoolId)
         .eq('is_active', true)
@@ -369,7 +369,7 @@ router.post('/optional', requireRoles(['principal', 'clerk']), async (req, res) 
         return res.status(500).json({ error: 'Server misconfigured' });
     const payload = { ...value, school_id: user.schoolId };
     const { data, error: dbError } = await supabase
-        .from('optional_fees')
+        .from('optional_fee_definitions')
         .insert(payload)
         .select()
         .single();
@@ -386,7 +386,7 @@ router.put('/optional/:id', requireRoles(['principal', 'clerk']), async (req, re
     if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { data, error: dbError } = await supabase
-        .from('optional_fees')
+        .from('optional_fee_definitions')
         .update(value)
         .eq('id', req.params.id)
         .eq('school_id', user.schoolId)
@@ -664,7 +664,7 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
             const billItems = [];
             // 1. Class Fees
             const { data: classFees } = await adminSupabase
-                .from('class_fees')
+                .from('class_fee_defaults')
                 .select('*, fee_categories:fee_category_id(name)')
                 .eq('class_group_id', student.class_group_id)
                 .eq('school_id', user.schoolId)
@@ -697,7 +697,7 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
                 .single();
             if (transportAssignment) {
                 const { data: transportFee } = await adminSupabase
-                    .from('transport_fees')
+                    .from('transport_fee_defaults')
                     .select('*, transport_routes:route_id(route_name)')
                     .eq('route_id', transportAssignment.route_id)
                     .eq('school_id', user.schoolId)
@@ -723,7 +723,7 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
             }
             // 3. Optional Fees (for now, include if they're monthly or one-time)
             const { data: optionalFees } = await adminSupabase
-                .from('optional_fees')
+                .from('optional_fee_definitions')
                 .select('*')
                 .eq('school_id', user.schoolId)
                 .eq('is_active', true);
