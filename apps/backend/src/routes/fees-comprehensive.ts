@@ -35,8 +35,8 @@ router.get('/categories', requireRoles(['principal', 'clerk', 'student', 'parent
   return res.json({ categories: data || [] });
 });
 
-// Create fee category
-router.post('/categories', requireRoles(['principal', 'clerk']), async (req, res) => {
+// Create fee category (Principal only)
+router.post('/categories', requireRoles(['principal']), async (req, res) => {
   const { error, value } = feeCategorySchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -54,8 +54,8 @@ router.post('/categories', requireRoles(['principal', 'clerk']), async (req, res
   return res.status(201).json({ category: data });
 });
 
-// Update fee category
-router.put('/categories/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
+// Update fee category (Principal only)
+router.put('/categories/:id', requireRoles(['principal']), async (req, res) => {
   const { error, value } = feeCategorySchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -75,8 +75,8 @@ router.put('/categories/:id', requireRoles(['principal', 'clerk']), async (req, 
   return res.json({ category: data });
 });
 
-// Delete fee category
-router.delete('/categories/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
+// Delete fee category (Principal only)
+router.delete('/categories/:id', requireRoles(['principal']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -133,8 +133,8 @@ router.get('/class-fees', requireRoles(['principal', 'clerk', 'student', 'parent
   return res.json({ class_fees: data || [] });
 });
 
-// Create class fee
-router.post('/class-fees', requireRoles(['principal', 'clerk']), async (req, res) => {
+// Create class fee (Principal only)
+router.post('/class-fees', requireRoles(['principal']), async (req, res) => {
   const { error, value } = classFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -192,8 +192,8 @@ router.post('/class-fees', requireRoles(['principal', 'clerk']), async (req, res
   }
 });
 
-// Update class fee
-router.put('/class-fees/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
+// Update class fee (Principal only)
+router.put('/class-fees/:id', requireRoles(['principal']), async (req, res) => {
   const { error, value } = classFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -217,8 +217,8 @@ router.put('/class-fees/:id', requireRoles(['principal', 'clerk']), async (req, 
   return res.json({ class_fee: data });
 });
 
-// Delete class fee
-router.delete('/class-fees/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
+// Delete class fee (Principal only)
+router.delete('/class-fees/:id', requireRoles(['principal']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -262,7 +262,7 @@ router.get('/transport/routes', requireRoles(['principal', 'clerk', 'student', '
 });
 
 // Create transport route
-router.post('/transport/routes', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.post('/transport/routes', requireRoles(['principal']), async (req, res) => {
   const { error, value } = transportRouteSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -281,7 +281,7 @@ router.post('/transport/routes', requireRoles(['principal', 'clerk']), async (re
 });
 
 // Update transport route
-router.put('/transport/routes/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.put('/transport/routes/:id', requireRoles(['principal']), async (req, res) => {
   const { error, value } = transportRouteSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -336,7 +336,7 @@ router.get('/transport/fees', requireRoles(['principal', 'clerk', 'student', 'pa
 });
 
 // Create transport fee
-router.post('/transport/fees', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.post('/transport/fees', requireRoles(['principal']), async (req, res) => {
   const { error, value } = transportFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -374,7 +374,7 @@ router.post('/transport/fees', requireRoles(['principal', 'clerk']), async (req,
 });
 
 // Update transport fee
-router.put('/transport/fees/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.put('/transport/fees/:id', requireRoles(['principal']), async (req, res) => {
   const { error, value } = transportFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -426,7 +426,7 @@ router.get('/optional', requireRoles(['principal', 'clerk', 'student', 'parent']
 });
 
 // Create optional fee
-router.post('/optional', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.post('/optional', requireRoles(['principal']), async (req, res) => {
   const { error, value } = optionalFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -487,7 +487,7 @@ router.post('/optional', requireRoles(['principal', 'clerk']), async (req, res) 
 });
 
 // Update optional fee
-router.put('/optional/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.put('/optional/:id', requireRoles(['principal']), async (req, res) => {
   const { error, value } = optionalFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -521,7 +521,7 @@ const studentTransportSchema = Joi.object({
 });
 
 // Assign student to transport route
-router.post('/transport/assign', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.post('/transport/assign', requireRoles(['principal']), async (req, res) => {
   const { error, value } = studentTransportSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -625,7 +625,7 @@ const studentCustomFeeSchema = Joi.object({
 });
 
 // Create student custom fee
-router.post('/custom', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.post('/custom', requireRoles(['principal']), async (req, res) => {
   const { error, value } = studentCustomFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -677,7 +677,7 @@ router.get('/custom', requireRoles(['principal', 'clerk', 'student', 'parent']),
 });
 
 // Update student custom fee
-router.put('/custom/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.put('/custom/:id', requireRoles(['principal']), async (req, res) => {
   const { error, value } = studentCustomFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -701,7 +701,7 @@ router.put('/custom/:id', requireRoles(['principal', 'clerk']), async (req, res)
 });
 
 // Deactivate student custom fee
-router.delete('/custom/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.delete('/custom/:id', requireRoles(['principal']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -1411,7 +1411,7 @@ const feeHikeSchema = Joi.object({
 });
 
 // Hike Class Fee (Create New Version)
-router.post('/class-fees/:id/hike', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.post('/class-fees/:id/hike', requireRoles(['principal']), async (req, res) => {
   const { error, value } = feeHikeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -1471,7 +1471,7 @@ router.post('/class-fees/:id/hike', requireRoles(['principal', 'clerk']), async 
 });
 
 // Hike Transport Fee
-router.post('/transport/fees/:id/hike', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.post('/transport/fees/:id/hike', requireRoles(['principal']), async (req, res) => {
   const { error, value } = feeHikeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -1547,7 +1547,7 @@ router.post('/transport/fees/:id/hike', requireRoles(['principal', 'clerk']), as
 });
 
 // Hike Optional Fee
-router.post('/optional/:id/hike', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.post('/optional/:id/hike', requireRoles(['principal']), async (req, res) => {
   const { error, value } = feeHikeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 

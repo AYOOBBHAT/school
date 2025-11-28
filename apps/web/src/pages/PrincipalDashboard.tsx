@@ -2729,7 +2729,13 @@ function StudentsManagement() {
     class_group_id: '',
     section_id: '',
     admission_date: '',
-    gender: '' as 'male' | 'female' | 'other' | ''
+    gender: '' as 'male' | 'female' | 'other' | '',
+    date_of_birth: '',
+    home_address: '',
+    guardian_name: '',
+    guardian_phone: '',
+    guardian_email: '',
+    guardian_relationship: 'parent'
   });
   const [usernameStatus, setUsernameStatus] = useState<{
     checking: boolean;
@@ -3077,7 +3083,13 @@ function StudentsManagement() {
           class_group_id: addStudentForm.class_group_id || null,
           section_id: addStudentForm.section_id || null,
           admission_date: addStudentForm.admission_date || null,
-          gender: addStudentForm.gender || null
+          gender: addStudentForm.gender || null,
+          date_of_birth: addStudentForm.date_of_birth || null,
+          home_address: addStudentForm.home_address || null,
+          guardian_name: addStudentForm.guardian_name,
+          guardian_phone: addStudentForm.guardian_phone,
+          guardian_email: addStudentForm.guardian_email || null,
+          guardian_relationship: addStudentForm.guardian_relationship
         }),
       });
 
@@ -3098,7 +3110,13 @@ function StudentsManagement() {
         class_group_id: '', 
         section_id: '', 
         admission_date: '', 
-        gender: '' 
+        gender: '',
+        date_of_birth: '',
+        home_address: '',
+        guardian_name: '',
+        guardian_phone: '',
+        guardian_email: '',
+        guardian_relationship: 'parent'
       });
       setUsernameStatus({ checking: false, available: null, message: '' });
       window.location.reload();
@@ -3619,6 +3637,25 @@ function StudentsManagement() {
                 </div>
               )}
               <div>
+                <label className="block text-sm font-medium mb-1">Date of Birth</label>
+                <input
+                  type="date"
+                  value={addStudentForm.date_of_birth}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, date_of_birth: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Home Address</label>
+                <textarea
+                  value={addStudentForm.home_address}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, home_address: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                  rows={3}
+                  placeholder="Enter home address"
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-1">Admission Date</label>
                 <input
                   type="date"
@@ -3627,6 +3664,57 @@ function StudentsManagement() {
                   className="w-full px-3 py-2 border rounded-md"
                 />
               </div>
+              
+              {/* Parent/Guardian Information Section */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-lg font-semibold mb-3 text-gray-700">Parent/Guardian Information</h4>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Parent/Guardian Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={addStudentForm.guardian_name}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, guardian_name: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md"
+                    placeholder="Full name of parent or guardian"
+                  />
+                </div>
+                <div className="mt-3">
+                  <label className="block text-sm font-medium mb-1">Parent/Guardian Phone Number *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={addStudentForm.guardian_phone}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, guardian_phone: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md"
+                    placeholder="Phone number"
+                  />
+                </div>
+                <div className="mt-3">
+                  <label className="block text-sm font-medium mb-1">Parent/Guardian Email</label>
+                  <input
+                    type="email"
+                    value={addStudentForm.guardian_email}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, guardian_email: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md"
+                    placeholder="Email address (optional)"
+                  />
+                </div>
+                <div className="mt-3">
+                  <label className="block text-sm font-medium mb-1">Relationship</label>
+                  <select
+                    value={addStudentForm.guardian_relationship}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, guardian_relationship: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md"
+                  >
+                    <option value="parent">Parent</option>
+                    <option value="guardian">Guardian</option>
+                    <option value="relative">Relative</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
+              
               <div className="flex gap-3 mt-6">
                 <button
                   type="submit"
@@ -3653,7 +3741,13 @@ function StudentsManagement() {
                       class_group_id: '', 
                       section_id: '', 
                       admission_date: '', 
-                      gender: '' 
+                      gender: '',
+                      date_of_birth: '',
+                      home_address: '',
+                      guardian_name: '',
+                      guardian_phone: '',
+                      guardian_email: '',
+                      guardian_relationship: 'parent'
                     });
                     setUsernameStatus({ checking: false, available: null, message: '' });
                   }}

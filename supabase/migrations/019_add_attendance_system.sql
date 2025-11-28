@@ -2,6 +2,19 @@
 -- Supports: Timetable, holiday handling, one-class-per-day per teacher, locking
 
 -- ============================================
+-- Helper functions (if not already exists)
+-- ============================================
+create or replace function get_user_school_id()
+returns uuid as $$
+  select school_id from profiles where id = auth.uid();
+$$ language sql stable security definer;
+
+create or replace function get_user_role()
+returns text as $$
+  select role from profiles where id = auth.uid();
+$$ language sql stable security definer;
+
+-- ============================================
 -- 1. TIMETABLE (Period Schedule)
 -- ============================================
 create table if not exists timetable (
@@ -30,7 +43,9 @@ create table if not exists timetable (
 );
 
 -- Indexes for timetable
+drop index if exists idx_timetable_teacher_day;
 create index idx_timetable_teacher_day on timetable(teacher_id, day_of_week, academic_year, is_active);
+drop index if exists idx_timetable_class_day;
 create index idx_timetable_class_day on timetable(class_group_id, section_id, day_of_week, academic_year);
 
 -- ============================================
@@ -48,6 +63,7 @@ create table if not exists school_holidays (
 );
 
 -- Index for holiday lookups
+drop index if exists idx_school_holidays_date;
 create index idx_school_holidays_date on school_holidays(school_id, holiday_date);
 
 -- ============================================
@@ -80,11 +96,15 @@ create table student_attendance (
 );
 
 -- Indexes for attendance
+drop index if exists idx_student_attendance_date;
 create index idx_student_attendance_date on student_attendance(attendance_date, class_group_id);
+drop index if exists idx_student_attendance_student;
 create index idx_student_attendance_student on student_attendance(student_id, attendance_date);
+drop index if exists idx_student_attendance_class_date;
 create index idx_student_attendance_class_date on student_attendance(class_group_id, section_id, attendance_date);
 
 -- Index for class-level locking check
+drop index if exists idx_class_attendance_lock;
 create unique index idx_class_attendance_lock 
   on student_attendance(class_group_id, attendance_date, marked_by) 
   where is_locked = true;
@@ -109,7 +129,9 @@ create table if not exists class_attendance_lock (
 );
 
 -- Indexes for lock lookups
+drop index if exists idx_class_lock_teacher_date;
 create index idx_class_lock_teacher_date on class_attendance_lock(teacher_id, attendance_date);
+drop index if exists idx_class_lock_class_date;
 create index idx_class_lock_class_date on class_attendance_lock(class_group_id, section_id, attendance_date);
 
 -- ============================================
@@ -126,15 +148,15 @@ alter table class_attendance_lock enable row level security;
 drop policy if exists mt_timetable_select on timetable;
 create policy mt_timetable_select on timetable
   for select using (
-    school_id = auth_claim('school_id')::uuid
+    school_id = get_user_school_id()
     and (
-      auth_claim('role') in ('principal', 'clerk', 'teacher')
-      or (auth_claim('role') = 'student' and exists (
+      get_user_role() in ('principal', 'clerk', 'teacher')
+      or (get_user_role() = 'student' and exists (
         select 1 from students s 
         where s.profile_id = auth.uid()
         and s.class_group_id = timetable.class_group_id
       ))
-      or (auth_claim('role') = 'parent' and exists (
+      or (get_user_role() = 'parent' and exists (
         select 1 from student_guardians sg
         join students s on s.id = sg.student_id
         where sg.guardian_profile_id = auth.uid()
@@ -146,11 +168,11 @@ create policy mt_timetable_select on timetable
 drop policy if exists mt_timetable_modify on timetable;
 create policy mt_timetable_modify on timetable
   for all using (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk')
+    school_id = get_user_school_id()
+    and get_user_role() in ('principal', 'clerk')
   ) with check (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk')
+    school_id = get_user_school_id()
+    and get_user_role() in ('principal', 'clerk')
   );
 
 -- ============================================
@@ -158,16 +180,16 @@ create policy mt_timetable_modify on timetable
 -- ============================================
 drop policy if exists mt_school_holidays_select on school_holidays;
 create policy mt_school_holidays_select on school_holidays
-  for select using (school_id = auth_claim('school_id')::uuid);
+  for select using (school_id = get_user_school_id());
 
 drop policy if exists mt_school_holidays_modify on school_holidays;
 create policy mt_school_holidays_modify on school_holidays
   for all using (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk')
+    school_id = get_user_school_id()
+    and get_user_role() in ('principal', 'clerk')
   ) with check (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk')
+    school_id = get_user_school_id()
+    and get_user_role() in ('principal', 'clerk')
   );
 
 -- ============================================
@@ -176,13 +198,13 @@ create policy mt_school_holidays_modify on school_holidays
 drop policy if exists mt_student_attendance_select on student_attendance;
 create policy mt_student_attendance_select on student_attendance
   for select using (
-    school_id = auth_claim('school_id')::uuid
+    school_id = get_user_school_id()
     and (
-      auth_claim('role') in ('principal', 'clerk', 'teacher')
-      or (auth_claim('role') = 'student' and student_id in (
+      get_user_role() in ('principal', 'clerk', 'teacher')
+      or (get_user_role() = 'student' and student_id in (
         select s.id from students s where s.profile_id = auth.uid()
       ))
-      or (auth_claim('role') = 'parent' and exists (
+      or (get_user_role() = 'parent' and exists (
         select 1 from student_guardians sg where sg.student_id = student_attendance.student_id and sg.guardian_profile_id = auth.uid()
       ))
     )
@@ -191,16 +213,16 @@ create policy mt_student_attendance_select on student_attendance
 drop policy if exists mt_student_attendance_modify on student_attendance;
 create policy mt_student_attendance_modify on student_attendance
   for all using (
-    school_id = auth_claim('school_id')::uuid
+    school_id = get_user_school_id()
     and (
-      auth_claim('role') in ('principal', 'clerk')
-      or (auth_claim('role') = 'teacher' and marked_by = auth.uid() and is_locked = false)
+      get_user_role() in ('principal', 'clerk')
+      or (get_user_role() = 'teacher' and marked_by = auth.uid() and is_locked = false)
     )
   ) with check (
-    school_id = auth_claim('school_id')::uuid
+    school_id = get_user_school_id()
     and (
-      auth_claim('role') in ('principal', 'clerk')
-      or (auth_claim('role') = 'teacher' and marked_by = auth.uid())
+      get_user_role() in ('principal', 'clerk')
+      or (get_user_role() = 'teacher' and marked_by = auth.uid())
     )
   );
 
@@ -210,34 +232,36 @@ create policy mt_student_attendance_modify on student_attendance
 drop policy if exists mt_class_attendance_lock_select on class_attendance_lock;
 create policy mt_class_attendance_lock_select on class_attendance_lock
   for select using (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk', 'teacher')
+    school_id = get_user_school_id()
+    and get_user_role() in ('principal', 'clerk', 'teacher')
   );
 
 drop policy if exists mt_class_attendance_lock_modify on class_attendance_lock;
 create policy mt_class_attendance_lock_modify on class_attendance_lock
   for all using (
-    school_id = auth_claim('school_id')::uuid
+    school_id = get_user_school_id()
     and (
-      auth_claim('role') in ('principal', 'clerk')
-      or (auth_claim('role') = 'teacher' and teacher_id = auth.uid())
+      get_user_role() in ('principal', 'clerk')
+      or (get_user_role() = 'teacher' and teacher_id = auth.uid())
     )
   ) with check (
-    school_id = auth_claim('school_id')::uuid
+    school_id = get_user_school_id()
     and (
-      auth_claim('role') in ('principal', 'clerk')
-      or (auth_claim('role') = 'teacher' and teacher_id = auth.uid())
+      get_user_role() in ('principal', 'clerk')
+      or (get_user_role() = 'teacher' and teacher_id = auth.uid())
     )
   );
 
 -- ============================================
 -- Triggers
 -- ============================================
+drop trigger if exists update_timetable_updated_at on timetable;
 create trigger update_timetable_updated_at
   before update on timetable
   for each row
   execute function update_updated_at_column();
 
+drop trigger if exists update_student_attendance_updated_at on student_attendance;
 create trigger update_student_attendance_updated_at
   before update on student_attendance
   for each row

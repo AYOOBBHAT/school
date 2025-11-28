@@ -17,7 +17,14 @@ const addStudentSchema = Joi.object({
     class_group_id: Joi.string().uuid().allow('', null),
     section_id: Joi.string().uuid().allow('', null),
     admission_date: Joi.string().allow('', null),
-    gender: Joi.string().valid('male', 'female', 'other').allow('', null)
+    gender: Joi.string().valid('male', 'female', 'other').allow('', null),
+    date_of_birth: Joi.string().allow('', null), // ISO date string
+    home_address: Joi.string().allow('', null),
+    // Parent/Guardian information (mandatory)
+    guardian_name: Joi.string().required(),
+    guardian_phone: Joi.string().required(),
+    guardian_email: Joi.string().email().allow('', null),
+    guardian_relationship: Joi.string().default('parent')
 });
 // Schema for adding staff (clerk or teacher)
 const addStaffSchema = Joi.object({
@@ -145,7 +152,9 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
             school_id: user.schoolId,
             status: 'active',
             roll_number: value.roll_number || null,
-            admission_date: value.admission_date || null
+            admission_date: value.admission_date || null,
+            date_of_birth: value.date_of_birth || null,
+            home_address: value.home_address || null
         };
         if (value.class_group_id) {
             studentData.class_group_id = value.class_group_id;
@@ -153,10 +162,81 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
         if (value.section_id) {
             studentData.section_id = value.section_id;
         }
-        const { error: studentError } = await supabase.from('students').insert(studentData);
+        const { data: studentRecord, error: studentError } = await supabase
+            .from('students')
+            .insert(studentData)
+            .select()
+            .single();
         if (studentError) {
-            // Log error but don't fail - student record can be updated later
-            console.error('[principal-users] Error creating student record:', studentError);
+            await supabase.auth.admin.deleteUser(authData.user.id);
+            await supabase.from('profiles').delete().eq('id', authData.user.id);
+            return res.status(400).json({ error: `Failed to create student record: ${studentError.message}` });
+        }
+        // Create parent/guardian profile
+        // Generate unique email for guardian if needed
+        let guardianAuthEmail = value.guardian_email || `${value.guardian_phone}@guardian.local`;
+        const { data: existingGuardianUsers } = await supabase.auth.admin.listUsers();
+        const guardianEmailExists = existingGuardianUsers?.users?.some((u) => u.email === guardianAuthEmail);
+        if (guardianEmailExists || !value.guardian_email) {
+            // Generate unique email
+            const emailParts = guardianAuthEmail.split('@');
+            if (emailParts.length === 2) {
+                const [localPart, domain] = emailParts;
+                guardianAuthEmail = `${localPart}+${value.username}_guardian@${domain}`;
+                let stillExists = existingGuardianUsers?.users?.some((u) => u.email === guardianAuthEmail);
+                let emailSuffix = 1;
+                while (stillExists && emailSuffix < 100) {
+                    guardianAuthEmail = `${localPart}+${value.username}_guardian${emailSuffix}@${domain}`;
+                    stillExists = existingGuardianUsers?.users?.some((u) => u.email === guardianAuthEmail);
+                    emailSuffix++;
+                }
+            }
+        }
+        // Create guardian auth user
+        const { data: guardianAuthData, error: guardianAuthError } = await supabase.auth.admin.createUser({
+            email: guardianAuthEmail,
+            password: `Guardian${value.guardian_phone.slice(-4)}!`, // Default password based on phone
+            email_confirm: true,
+            user_metadata: { role: 'parent', school_id: user.schoolId }
+        });
+        if (guardianAuthError || !guardianAuthData.user) {
+            // Log error but continue - guardian can be added later
+            console.error('[principal-users] Error creating guardian auth:', guardianAuthError);
+        }
+        else {
+            // Create guardian profile
+            const guardianProfileData = {
+                id: guardianAuthData.user.id,
+                role: 'parent',
+                school_id: user.schoolId,
+                full_name: value.guardian_name,
+                email: value.guardian_email || guardianAuthEmail,
+                phone: value.guardian_phone,
+                approval_status: 'approved'
+            };
+            const { error: guardianProfileError } = await supabase
+                .from('profiles')
+                .insert(guardianProfileData);
+            if (guardianProfileError) {
+                console.error('[principal-users] Error creating guardian profile:', guardianProfileError);
+                // Clean up guardian auth if profile creation fails
+                if (guardianAuthData.user) {
+                    await supabase.auth.admin.deleteUser(guardianAuthData.user.id);
+                }
+            }
+            else {
+                // Link guardian to student
+                const { error: guardianLinkError } = await supabase
+                    .from('student_guardians')
+                    .insert({
+                    student_id: studentRecord.id,
+                    guardian_profile_id: guardianAuthData.user.id,
+                    relationship: value.guardian_relationship || 'parent'
+                });
+                if (guardianLinkError) {
+                    console.error('[principal-users] Error linking guardian to student:', guardianLinkError);
+                }
+            }
         }
         return res.status(201).json({
             message: 'Student added successfully',
