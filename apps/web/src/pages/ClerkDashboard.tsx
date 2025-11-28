@@ -323,28 +323,28 @@ export default function ClerkDashboard() {
                     <div className="bg-white rounded-lg shadow-md p-6">
                       <h3 className="text-xl font-semibold mb-4">Quick Actions</h3>
                       <div className="space-y-3">
-                        <button
+                    <button
                           onClick={() => {
                             setActiveTab('fees');
                             navigate(tabRouteMap.fees, { replace: true });
-                          }}
+                            }}
                           className="w-full text-left px-4 py-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
                         >
                           <div className="font-medium text-blue-900">💰 Manage Fees</div>
                           <div className="text-sm text-blue-700">Generate bills & record payments</div>
-                        </button>
-                        <button
-                          onClick={() => {
+                          </button>
+                          <button
+                            onClick={() => {
                             setActiveTab('marks');
                             navigate(tabRouteMap.marks, { replace: true });
-                          }}
+                            }}
                           className="w-full text-left px-4 py-3 bg-green-50 hover:bg-green-100 rounded-lg transition"
                         >
                           <div className="font-medium text-green-900">✅ Verify Marks</div>
                           <div className="text-sm text-green-700">
                             {pendingMarks.length} marks pending verification
                           </div>
-                        </button>
+                          </button>
                       </div>
                     </div>
                   </div>

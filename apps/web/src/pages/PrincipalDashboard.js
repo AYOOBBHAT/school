@@ -1200,7 +1200,13 @@ function StudentsManagement() {
         class_group_id: '',
         section_id: '',
         admission_date: '',
-        gender: ''
+        gender: '',
+        date_of_birth: '',
+        home_address: '',
+        guardian_name: '',
+        guardian_phone: '',
+        guardian_email: '',
+        guardian_relationship: 'parent'
     });
     const [usernameStatus, setUsernameStatus] = useState({
         checking: false,
@@ -1505,7 +1511,13 @@ function StudentsManagement() {
                     class_group_id: addStudentForm.class_group_id || null,
                     section_id: addStudentForm.section_id || null,
                     admission_date: addStudentForm.admission_date || null,
-                    gender: addStudentForm.gender || null
+                    gender: addStudentForm.gender || null,
+                    date_of_birth: addStudentForm.date_of_birth || null,
+                    home_address: addStudentForm.home_address || null,
+                    guardian_name: addStudentForm.guardian_name,
+                    guardian_phone: addStudentForm.guardian_phone,
+                    guardian_email: addStudentForm.guardian_email || null,
+                    guardian_relationship: addStudentForm.guardian_relationship
                 }),
             });
             if (!response.ok) {
@@ -1524,7 +1536,13 @@ function StudentsManagement() {
                 class_group_id: '',
                 section_id: '',
                 admission_date: '',
-                gender: ''
+                gender: '',
+                date_of_birth: '',
+                home_address: '',
+                guardian_name: '',
+                guardian_phone: '',
+                guardian_email: '',
+                guardian_relationship: 'parent'
             });
             setUsernameStatus({ checking: false, available: null, message: '' });
             window.location.reload();
@@ -1578,7 +1596,7 @@ function StudentsManagement() {
                                                         ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
                                                         : '';
                                                     return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
-                                                })] })] }), addStudentForm.class_group_id && sections[addStudentForm.class_group_id] && (_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Section" }), _jsxs("select", { value: addStudentForm.section_id, onChange: (e) => setAddStudentForm({ ...addStudentForm, section_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Section (Optional)" }), sections[addStudentForm.class_group_id].map((section) => (_jsx("option", { value: section.id, children: section.name }, section.id)))] })] })), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Admission Date" }), _jsx("input", { type: "date", value: addStudentForm.admission_date, onChange: (e) => setAddStudentForm({ ...addStudentForm, admission_date: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { type: "submit", disabled: usernameStatus.checking || usernameStatus.available === false, className: `flex-1 px-4 py-2 rounded-lg ${usernameStatus.checking || usernameStatus.available === false
+                                                })] })] }), addStudentForm.class_group_id && sections[addStudentForm.class_group_id] && (_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Section" }), _jsxs("select", { value: addStudentForm.section_id, onChange: (e) => setAddStudentForm({ ...addStudentForm, section_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Section (Optional)" }), sections[addStudentForm.class_group_id].map((section) => (_jsx("option", { value: section.id, children: section.name }, section.id)))] })] })), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Date of Birth" }), _jsx("input", { type: "date", value: addStudentForm.date_of_birth, onChange: (e) => setAddStudentForm({ ...addStudentForm, date_of_birth: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Home Address" }), _jsx("textarea", { value: addStudentForm.home_address, onChange: (e) => setAddStudentForm({ ...addStudentForm, home_address: e.target.value }), className: "w-full px-3 py-2 border rounded-md", rows: 3, placeholder: "Enter home address" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Admission Date" }), _jsx("input", { type: "date", value: addStudentForm.admission_date, onChange: (e) => setAddStudentForm({ ...addStudentForm, admission_date: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { className: "border-t pt-4 mt-4", children: [_jsx("h4", { className: "text-lg font-semibold mb-3 text-gray-700", children: "Parent/Guardian Information" }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Parent/Guardian Name *" }), _jsx("input", { type: "text", required: true, value: addStudentForm.guardian_name, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Full name of parent or guardian" })] }), _jsxs("div", { className: "mt-3", children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Parent/Guardian Phone Number *" }), _jsx("input", { type: "tel", required: true, value: addStudentForm.guardian_phone, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Phone number" })] }), _jsxs("div", { className: "mt-3", children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Parent/Guardian Email" }), _jsx("input", { type: "email", value: addStudentForm.guardian_email, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_email: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Email address (optional)" })] }), _jsxs("div", { className: "mt-3", children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Relationship" }), _jsxs("select", { value: addStudentForm.guardian_relationship, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_relationship: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "parent", children: "Parent" }), _jsx("option", { value: "guardian", children: "Guardian" }), _jsx("option", { value: "relative", children: "Relative" }), _jsx("option", { value: "other", children: "Other" })] })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { type: "submit", disabled: usernameStatus.checking || usernameStatus.available === false, className: `flex-1 px-4 py-2 rounded-lg ${usernameStatus.checking || usernameStatus.available === false
                                                 ? 'bg-gray-400 cursor-not-allowed text-white'
                                                 : 'bg-green-600 text-white hover:bg-green-700'}`, children: usernameStatus.checking ? 'Checking...' : 'Add Student' }), _jsx("button", { type: "button", onClick: () => {
                                                 setAddStudentModalOpen(false);
@@ -1592,7 +1610,13 @@ function StudentsManagement() {
                                                     class_group_id: '',
                                                     section_id: '',
                                                     admission_date: '',
-                                                    gender: ''
+                                                    gender: '',
+                                                    date_of_birth: '',
+                                                    home_address: '',
+                                                    guardian_name: '',
+                                                    guardian_phone: '',
+                                                    guardian_email: '',
+                                                    guardian_relationship: 'parent'
                                                 });
                                                 setUsernameStatus({ checking: false, available: null, message: '' });
                                             }, className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] })] }) })), promoteClassModalOpen && selectedClassId && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Promote Entire Class" }), _jsx("p", { className: "text-sm text-gray-600 mb-4", children: "This will move all active students from the current class to the target class." }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Target Class" }), _jsxs("select", { value: promoteClassForm.target_class_id, onChange: (e) => setPromoteClassForm({ ...promoteClassForm, target_class_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", required: true, children: [_jsx("option", { value: "", children: "Select Target Class" }), allClasses.filter(cls => cls.id !== selectedClassId).map((cls) => {

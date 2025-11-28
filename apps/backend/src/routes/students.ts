@@ -33,27 +33,38 @@ router.get('/attendance', requireRoles(['student']), async (req, res) => {
       return res.status(404).json({ error: 'Student record not found' });
     }
 
-    // Get attendance records
+    // Get attendance records from student_attendance table (new system)
     const { data: attendance, error: attendanceError } = await adminSupabase
-      .from('attendance')
-      .select('id, date, status, created_at')
+      .from('student_attendance')
+      .select('id, attendance_date, status, created_at, class_group_id, marked_by')
       .eq('student_id', student.id)
       .eq('school_id', user.schoolId)
-      .order('date', { ascending: false })
+      .order('attendance_date', { ascending: false })
       .limit(100); // Last 100 attendance records
+    
+    // Transform to match expected format (date -> attendance_date)
+    const transformedAttendance = attendance?.map((a: any) => ({
+      id: a.id,
+      date: a.attendance_date,
+      status: a.status,
+      created_at: a.created_at,
+      class_group_id: a.class_group_id,
+      marked_by: a.marked_by
+    })) || [];
 
     if (attendanceError) {
       console.error('[students/attendance] Error fetching attendance:', attendanceError);
       return res.status(400).json({ error: attendanceError.message });
     }
 
-    console.log('[students/attendance] Found', attendance?.length || 0, 'attendance records for student:', student.id);
+    console.log('[students/attendance] Found', transformedAttendance?.length || 0, 'attendance records for student:', student.id);
 
     // Calculate attendance summary
-    const totalDays = attendance?.length || 0;
-    const presentDays = attendance?.filter(a => a.status === 'present').length || 0;
-    const absentDays = attendance?.filter(a => a.status === 'absent').length || 0;
-    const lateDays = attendance?.filter(a => a.status === 'late').length || 0;
+    const totalDays = transformedAttendance?.length || 0;
+    const presentDays = transformedAttendance?.filter((a: any) => a.status === 'present').length || 0;
+    const absentDays = transformedAttendance?.filter((a: any) => a.status === 'absent').length || 0;
+    const lateDays = transformedAttendance?.filter((a: any) => a.status === 'late').length || 0;
+    const leaveDays = transformedAttendance?.filter((a: any) => a.status === 'leave').length || 0;
     const attendancePercentage = totalDays > 0 ? ((presentDays + lateDays) / totalDays) * 100 : 0;
 
     const summary = {
@@ -61,13 +72,14 @@ router.get('/attendance', requireRoles(['student']), async (req, res) => {
       presentDays,
       absentDays,
       lateDays,
+      leaveDays,
       attendancePercentage: Math.round(attendancePercentage * 100) / 100
     };
 
     console.log('[students/attendance] Attendance summary:', summary);
 
     return res.json({
-      attendance: attendance || [],
+      attendance: transformedAttendance || [],
       summary
     });
   } catch (err: any) {
