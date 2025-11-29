@@ -96,7 +96,8 @@ router.delete('/categories/:id', requireRoles(['principal']), async (req, res) =
 
 const classFeeSchema = Joi.object({
   class_group_id: Joi.string().uuid().required(),
-  fee_category_id: Joi.string().uuid().required(),
+  name: Joi.string().required(), // Add name field
+  fee_category_id: Joi.string().uuid().allow(null).optional(), // Make optional
   amount: Joi.number().min(0).required(),
   fee_cycle: Joi.string().valid('one-time', 'monthly', 'quarterly', 'yearly').default('monthly'),
   due_day: Joi.number().integer().min(1).max(31).optional(),
@@ -170,7 +171,7 @@ router.post('/class-fees', requireRoles(['principal']), async (req, res) => {
       .insert({
         school_id: user.schoolId,
         class_group_id: value.class_group_id,
-        fee_category_id: value.fee_category_id,
+        fee_category_id: value.fee_category_id || null,
         version_number: 1,
         amount: value.amount,
         fee_cycle: value.fee_cycle,
@@ -404,7 +405,7 @@ router.put('/transport/fees/:id', requireRoles(['principal']), async (req, res) 
 const optionalFeeSchema = Joi.object({
   name: Joi.string().required(),
   description: Joi.string().allow('', null).optional(),
-  default_amount: Joi.number().min(0).required(),
+  amount: Joi.number().min(0).required(), // Changed from default_amount to amount
   fee_cycle: Joi.string().valid('one-time', 'monthly', 'quarterly', 'yearly').default('one-time'),
   is_active: Joi.boolean().default(true)
 });
@@ -467,7 +468,7 @@ router.post('/optional', requireRoles(['principal']), async (req, res) => {
         class_group_id: firstClass?.id || null,
         fee_category_id: optionalFee.fee_category_id || null,
         version_number: 1,
-        amount: value.default_amount,
+        amount: value.amount, // Changed from default_amount
         fee_cycle: value.fee_cycle,
         effective_from_date: todayStr,
         effective_to_date: null,
