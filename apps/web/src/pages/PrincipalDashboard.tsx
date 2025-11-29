@@ -6412,18 +6412,20 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         </div>
       )}
 
-      {/* Transport Tab */}
-      {activeTab === 'transport' && (
+      {/* Transport Tab - Only for Principal */}
+      {activeTab === 'transport' && !isClerk && (
         <div className="space-y-6">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">Transport Routes</h3>
-              <button
-                onClick={() => setShowRouteModal(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-              >
-                + Add Route
-              </button>
+              {!isClerk && (
+                <button
+                  onClick={() => setShowRouteModal(true)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                >
+                  + Add Route
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto mb-6">
@@ -8026,8 +8028,8 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         </div>
       )}
 
-      {/* Fee Hikes Tab */}
-      {activeTab === 'hikes' && (
+      {/* Fee Hikes Tab - Only for Principal */}
+      {activeTab === 'hikes' && !isClerk && (
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-xl font-bold mb-4">Fee Hikes & Version History</h3>
           <p className="text-gray-600 mb-6">
