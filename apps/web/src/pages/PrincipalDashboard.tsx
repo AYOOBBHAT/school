@@ -5374,14 +5374,12 @@ function SalaryManagement() {
 }
 
 function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'clerk' }) {
-  const [activeTab, setActiveTab] = useState<'categories' | 'class-fees' | 'transport' | 'optional' | 'custom' | 'bills' | 'payments' | 'tracking' | 'hikes'>('bills');
+  const [activeTab, setActiveTab] = useState<'class-fees' | 'transport' | 'optional' | 'custom' | 'bills' | 'payments' | 'tracking' | 'hikes' | 'overrides'>('bills');
   const [loading, setLoading] = useState(false);
   const isClerk = userRole === 'clerk';
 
-  // Fee Categories
+  // Fee Categories (kept for class fees dropdown)
   const [feeCategories, setFeeCategories] = useState<any[]>([]);
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [categoryForm, setCategoryForm] = useState({ name: '', description: '', display_order: 0 });
 
   // Class Fees
   const [classGroups, setClassGroups] = useState<any[]>([]);
@@ -5476,13 +5474,27 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   });
   const [feeVersions, setFeeVersions] = useState<any[]>([]);
 
+  // Fee Overrides
+  const [feeOverrides, setFeeOverrides] = useState<any[]>([]);
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideForm, setOverrideForm] = useState({
+    student_id: '',
+    fee_category_id: '',
+    discount_amount: '',
+    custom_fee_amount: '',
+    is_full_free: false,
+    effective_from: new Date().toISOString().split('T')[0],
+    effective_to: '',
+    notes: ''
+  });
+  const [overrideFilterStudent, setOverrideFilterStudent] = useState<string>('');
+
   useEffect(() => {
     loadInitialData();
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'categories') loadFeeCategories();
-    else if (activeTab === 'class-fees') {
+    if (activeTab === 'class-fees') {
       loadClassFees();
       loadFeeCategories(); // Always load categories for modal dropdown
     }
@@ -5496,6 +5508,10 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       loadClassFees();
       loadTransportData();
       loadOptionalFees();
+    }
+    else if (activeTab === 'overrides') {
+      loadFeeOverrides();
+      loadFeeCategories(); // Load categories for dropdown
     }
   }, [activeTab]);
 
@@ -5683,35 +5699,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       console.error('Error loading payments:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSaveCategory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/fees/categories`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(categoryForm)
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save category');
-      }
-
-      alert('Fee category saved successfully!');
-      setShowCategoryModal(false);
-      setCategoryForm({ name: '', description: '', display_order: 0 });
-      loadFeeCategories();
-    } catch (error: any) {
-      alert(error.message || 'Failed to save category');
     }
   };
 
@@ -6149,6 +6136,129 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
   };
 
+  const loadFeeOverrides = async () => {
+    setLoading(true);
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      // If filtering by student, load that student's overrides
+      // Otherwise, we'll need to load all students' overrides (for now, show message)
+      if (overrideFilterStudent) {
+        const response = await fetch(`${API_URL}/student-fee-overrides/student/${overrideFilterStudent}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setFeeOverrides(data.overrides || []);
+        }
+      } else {
+        // For "all students", we'd need a different endpoint
+        // For now, show empty and prompt user to select a student
+        setFeeOverrides([]);
+      }
+    } catch (error) {
+      console.error('Error loading fee overrides:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveOverride = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      if (!overrideForm.student_id) {
+        alert('Please select a student');
+        return;
+      }
+
+      const payload: any = {
+        student_id: overrideForm.student_id,
+        effective_from: overrideForm.effective_from,
+        notes: overrideForm.notes || null
+      };
+
+      // If full free, set that flag
+      if (overrideForm.is_full_free) {
+        payload.is_full_free = true;
+        payload.fee_category_id = null; // null means applies to all fees
+      } else {
+        // Otherwise, set fee category and override type
+        if (overrideForm.fee_category_id) {
+          payload.fee_category_id = overrideForm.fee_category_id;
+        }
+
+        if (overrideForm.custom_fee_amount) {
+          payload.custom_fee_amount = parseFloat(overrideForm.custom_fee_amount);
+        } else if (overrideForm.discount_amount) {
+          payload.discount_amount = parseFloat(overrideForm.discount_amount);
+        }
+      }
+
+      if (overrideForm.effective_to) {
+        payload.effective_to = overrideForm.effective_to;
+      }
+
+      const response = await fetch(`${API_URL}/student-fee-overrides`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save fee override');
+      }
+
+      alert('Fee override saved successfully!');
+      setShowOverrideModal(false);
+      setOverrideForm({
+        student_id: '',
+        fee_category_id: '',
+        discount_amount: '',
+        custom_fee_amount: '',
+        is_full_free: false,
+        effective_from: new Date().toISOString().split('T')[0],
+        effective_to: '',
+        notes: ''
+      });
+      loadFeeOverrides();
+    } catch (error: any) {
+      alert(error.message || 'Failed to save fee override');
+    }
+  };
+
+  const handleDeleteOverride = async (overrideId: string) => {
+    if (!confirm('Are you sure you want to deactivate this fee override?')) return;
+
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/student-fee-overrides/${overrideId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete fee override');
+      }
+
+      alert('Fee override deactivated successfully!');
+      loadFeeOverrides();
+    } catch (error: any) {
+      alert(error.message || 'Failed to delete fee override');
+    }
+  };
+
   const downloadInvoice = (bill: any) => {
     // Create invoice HTML
     const invoiceHTML = `
@@ -6283,12 +6393,12 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
           <nav className="flex -mb-px">
             {[
               ...(isClerk ? [] : [
-                { id: 'categories', label: 'Fee Categories' },
                 { id: 'class-fees', label: 'Class Fees' },
                 { id: 'transport', label: 'Transport' },
                 { id: 'optional', label: 'Optional Fees' },
                 { id: 'custom', label: 'Custom Fees' },
-                { id: 'hikes', label: 'Fee Hikes' }
+                { id: 'hikes', label: 'Fee Hikes' },
+                { id: 'overrides', label: 'Fee Overrides' }
               ]),
               { id: 'bills', label: 'Fee Bills' },
               { id: 'payments', label: 'Payments' },
@@ -6309,54 +6419,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
           </nav>
         </div>
       </div>
-
-      {/* Fee Categories Tab - Only for Principal */}
-      {activeTab === 'categories' && !isClerk && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold">Fee Categories</h3>
-            <button
-              onClick={() => setShowCategoryModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              + Add Category
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {feeCategories.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
-                      No fee categories found. Click "Add Category" to get started.
-                    </td>
-                  </tr>
-                ) : (
-                  feeCategories.map((category) => (
-                    <tr key={category.id}>
-                      <td className="px-6 py-4 whitespace-nowrap font-medium">{category.name}</td>
-                      <td className="px-6 py-4">{category.description || '-'}</td>
-                      <td className="px-6 py-4">{category.display_order}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button className="text-blue-600 hover:text-blue-800">Edit</button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* Class Fees Tab - Only for Principal */}
       {activeTab === 'class-fees' && !isClerk && (
@@ -7016,62 +7078,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       )}
 
       {/* Modals will be added here - I'll create a simplified version with key modals */}
-      {/* Category Modal */}
-      {showCategoryModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Add Fee Category</h3>
-            <form onSubmit={handleSaveCategory}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Name *</label>
-                  <input
-                    type="text"
-                    value={categoryForm.name}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Description</label>
-                  <textarea
-                    value={categoryForm.description}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    rows={3}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Display Order</label>
-                  <input
-                    type="number"
-                    value={categoryForm.display_order}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, display_order: parseInt(e.target.value) })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-4 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCategoryModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Class Fee Modal */}
       {showClassFeeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -8270,6 +8276,316 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   Apply Fee Hike
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Fee Overrides Tab - Only for Principal */}
+      {activeTab === 'overrides' && !isClerk && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold">Student Fee Overrides</h3>
+            <button
+              onClick={() => {
+                setOverrideForm({
+                  student_id: overrideFilterStudent || '',
+                  fee_category_id: '',
+                  discount_amount: '',
+                  custom_fee_amount: '',
+                  is_full_free: false,
+                  effective_from: new Date().toISOString().split('T')[0],
+                  effective_to: '',
+                  notes: ''
+                });
+                setShowOverrideModal(true);
+              }}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              + Add Fee Override
+            </button>
+          </div>
+
+          <p className="text-gray-600 mb-6">
+            Manage student-specific fee overrides: discounts, custom fees, and full free scholarships.
+          </p>
+
+          {/* Filter by Student */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Filter by Student</label>
+            <select
+              value={overrideFilterStudent}
+              onChange={(e) => {
+                setOverrideFilterStudent(e.target.value);
+                loadFeeOverrides();
+              }}
+              className="w-full md:w-64 border border-gray-300 rounded-lg px-4 py-2"
+            >
+              <option value="">All Students</option>
+              {students.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {student.profile?.full_name} ({student.roll_number})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fee Category</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Discount</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Custom Fee</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Free</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Effective From</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Effective To</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {feeOverrides.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-6 py-4 text-center text-gray-500">
+                      {overrideFilterStudent 
+                        ? 'No fee overrides found for this student. Click "Add Fee Override" to create one.'
+                        : 'Please select a student to view their fee overrides, or click "Add Fee Override" to create a new one.'}
+                    </td>
+                  </tr>
+                ) : (
+                  feeOverrides.map((override) => (
+                    <tr key={override.id}>
+                      <td className="px-6 py-4">
+                        {override.students?.profile?.full_name || '-'}
+                        <div className="text-xs text-gray-500">
+                          {override.students?.roll_number || ''}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {override.fee_categories?.name || (override.fee_category_id === null ? 'All Fees' : '-')}
+                      </td>
+                      <td className="px-6 py-4">
+                        {override.is_full_free ? (
+                          <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">Full Free</span>
+                        ) : override.custom_fee_amount ? (
+                          <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">Custom Fee</span>
+                        ) : override.discount_amount > 0 ? (
+                          <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">Discount</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {override.discount_amount > 0 ? `₹${parseFloat(override.discount_amount || 0).toLocaleString()}` : '-'}
+                      </td>
+                      <td className="px-6 py-4">
+                        {override.custom_fee_amount ? `₹${parseFloat(override.custom_fee_amount || 0).toLocaleString()}` : '-'}
+                      </td>
+                      <td className="px-6 py-4">
+                        {override.is_full_free ? '✅ Yes' : '❌ No'}
+                      </td>
+                      <td className="px-6 py-4">
+                        {new Date(override.effective_from).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4">
+                        {override.effective_to ? new Date(override.effective_to).toLocaleDateString() : 'Active'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <button
+                          onClick={() => handleDeleteOverride(override.id)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          Deactivate
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Fee Override Modal */}
+      {showOverrideModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Add Fee Override</h3>
+            <form onSubmit={handleSaveOverride}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Student *</label>
+                  <select
+                    value={overrideForm.student_id}
+                    onChange={(e) => setOverrideForm({ ...overrideForm, student_id: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    required
+                  >
+                    <option value="">Select Student</option>
+                    {students.map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {student.profile?.full_name} ({student.roll_number})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="flex items-center space-x-2 mb-2">
+                    <input
+                      type="checkbox"
+                      checked={overrideForm.is_full_free}
+                      onChange={(e) => {
+                        setOverrideForm({
+                          ...overrideForm,
+                          is_full_free: e.target.checked,
+                          discount_amount: '',
+                          custom_fee_amount: '',
+                          fee_category_id: ''
+                        });
+                      }}
+                      className="rounded"
+                    />
+                    <span className="text-sm font-medium">Full Free Scholarship (All fees = 0)</span>
+                  </label>
+                </div>
+
+                {!overrideForm.is_full_free && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Fee Category (Optional)</label>
+                      <select
+                        value={overrideForm.fee_category_id}
+                        onChange={(e) => setOverrideForm({ ...overrideForm, fee_category_id: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                      >
+                        <option value="">All Fees (if discount)</option>
+                        {feeCategories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Leave empty for "All Fees" when applying discount
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Discount Amount (₹)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={overrideForm.discount_amount}
+                          onChange={(e) => {
+                            setOverrideForm({
+                              ...overrideForm,
+                              discount_amount: e.target.value,
+                              custom_fee_amount: '' // Clear custom fee if discount is set
+                            });
+                          }}
+                          className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                          disabled={!!overrideForm.custom_fee_amount}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Amount to subtract from default fee
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Custom Fee Amount (₹)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={overrideForm.custom_fee_amount}
+                          onChange={(e) => {
+                            setOverrideForm({
+                              ...overrideForm,
+                              custom_fee_amount: e.target.value,
+                              discount_amount: '' // Clear discount if custom fee is set
+                            });
+                          }}
+                          className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                          disabled={!!overrideForm.discount_amount}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Override default fee completely
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Effective From *</label>
+                    <input
+                      type="date"
+                      value={overrideForm.effective_from}
+                      onChange={(e) => setOverrideForm({ ...overrideForm, effective_from: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Effective To (Optional)</label>
+                    <input
+                      type="date"
+                      value={overrideForm.effective_to}
+                      onChange={(e) => setOverrideForm({ ...overrideForm, effective_to: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Leave empty for indefinite
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Notes</label>
+                  <textarea
+                    value={overrideForm.notes}
+                    onChange={(e) => setOverrideForm({ ...overrideForm, notes: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 mt-6">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                >
+                  Save Override
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOverrideModal(false);
+                    setOverrideForm({
+                      student_id: '',
+                      fee_category_id: '',
+                      discount_amount: '',
+                      custom_fee_amount: '',
+                      is_full_free: false,
+                      effective_from: new Date().toISOString().split('T')[0],
+                      effective_to: '',
+                      notes: ''
+                    });
+                  }}
+                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+                >
+                  Cancel
                 </button>
               </div>
             </form>
