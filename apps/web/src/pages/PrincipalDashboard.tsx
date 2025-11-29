@@ -5387,6 +5387,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   const [showClassFeeModal, setShowClassFeeModal] = useState(false);
   const [classFeeForm, setClassFeeForm] = useState({
     class_group_id: '',
+    name: '',
     fee_category_id: '',
     amount: '',
     fee_cycle: 'monthly' as 'one-time' | 'monthly' | 'quarterly' | 'yearly',
@@ -5416,7 +5417,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   const [optionalFeeForm, setOptionalFeeForm] = useState({
     name: '',
     description: '',
-    default_amount: '',
+    amount: '', // Changed from default_amount
     fee_cycle: 'one-time' as 'one-time' | 'monthly' | 'quarterly' | 'yearly'
   });
 
@@ -5424,6 +5425,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   const [students, setStudents] = useState<any[]>([]);
   const [customFees, setCustomFees] = useState<any[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string>('');
+  const [customFeeFilterClass, setCustomFeeFilterClass] = useState<string>(''); // For tab filter
   const [showCustomFeeModal, setShowCustomFeeModal] = useState(false);
   const [customFeeForm, setCustomFeeForm] = useState({
     student_id: '',
@@ -5433,6 +5435,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     fee_cycle: 'per-bill' as 'one-time' | 'monthly' | 'quarterly' | 'yearly' | 'per-bill',
     notes: ''
   });
+  const [customFeeModalFilterClass, setCustomFeeModalFilterClass] = useState<string>(''); // For modal filter
 
   // Bills
   const [bills, setBills] = useState<any[]>([]);
@@ -5488,6 +5491,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     notes: ''
   });
   const [overrideFilterStudent, setOverrideFilterStudent] = useState<string>('');
+  const [overrideModalFilterClass, setOverrideModalFilterClass] = useState<string>('');
 
   useEffect(() => {
     loadInitialData();
@@ -5717,7 +5721,8 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         body: JSON.stringify({
           ...classFeeForm,
           amount: parseFloat(classFeeForm.amount),
-          due_day: parseInt(classFeeForm.due_day.toString())
+          due_day: parseInt(classFeeForm.due_day.toString()),
+          fee_category_id: classFeeForm.fee_category_id || null // Make it null if empty
         })
       });
 
@@ -5730,6 +5735,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       setShowClassFeeModal(false);
       setClassFeeForm({
         class_group_id: '',
+        name: '',
         fee_category_id: '',
         amount: '',
         fee_cycle: 'monthly',
@@ -5831,7 +5837,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         },
         body: JSON.stringify({
           ...optionalFeeForm,
-          default_amount: parseFloat(optionalFeeForm.default_amount)
+          amount: parseFloat(optionalFeeForm.amount) // Changed from default_amount
         })
       });
 
@@ -5845,7 +5851,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       setOptionalFeeForm({
         name: '',
         description: '',
-        default_amount: '',
+        amount: '', // Changed from default_amount
         fee_cycle: 'one-time'
       });
       loadOptionalFees();
@@ -6049,7 +6055,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   const handleHikeFee = async (fee: any, feeType: 'class' | 'transport' | 'optional') => {
     setSelectedFeeForHike({ ...fee, feeType });
     setHikeForm({
-      new_amount: fee.amount?.toString() || fee.default_amount?.toString() || '',
+      new_amount: fee.amount?.toString() || '',
       effective_from_date: new Date().toISOString().split('T')[0],
       notes: ''
     });
@@ -6440,7 +6446,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fee Name</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Day</th>
@@ -6458,7 +6464,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                   classFees.map((fee) => (
                     <tr key={fee.id}>
                       <td className="px-6 py-4">{fee.class_groups?.name || '-'}</td>
-                      <td className="px-6 py-4">{fee.fee_categories?.name || '-'}</td>
+                      <td className="px-6 py-4">{fee.name || fee.fee_categories?.name || 'Class Fee'}</td>
                       <td className="px-6 py-4">₹{parseFloat(fee.amount || 0).toLocaleString()}</td>
                       <td className="px-6 py-4">{fee.fee_cycle}</td>
                       <td className="px-6 py-4">{fee.due_day || '-'}</td>
@@ -6597,7 +6603,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Default Amount</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
@@ -6613,7 +6619,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                   optionalFees.map((fee) => (
                     <tr key={fee.id}>
                       <td className="px-6 py-4 font-medium">{fee.name}</td>
-                      <td className="px-6 py-4">₹{parseFloat(fee.default_amount || 0).toLocaleString()}</td>
+                      <td className="px-6 py-4">₹{parseFloat(fee.amount || 0).toLocaleString()}</td>
                       <td className="px-6 py-4">{fee.fee_cycle}</td>
                       <td className="px-6 py-4">
                         <button className="text-blue-600 hover:text-blue-800">Edit</button>
@@ -6640,20 +6646,39 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
             </button>
           </div>
 
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Filter by Student</label>
-            <select
-              value={selectedStudent}
-              onChange={(e) => setSelectedStudent(e.target.value)}
-              className="w-full md:w-64 border border-gray-300 rounded-lg px-4 py-2"
-            >
-              <option value="">All Students</option>
-              {students.map((student) => (
-                <option key={student.id} value={student.id}>
-                  {student.profile?.full_name} ({student.roll_number})
-                </option>
-              ))}
-            </select>
+          <div className="mb-4 grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Filter by Class</label>
+              <select
+                value={customFeeFilterClass}
+                onChange={(e) => setCustomFeeFilterClass(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+              >
+                <option value="">All Classes</option>
+                {classGroups.map((classGroup) => (
+                  <option key={classGroup.id} value={classGroup.id}>
+                    {classGroup.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Filter by Student</label>
+              <select
+                value={selectedStudent}
+                onChange={(e) => setSelectedStudent(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+              >
+                <option value="">All Students</option>
+                {students
+                  .filter((student) => !customFeeFilterClass || student.class_group_id === customFeeFilterClass)
+                  .map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.profile?.full_name} ({student.roll_number}) - {classGroups.find(cg => cg.id === student.class_group_id)?.name || ''}
+                    </option>
+                  ))}
+              </select>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -7102,14 +7127,24 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Fee Category *</label>
+                  <label className="block text-sm font-medium mb-2">Fee Name *</label>
+                  <input
+                    type="text"
+                    value={classFeeForm.name}
+                    onChange={(e) => setClassFeeForm({ ...classFeeForm, name: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="e.g., Tuition Fee, Development Fee"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Fee Category (Optional)</label>
                   <select
                     value={classFeeForm.fee_category_id}
                     onChange={(e) => setClassFeeForm({ ...classFeeForm, fee_category_id: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
                   >
-                    <option value="">Select Category</option>
+                    <option value="">No Category</option>
                     {feeCategories.map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.name}
@@ -7408,13 +7443,13 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Default Amount (₹) *</label>
+                  <label className="block text-sm font-medium mb-2">Amount (₹) *</label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
-                    value={optionalFeeForm.default_amount}
-                    onChange={(e) => setOptionalFeeForm({ ...optionalFeeForm, default_amount: e.target.value })}
+                    value={optionalFeeForm.amount}
+                    onChange={(e) => setOptionalFeeForm({ ...optionalFeeForm, amount: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
                     required
                   />
@@ -7462,6 +7497,24 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
             <form onSubmit={handleSaveCustomFee}>
               <div className="space-y-4">
                 <div>
+                  <label className="block text-sm font-medium mb-2">Filter by Class</label>
+                  <select
+                    value={customFeeModalFilterClass}
+                    onChange={(e) => {
+                      setCustomFeeModalFilterClass(e.target.value);
+                      setCustomFeeForm({ ...customFeeForm, student_id: '' }); // Reset student when class changes
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-2"
+                  >
+                    <option value="">All Classes</option>
+                    {classGroups.map((classGroup) => (
+                      <option key={classGroup.id} value={classGroup.id}>
+                        {classGroup.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-2">Student *</label>
                   <select
                     value={customFeeForm.student_id}
@@ -7470,11 +7523,13 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                     required
                   >
                     <option value="">Select Student</option>
-                    {students.map((student) => (
-                      <option key={student.id} value={student.id}>
-                        {student.profile?.full_name} ({student.roll_number})
-                      </option>
-                    ))}
+                    {students
+                      .filter((student) => !customFeeModalFilterClass || student.class_group_id === customFeeModalFilterClass)
+                      .map((student) => (
+                        <option key={student.id} value={student.id}>
+                          {student.profile?.full_name} ({student.roll_number}) - {classGroups.find(cg => cg.id === student.class_group_id)?.name || ''}
+                        </option>
+                      ))}
                   </select>
                 </div>
                 <div>
@@ -8050,7 +8105,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fee Name</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Amount</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -8067,7 +8122,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                     classFees.map((fee) => (
                       <tr key={fee.id}>
                         <td className="px-6 py-4">{fee.class_groups?.name || '-'}</td>
-                        <td className="px-6 py-4">{fee.fee_categories?.name || '-'}</td>
+                        <td className="px-6 py-4">{fee.name || fee.fee_categories?.name || 'Class Fee'}</td>
                         <td className="px-6 py-4">₹{parseFloat(fee.amount || 0).toLocaleString()}</td>
                         <td className="px-6 py-4">{fee.fee_cycle}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -8157,7 +8212,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                     optionalFees.map((fee) => (
                       <tr key={fee.id}>
                         <td className="px-6 py-4">{fee.name}</td>
-                        <td className="px-6 py-4">₹{parseFloat(fee.default_amount || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4">₹{parseFloat(fee.amount || 0).toLocaleString()}</td>
                         <td className="px-6 py-4">{fee.fee_cycle}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
@@ -8189,7 +8244,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                 </label>
                 <input
                   type="text"
-                  value={selectedFeeForHike.amount || selectedFeeForHike.default_amount || ''}
+                  value={selectedFeeForHike.amount || ''}
                   disabled
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
                 />
@@ -8312,24 +8367,45 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
             Manage student-specific fee overrides: discounts, custom fees, and full free scholarships.
           </p>
 
-          {/* Filter by Student */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Filter by Student</label>
-            <select
-              value={overrideFilterStudent}
-              onChange={(e) => {
-                setOverrideFilterStudent(e.target.value);
-                loadFeeOverrides();
-              }}
-              className="w-full md:w-64 border border-gray-300 rounded-lg px-4 py-2"
-            >
-              <option value="">All Students</option>
-              {students.map((student) => (
-                <option key={student.id} value={student.id}>
-                  {student.profile?.full_name} ({student.roll_number})
-                </option>
-              ))}
-            </select>
+          {/* Filter by Class and Student */}
+          <div className="mb-4 grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Filter by Class</label>
+              <select
+                value={overrideFilterStudent ? students.find(s => s.id === overrideFilterStudent)?.class_group_id || '' : ''}
+                onChange={(e) => {
+                  const classId = e.target.value;
+                  setOverrideFilterStudent(''); // Reset student filter when class changes
+                  // Filter students by class for the dropdown
+                }}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+              >
+                <option value="">All Classes</option>
+                {classGroups.map((classGroup) => (
+                  <option key={classGroup.id} value={classGroup.id}>
+                    {classGroup.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Filter by Student</label>
+              <select
+                value={overrideFilterStudent}
+                onChange={(e) => {
+                  setOverrideFilterStudent(e.target.value);
+                  loadFeeOverrides();
+                }}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+              >
+                <option value="">All Students</option>
+                {students.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {student.profile?.full_name} ({student.roll_number}) - {classGroups.find(cg => cg.id === student.class_group_id)?.name || ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -8419,6 +8495,24 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
             <form onSubmit={handleSaveOverride}>
               <div className="space-y-4">
                 <div>
+                  <label className="block text-sm font-medium mb-2">Filter by Class</label>
+                  <select
+                    value={overrideModalFilterClass}
+                    onChange={(e) => {
+                      setOverrideModalFilterClass(e.target.value);
+                      setOverrideForm({ ...overrideForm, student_id: '' }); // Reset student when class changes
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-2"
+                  >
+                    <option value="">All Classes</option>
+                    {classGroups.map((classGroup) => (
+                      <option key={classGroup.id} value={classGroup.id}>
+                        {classGroup.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-2">Student *</label>
                   <select
                     value={overrideForm.student_id}
@@ -8427,11 +8521,13 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                     required
                   >
                     <option value="">Select Student</option>
-                    {students.map((student) => (
-                      <option key={student.id} value={student.id}>
-                        {student.profile?.full_name} ({student.roll_number})
-                      </option>
-                    ))}
+                    {students
+                      .filter((student) => !overrideModalFilterClass || student.class_group_id === overrideModalFilterClass)
+                      .map((student) => (
+                        <option key={student.id} value={student.id}>
+                          {student.profile?.full_name} ({student.roll_number}) - {classGroups.find(cg => cg.id === student.class_group_id)?.name || ''}
+                        </option>
+                      ))}
                   </select>
                 </div>
 
