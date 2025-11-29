@@ -5378,8 +5378,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   const [loading, setLoading] = useState(false);
   const isClerk = userRole === 'clerk';
 
-  // Fee Categories (kept for class fees dropdown)
-  const [feeCategories, setFeeCategories] = useState<any[]>([]);
+  // Fee Categories removed - no longer used
 
   // Class Fees
   const [classGroups, setClassGroups] = useState<any[]>([]);
@@ -5388,7 +5387,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   const [classFeeForm, setClassFeeForm] = useState({
     class_group_id: '',
     name: '',
-    fee_category_id: '',
     amount: '',
     fee_cycle: 'monthly' as 'one-time' | 'monthly' | 'quarterly' | 'yearly',
     due_day: 5,
@@ -5482,7 +5480,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [overrideForm, setOverrideForm] = useState({
     student_id: '',
-    fee_category_id: '',
     discount_amount: '',
     custom_fee_amount: '',
     is_full_free: false,
@@ -5500,7 +5497,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   useEffect(() => {
     if (activeTab === 'class-fees') {
       loadClassFees();
-      loadFeeCategories(); // Always load categories for modal dropdown
     }
     else if (activeTab === 'transport') loadTransportData();
     else if (activeTab === 'optional') loadOptionalFees();
@@ -5515,7 +5511,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
     else if (activeTab === 'overrides') {
       loadFeeOverrides();
-      loadFeeCategories(); // Load categories for dropdown
     }
   }, [activeTab]);
 
@@ -5549,26 +5544,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
   };
 
-  const loadFeeCategories = async () => {
-    setLoading(true);
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/fees/categories`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setFeeCategories(data.categories || []);
-      }
-    } catch (error) {
-      console.error('Error loading fee categories:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // loadFeeCategories removed - no longer needed
 
   const loadClassFees = async () => {
     setLoading(true);
@@ -5722,7 +5698,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
           ...classFeeForm,
           amount: parseFloat(classFeeForm.amount),
           due_day: parseInt(classFeeForm.due_day.toString()),
-          fee_category_id: classFeeForm.fee_category_id || null // Make it null if empty
+          fee_category_id: null // Not used anymore
         })
       });
 
@@ -5736,7 +5712,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       setClassFeeForm({
         class_group_id: '',
         name: '',
-        fee_category_id: '',
         amount: '',
         fee_cycle: 'monthly',
         due_day: 5,
@@ -6193,10 +6168,8 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         payload.is_full_free = true;
         payload.fee_category_id = null; // null means applies to all fees
       } else {
-        // Otherwise, set fee category and override type
-        if (overrideForm.fee_category_id) {
-          payload.fee_category_id = overrideForm.fee_category_id;
-        }
+        // Fee category is always null - applies to all fees
+        payload.fee_category_id = null;
 
         if (overrideForm.custom_fee_amount) {
           payload.custom_fee_amount = parseFloat(overrideForm.custom_fee_amount);
@@ -6227,7 +6200,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       setShowOverrideModal(false);
       setOverrideForm({
         student_id: '',
-        fee_category_id: '',
         discount_amount: '',
         custom_fee_amount: '',
         is_full_free: false,
@@ -7136,21 +7108,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                     placeholder="e.g., Tuition Fee, Development Fee"
                     required
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Fee Category (Optional)</label>
-                  <select
-                    value={classFeeForm.fee_category_id}
-                    onChange={(e) => setClassFeeForm({ ...classFeeForm, fee_category_id: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                  >
-                    <option value="">No Category</option>
-                    {feeCategories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Amount (₹) *</label>
@@ -8347,7 +8304,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
               onClick={() => {
                 setOverrideForm({
                   student_id: overrideFilterStudent || '',
-                  fee_category_id: '',
                   discount_amount: '',
                   custom_fee_amount: '',
                   is_full_free: false,
@@ -8413,7 +8369,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fee Category</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Discount</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Custom Fee</th>
@@ -8426,7 +8381,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
               <tbody className="bg-white divide-y divide-gray-200">
                 {feeOverrides.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
                       {overrideFilterStudent 
                         ? 'No fee overrides found for this student. Click "Add Fee Override" to create one.'
                         : 'Please select a student to view their fee overrides, or click "Add Fee Override" to create a new one.'}
@@ -8440,9 +8395,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                         <div className="text-xs text-gray-500">
                           {override.students?.roll_number || ''}
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {override.fee_categories?.name || (override.fee_category_id === null ? 'All Fees' : '-')}
                       </td>
                       <td className="px-6 py-4">
                         {override.is_full_free ? (
@@ -8541,8 +8493,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                           ...overrideForm,
                           is_full_free: e.target.checked,
                           discount_amount: '',
-                          custom_fee_amount: '',
-                          fee_category_id: ''
+                          custom_fee_amount: ''
                         });
                       }}
                       className="rounded"
@@ -8553,24 +8504,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
 
                 {!overrideForm.is_full_free && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Fee Category (Optional)</label>
-                      <select
-                        value={overrideForm.fee_category_id}
-                        onChange={(e) => setOverrideForm({ ...overrideForm, fee_category_id: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      >
-                        <option value="">All Fees (if discount)</option>
-                        {feeCategories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Leave empty for "All Fees" when applying discount
-                      </p>
-                    </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -8670,7 +8603,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                     setShowOverrideModal(false);
                     setOverrideForm({
                       student_id: '',
-                      fee_category_id: '',
                       discount_amount: '',
                       custom_fee_amount: '',
                       is_full_free: false,
