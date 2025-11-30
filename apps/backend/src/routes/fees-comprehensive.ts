@@ -149,9 +149,9 @@ router.post('/class-fees', requireRoles(['principal']), async (req, res) => {
 
   try {
     // Create class fee default
-    // Remove due_day, due_date, and name from payload as class_fee_defaults doesn't have these columns
+    // Remove due_day, due_date, name, and notes from payload as class_fee_defaults doesn't have these columns
     // (name column may not exist in all databases - migration 026 adds it but may not be applied)
-    const { due_day, due_date, name, ...feeData } = value;
+    const { due_day, due_date, name, notes, ...feeData } = value;
     const payload = { ...feeData, school_id: user.schoolId };
     const { data: classFee, error: dbError } = await adminSupabase
       .from('class_fee_defaults')
@@ -201,12 +201,20 @@ router.put('/class-fees/:id', requireRoles(['principal']), async (req, res) => {
   const { error, value } = classFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  const { supabase, user } = req;
-  if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
 
-  const { data, error: dbError } = await supabase
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+  const { user } = req;
+  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+
+  // Remove due_day, due_date, name, and notes from payload as class_fee_defaults doesn't have these columns
+  const { due_day, due_date, name, notes, ...updateData } = value;
+
+  const { data, error: dbError } = await adminSupabase
     .from('class_fee_defaults')
-    .update(value)
+    .update(updateData)
     .eq('id', req.params.id)
     .eq('school_id', user.schoolId)
     .select(`
