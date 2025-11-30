@@ -149,8 +149,9 @@ router.post('/class-fees', requireRoles(['principal']), async (req, res) => {
 
   try {
     // Create class fee default
-    // Remove due_day and due_date from payload as class_fee_defaults doesn't have these columns
-    const { due_day, due_date, ...feeData } = value;
+    // Remove due_day, due_date, and name from payload as class_fee_defaults doesn't have these columns
+    // (name column may not exist in all databases - migration 026 adds it but may not be applied)
+    const { due_day, due_date, name, ...feeData } = value;
     const payload = { ...feeData, school_id: user.schoolId };
     const { data: classFee, error: dbError } = await adminSupabase
       .from('class_fee_defaults')
@@ -336,11 +337,17 @@ const transportFeeSchema = Joi.object({
 
 // Get transport fees
 router.get('/transport/fees', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
-  const { supabase, user } = req;
-  if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
 
-  const { data, error } = await supabase
-    .from('transport_fee_defaults')
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+  const { user } = req;
+  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+
+  // Use transport_fees table (has route_id) instead of transport_fee_defaults (has route_name)
+  const { data, error } = await adminSupabase
+    .from('transport_fees')
     .select(`
       *,
       transport_routes:route_id(id, route_name, bus_number, zone)
@@ -366,7 +373,7 @@ router.post('/transport/fees', requireRoles(['principal']), async (req, res) => 
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  // Get route to get school_id
+  // Get route to verify it belongs to the school
   const { data: route, error: routeError } = await adminSupabase
     .from('transport_routes')
     .select('school_id')
@@ -377,9 +384,10 @@ router.post('/transport/fees', requireRoles(['principal']), async (req, res) => 
     return res.status(400).json({ error: 'Invalid route' });
   }
 
+  // Use transport_fees table (has route_id) instead of transport_fee_defaults
   const payload = { ...value, school_id: user.schoolId };
   const { data, error: dbError } = await adminSupabase
-    .from('transport_fee_defaults')
+    .from('transport_fees')
     .insert(payload)
     .select(`
       *,
@@ -396,11 +404,17 @@ router.put('/transport/fees/:id', requireRoles(['principal']), async (req, res) 
   const { error, value } = transportFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  const { supabase, user } = req;
-  if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
 
-  const { data, error: dbError } = await supabase
-    .from('transport_fee_defaults')
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+  const { user } = req;
+  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+
+  // Use transport_fees table (has route_id) instead of transport_fee_defaults
+  const { data, error: dbError } = await adminSupabase
+    .from('transport_fees')
     .update(value)
     .eq('id', req.params.id)
     .eq('school_id', user.schoolId)
@@ -797,9 +811,9 @@ router.post('/transport/fees/:id/hike', requireRoles(['principal']), async (req,
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
   try {
-    // Get transport fee default
+    // Get transport fee (use transport_fees table which has route_id)
     const { data: transportFee, error: feeError } = await adminSupabase
-      .from('transport_fee_defaults')
+      .from('transport_fees')
       .select('*, transport_routes:route_id(route_name)')
       .eq('id', req.params.id)
       .eq('school_id', user.schoolId)
@@ -837,9 +851,9 @@ router.post('/transport/fees/:id/hike', requireRoles(['principal']), async (req,
       adminSupabase
     );
 
-    // Update transport_fee_defaults
+    // Update transport_fees
     await adminSupabase
-      .from('transport_fee_defaults')
+      .from('transport_fees')
       .update({ 
         base_fee: value.new_amount,
         updated_at: new Date().toISOString() 
@@ -916,9 +930,9 @@ router.get('/transport/fees/:id/versions', requireRoles(['principal', 'clerk', '
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
   try {
-    // Get transport fee default
+    // Get transport fee (use transport_fees table which has route_id)
     const { data: transportFee, error: feeError } = await adminSupabase
-      .from('transport_fee_defaults')
+      .from('transport_fees')
       .select('route_id, fee_cycle, transport_routes:route_id(route_name, class_group_id)')
       .eq('id', req.params.id)
       .eq('school_id', user.schoolId)
