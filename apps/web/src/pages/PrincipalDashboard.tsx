@@ -2838,6 +2838,22 @@ function StudentsManagement() {
     guardian_email: '',
     guardian_relationship: 'parent'
   });
+  
+  // Fee configuration state
+  const [defaultFees, setDefaultFees] = useState<{
+    class_fees: any[];
+    transport_routes: any[];
+    other_fee_categories: any[];
+    optional_fees: any[];
+  } | null>(null);
+  const [loadingFees, setLoadingFees] = useState(false);
+  const [feeConfig, setFeeConfig] = useState({
+    class_fee_discount: 0,
+    transport_enabled: true,
+    transport_route_id: '',
+    transport_fee_discount: 0,
+    other_fees: [] as Array<{ fee_category_id: string; enabled: boolean; discount: number }>
+  });
   const [usernameStatus, setUsernameStatus] = useState<{
     checking: boolean;
     available: boolean | null;
@@ -2999,6 +3015,47 @@ function StudentsManagement() {
     } catch (error) {
       console.error('Error loading sections:', error);
       setSections(prev => ({ ...prev, [classId]: [] }));
+    }
+  };
+
+  const loadDefaultFees = async (classId: string) => {
+    try {
+      setLoadingFees(true);
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/principal-users/classes/${classId}/default-fees`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load default fees');
+      }
+
+      const data = await response.json();
+      setDefaultFees(data);
+
+      // Initialize other_fees array with all fee categories
+      const otherFeesConfig = (data.other_fee_categories || []).map((cat: any) => ({
+        fee_category_id: cat.id,
+        enabled: true,
+        discount: 0
+      }));
+
+      setFeeConfig({
+        class_fee_discount: 0,
+        transport_enabled: true,
+        transport_route_id: '',
+        transport_fee_discount: 0,
+        other_fees: otherFeesConfig
+      });
+    } catch (error) {
+      console.error('Error loading default fees:', error);
+      setDefaultFees(null);
+    } finally {
+      setLoadingFees(false);
     }
   };
 
@@ -3230,7 +3287,9 @@ function StudentsManagement() {
           guardian_name: addStudentForm.guardian_name,
           guardian_phone: addStudentForm.guardian_phone,
           guardian_email: addStudentForm.guardian_email || null,
-          guardian_relationship: addStudentForm.guardian_relationship
+          guardian_relationship: addStudentForm.guardian_relationship,
+          // Include fee configuration if class is selected
+          fee_config: addStudentForm.class_group_id ? feeConfig : undefined
         }),
       });
 
@@ -3260,6 +3319,14 @@ function StudentsManagement() {
         guardian_relationship: 'parent'
       });
       setUsernameStatus({ checking: false, available: null, message: '' });
+      setDefaultFees(null);
+      setFeeConfig({
+        class_fee_discount: 0,
+        transport_enabled: true,
+        transport_route_id: '',
+        transport_fee_discount: 0,
+        other_fees: []
+      });
       window.location.reload();
     } catch (error: any) {
       alert(error.message || 'Failed to add student');
@@ -3612,7 +3679,7 @@ function StudentsManagement() {
       {/* Add Student Modal */}
       {addStudentModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-4">Add New Student</h3>
             <form onSubmit={handleAddStudent} className="space-y-4">
               <div>
@@ -3739,10 +3806,22 @@ function StudentsManagement() {
                 <label className="block text-sm font-medium mb-1">Class</label>
                 <select
                   value={addStudentForm.class_group_id}
-                  onChange={(e) => {
-                    setAddStudentForm({ ...addStudentForm, class_group_id: e.target.value, section_id: '' });
-                    if (e.target.value) {
-                      loadSections(e.target.value);
+                  onChange={async (e) => {
+                    const classId = e.target.value;
+                    setAddStudentForm({ ...addStudentForm, class_group_id: classId, section_id: '' });
+                    if (classId) {
+                      loadSections(classId);
+                      // Load default fees for this class
+                      await loadDefaultFees(classId);
+                    } else {
+                      setDefaultFees(null);
+                      setFeeConfig({
+                        class_fee_discount: 0,
+                        transport_enabled: true,
+                        transport_route_id: '',
+                        transport_fee_discount: 0,
+                        other_fees: []
+                      });
                     }
                   }}
                   className="w-full px-3 py-2 border rounded-md"
@@ -3806,6 +3885,206 @@ function StudentsManagement() {
                 />
               </div>
               
+              {/* Fee Configuration Section - Only show if class is selected */}
+              {addStudentForm.class_group_id && (
+                <div className="border-t pt-4 mt-4">
+                  <h4 className="text-lg font-semibold mb-3 text-gray-700">Fee Configuration</h4>
+                  
+                  {loadingFees ? (
+                    <div className="text-center py-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                      <p className="text-sm text-gray-500 mt-2">Loading fee information...</p>
+                    </div>
+                  ) : defaultFees ? (
+                    <div className="space-y-4">
+                      {/* Class Fee Section */}
+                      {defaultFees.class_fees && defaultFees.class_fees.length > 0 && (
+                        <div className="bg-blue-50 p-4 rounded-lg">
+                          <h5 className="font-semibold text-gray-700 mb-2">Class Fee</h5>
+                          {defaultFees.class_fees.map((cf: any) => {
+                            const categoryName = cf.fee_categories?.name || 'Class Fee';
+                            const defaultAmount = parseFloat(cf.amount || 0);
+                            const finalAmount = Math.max(0, defaultAmount - feeConfig.class_fee_discount);
+                            return (
+                              <div key={cf.id} className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600">{categoryName}:</span>
+                                  <span className="font-medium">₹{defaultAmount.toFixed(2)}/{cf.fee_cycle}</span>
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={feeConfig.class_fee_discount}
+                                    onChange={(e) => setFeeConfig({ ...feeConfig, class_fee_discount: parseFloat(e.target.value) || 0 })}
+                                    className="w-full px-2 py-1 border rounded text-sm"
+                                    placeholder="0"
+                                  />
+                                </div>
+                                <div className="flex justify-between text-sm font-semibold pt-1 border-t">
+                                  <span>Final Amount:</span>
+                                  <span className="text-green-600">₹{finalAmount.toFixed(2)}/{cf.fee_cycle}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Transport Fee Section */}
+                      <div className="bg-green-50 p-4 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <h5 className="font-semibold text-gray-700">Transport Fee</h5>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={feeConfig.transport_enabled}
+                              onChange={(e) => setFeeConfig({ ...feeConfig, transport_enabled: e.target.checked, transport_route_id: e.target.checked ? feeConfig.transport_route_id : '' })}
+                              className="rounded"
+                            />
+                            <span className="text-sm text-gray-600">Enable Transport</span>
+                          </label>
+                        </div>
+                        {feeConfig.transport_enabled && (
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Select Route</label>
+                              <select
+                                value={feeConfig.transport_route_id}
+                                onChange={(e) => setFeeConfig({ ...feeConfig, transport_route_id: e.target.value })}
+                                className="w-full px-2 py-1 border rounded text-sm"
+                              >
+                                <option value="">Select Transport Route</option>
+                                {defaultFees.transport_routes.map((route: any) => (
+                                  <option key={route.id} value={route.id}>
+                                    {route.route_name} {route.bus_number ? `(${route.bus_number})` : ''} - ₹{route.fee?.total?.toFixed(2) || '0.00'}/{route.fee?.fee_cycle || 'monthly'}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            {feeConfig.transport_route_id && (() => {
+                              const selectedRoute = defaultFees.transport_routes.find((r: any) => r.id === feeConfig.transport_route_id);
+                              const routeFee = selectedRoute?.fee;
+                              const defaultTransportAmount = routeFee ? parseFloat(routeFee.total || 0) : 0;
+                              const finalTransportAmount = Math.max(0, defaultTransportAmount - feeConfig.transport_fee_discount);
+                              return (
+                                <>
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-600">Route Fee:</span>
+                                    <span className="font-medium">₹{defaultTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}</span>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={feeConfig.transport_fee_discount}
+                                      onChange={(e) => setFeeConfig({ ...feeConfig, transport_fee_discount: parseFloat(e.target.value) || 0 })}
+                                      className="w-full px-2 py-1 border rounded text-sm"
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                  <div className="flex justify-between text-sm font-semibold pt-1 border-t">
+                                    <span>Final Amount:</span>
+                                    <span className="text-green-600">₹{finalTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}</span>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Other Fees Section */}
+                      {defaultFees.other_fee_categories && defaultFees.other_fee_categories.length > 0 && (
+                        <div className="bg-yellow-50 p-4 rounded-lg">
+                          <h5 className="font-semibold text-gray-700 mb-3">Other Fees</h5>
+                          <div className="space-y-3">
+                            {defaultFees.other_fee_categories.map((category: any) => {
+                              const feeConfigItem = feeConfig.other_fees.find(f => f.fee_category_id === category.id) || {
+                                fee_category_id: category.id,
+                                enabled: true,
+                                discount: 0
+                              };
+                              return (
+                                <div key={category.id} className="bg-white p-3 rounded border">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div>
+                                      <span className="font-medium text-sm">{category.name}</span>
+                                      {category.description && (
+                                        <p className="text-xs text-gray-500">{category.description}</p>
+                                      )}
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={feeConfigItem.enabled}
+                                        onChange={(e) => {
+                                          const updatedOtherFees = feeConfig.other_fees.map(f =>
+                                            f.fee_category_id === category.id
+                                              ? { ...f, enabled: e.target.checked, discount: e.target.checked ? f.discount : 0 }
+                                              : f
+                                          );
+                                          // If not found, add it
+                                          if (!feeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
+                                            updatedOtherFees.push({
+                                              fee_category_id: category.id,
+                                              enabled: e.target.checked,
+                                              discount: 0
+                                            });
+                                          }
+                                          setFeeConfig({ ...feeConfig, other_fees: updatedOtherFees });
+                                        }}
+                                        className="rounded"
+                                      />
+                                      <span className="text-xs text-gray-600">Enable</span>
+                                    </label>
+                                  </div>
+                                  {feeConfigItem.enabled && (
+                                    <div className="mt-2">
+                                      <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={feeConfigItem.discount}
+                                        onChange={(e) => {
+                                          const updatedOtherFees = feeConfig.other_fees.map(f =>
+                                            f.fee_category_id === category.id
+                                              ? { ...f, discount: parseFloat(e.target.value) || 0 }
+                                              : f
+                                          );
+                                          // If not found, add it
+                                          if (!feeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
+                                            updatedOtherFees.push({
+                                              fee_category_id: category.id,
+                                              enabled: true,
+                                              discount: parseFloat(e.target.value) || 0
+                                            });
+                                          }
+                                          setFeeConfig({ ...feeConfig, other_fees: updatedOtherFees });
+                                        }}
+                                        className="w-full px-2 py-1 border rounded text-sm"
+                                        placeholder="0"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">Select a class to configure fees</p>
+                  )}
+                </div>
+              )}
+
               {/* Parent/Guardian Information Section */}
               <div className="border-t pt-4 mt-4">
                 <h4 className="text-lg font-semibold mb-3 text-gray-700">Parent/Guardian Information</h4>
@@ -3891,6 +4170,14 @@ function StudentsManagement() {
                       guardian_relationship: 'parent'
                     });
                     setUsernameStatus({ checking: false, available: null, message: '' });
+                    setDefaultFees(null);
+                    setFeeConfig({
+                      class_fee_discount: 0,
+                      transport_enabled: true,
+                      transport_route_id: '',
+                      transport_fee_discount: 0,
+                      other_fees: []
+                    });
                   }}
                   className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
                 >
