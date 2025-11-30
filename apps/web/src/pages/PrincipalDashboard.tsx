@@ -3903,10 +3903,10 @@ function StudentsManagement() {
                     </div>
                   ) : defaultFees ? (
                     <div className="space-y-4">
-                      {/* Class Fee Section */}
-                      {defaultFees.class_fees && defaultFees.class_fees.length > 0 && (
-                        <div className="bg-blue-50 p-4 rounded-lg">
-                          <h5 className="font-semibold text-gray-700 mb-2">Class Fee</h5>
+                      {/* Class Fee Section - Always show if class is selected */}
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <h5 className="font-semibold text-gray-700 mb-2">Class Fee (Default for this class)</h5>
+                        {defaultFees.class_fees && defaultFees.class_fees.length > 0 ? (
                           <div className="space-y-2">
                             <div>
                               <label className="block text-xs text-gray-600 mb-1">Select Class Fee</label>
@@ -3965,8 +3965,10 @@ function StudentsManagement() {
                               );
                             })()}
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <p className="text-sm text-gray-500">No class fees configured for this class yet.</p>
+                        )}
+                      </div>
 
                       {/* Transport Fee Section */}
                       <div className="bg-green-50 p-4 rounded-lg">
@@ -4044,16 +4046,24 @@ function StudentsManagement() {
                                 enabled: true,
                                 discount: 0
                               };
+                              const defaultAmount = parseFloat(category.amount || 0);
+                              const finalAmount = Math.max(0, defaultAmount - feeConfigItem.discount);
+                              
                               return (
                                 <div key={category.id} className="bg-white p-3 rounded border">
                                   <div className="flex items-center justify-between mb-2">
-                                    <div>
-                                      <span className="font-medium text-sm">{category.name}</span>
+                                    <div className="flex-1">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-medium text-sm">{category.name}</span>
+                                        <span className="text-sm font-medium text-gray-600">
+                                          ₹{defaultAmount.toFixed(2)}/{category.fee_cycle || 'monthly'}
+                                        </span>
+                                      </div>
                                       {category.description && (
-                                        <p className="text-xs text-gray-500">{category.description}</p>
+                                        <p className="text-xs text-gray-500 mt-1">{category.description}</p>
                                       )}
                                     </div>
-                                    <label className="flex items-center gap-2 cursor-pointer">
+                                    <label className="flex items-center gap-2 cursor-pointer ml-3">
                                       <input
                                         type="checkbox"
                                         checked={feeConfigItem.enabled}
@@ -4079,32 +4089,40 @@ function StudentsManagement() {
                                     </label>
                                   </div>
                                   {feeConfigItem.enabled && (
-                                    <div className="mt-2">
-                                      <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={feeConfigItem.discount}
-                                        onChange={(e) => {
-                                          const updatedOtherFees = feeConfig.other_fees.map(f =>
-                                            f.fee_category_id === category.id
-                                              ? { ...f, discount: parseFloat(e.target.value) || 0 }
-                                              : f
-                                          );
-                                          // If not found, add it
-                                          if (!feeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
-                                            updatedOtherFees.push({
-                                              fee_category_id: category.id,
-                                              enabled: true,
-                                              discount: parseFloat(e.target.value) || 0
-                                            });
-                                          }
-                                          setFeeConfig({ ...feeConfig, other_fees: updatedOtherFees });
-                                        }}
-                                        className="w-full px-2 py-1 border rounded text-sm"
-                                        placeholder="0"
-                                      />
+                                    <div className="mt-2 space-y-2">
+                                      <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          max={defaultAmount}
+                                          value={feeConfigItem.discount}
+                                          onChange={(e) => {
+                                            const discount = parseFloat(e.target.value) || 0;
+                                            const updatedOtherFees = feeConfig.other_fees.map(f =>
+                                              f.fee_category_id === category.id
+                                                ? { ...f, discount: Math.min(discount, defaultAmount) }
+                                                : f
+                                            );
+                                            // If not found, add it
+                                            if (!feeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
+                                              updatedOtherFees.push({
+                                                fee_category_id: category.id,
+                                                enabled: true,
+                                                discount: Math.min(discount, defaultAmount)
+                                              });
+                                            }
+                                            setFeeConfig({ ...feeConfig, other_fees: updatedOtherFees });
+                                          }}
+                                          className="w-full px-2 py-1 border rounded text-sm"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between text-xs font-semibold pt-1 border-t">
+                                        <span>Final Amount:</span>
+                                        <span className="text-green-600">₹{finalAmount.toFixed(2)}/{category.fee_cycle || 'monthly'}</span>
+                                      </div>
                                     </div>
                                   )}
                                 </div>
