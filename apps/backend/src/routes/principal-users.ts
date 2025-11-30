@@ -9,6 +9,24 @@ const supabaseUrl = process.env.SUPABASE_URL as string;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY as string;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
+// Schema for fee configuration when adding student
+const feeConfigSchema = Joi.object({
+  // Class fee discount
+  class_fee_discount: Joi.number().min(0).default(0),
+  
+  // Transport configuration
+  transport_enabled: Joi.boolean().default(true),
+  transport_route_id: Joi.string().uuid().allow(null).optional(),
+  transport_fee_discount: Joi.number().min(0).default(0),
+  
+  // Other fees configuration (array of fee category configurations)
+  other_fees: Joi.array().items(Joi.object({
+    fee_category_id: Joi.string().uuid().required(),
+    enabled: Joi.boolean().default(true),
+    discount: Joi.number().min(0).default(0)
+  })).default([])
+});
+
 // Schema for adding student
 const addStudentSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -27,7 +45,9 @@ const addStudentSchema = Joi.object({
   guardian_name: Joi.string().required(),
   guardian_phone: Joi.string().required(),
   guardian_email: Joi.string().email().allow('', null),
-  guardian_relationship: Joi.string().default('parent')
+  guardian_relationship: Joi.string().default('parent'),
+  // Fee configuration (optional - if not provided, defaults will be applied)
+  fee_config: feeConfigSchema.optional()
 });
 
 // Schema for adding staff (clerk or teacher)
@@ -38,6 +58,124 @@ const addStaffSchema = Joi.object({
   role: Joi.string().valid('clerk', 'teacher').required(),
   phone: Joi.string().allow('', null),
   gender: Joi.string().valid('male', 'female', 'other').allow('', null)
+});
+
+// Get default fees for a class (for student enrollment UI)
+router.get('/classes/:classId/default-fees', requireRoles(['principal']), async (req, res) => {
+  const { classId } = req.params;
+  const { user } = req;
+  
+  if (!user || !user.schoolId) {
+    return res.status(500).json({ error: 'Server misconfigured' });
+  }
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    // 1. Get class fees (default fees for the class)
+    const { data: classFees, error: classFeesError } = await supabase
+      .from('class_fee_defaults')
+      .select(`
+        *,
+        fee_categories:fee_category_id(id, name, description, fee_type)
+      `)
+      .eq('class_group_id', classId)
+      .eq('school_id', user.schoolId)
+      .eq('is_active', true)
+      .lte('effective_from', today)
+      .or(`effective_to.is.null,effective_to.gte.${today}`)
+      .order('created_at', { ascending: false });
+
+    if (classFeesError) {
+      console.error('[default-fees] Error fetching class fees:', classFeesError);
+    }
+
+    // 2. Get transport routes and their fees
+    const { data: transportRoutes, error: transportRoutesError } = await supabase
+      .from('transport_routes')
+      .select(`
+        id,
+        route_name,
+        bus_number,
+        zone,
+        transport_fees:transport_fees!inner(
+          id,
+          base_fee,
+          escort_fee,
+          fuel_surcharge,
+          fee_cycle,
+          is_active
+        )
+      `)
+      .eq('school_id', user.schoolId)
+      .eq('is_active', true)
+      .order('route_name');
+
+    if (transportRoutesError) {
+      console.error('[default-fees] Error fetching transport routes:', transportRoutesError);
+    }
+
+    // 3. Get all other fee categories (Library, Admission, Lab, Sports, etc.)
+    const { data: feeCategories, error: categoriesError } = await supabase
+      .from('fee_categories')
+      .select('*')
+      .eq('school_id', user.schoolId)
+      .eq('is_active', true)
+      .neq('fee_type', 'transport') // Exclude transport as it's handled separately
+      .order('name');
+
+    if (categoriesError) {
+      console.error('[default-fees] Error fetching fee categories:', categoriesError);
+    }
+
+    // 4. Get optional fee definitions for this class
+    const { data: optionalFees, error: optionalFeesError } = await supabase
+      .from('optional_fee_definitions')
+      .select(`
+        *,
+        fee_categories:fee_category_id(id, name, description, fee_type)
+      `)
+      .eq('class_group_id', classId)
+      .eq('school_id', user.schoolId)
+      .eq('is_active', true)
+      .lte('effective_from', today)
+      .or(`effective_to.is.null,effective_to.gte.${today}`)
+      .order('created_at', { ascending: false });
+
+    if (optionalFeesError) {
+      console.error('[default-fees] Error fetching optional fees:', optionalFeesError);
+    }
+
+    return res.json({
+      class_fees: classFees || [],
+      transport_routes: (transportRoutes || []).map((route: any) => ({
+        id: route.id,
+        route_name: route.route_name,
+        bus_number: route.bus_number,
+        zone: route.zone,
+        fee: route.transport_fees && route.transport_fees.length > 0 ? {
+          base_fee: route.transport_fees[0].base_fee,
+          escort_fee: route.transport_fees[0].escort_fee || 0,
+          fuel_surcharge: route.transport_fees[0].fuel_surcharge || 0,
+          total: (parseFloat(route.transport_fees[0].base_fee || 0) + 
+                 parseFloat(route.transport_fees[0].escort_fee || 0) + 
+                 parseFloat(route.transport_fees[0].fuel_surcharge || 0)),
+          fee_cycle: route.transport_fees[0].fee_cycle
+        } : null
+      })),
+      other_fee_categories: feeCategories || [],
+      optional_fees: optionalFees || []
+    });
+  } catch (err: any) {
+    console.error('[default-fees] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
 });
 
 // Check if username is available
@@ -269,6 +407,187 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
         if (guardianLinkError) {
           console.error('[principal-users] Error linking guardian to student:', guardianLinkError);
         }
+      }
+    }
+
+    // ============================================
+    // FEE CONFIGURATION SETUP
+    // ============================================
+    if (value.class_group_id && value.fee_config) {
+      const today = new Date().toISOString().split('T')[0];
+      const feeConfig = value.fee_config;
+
+      try {
+        // 1. Get default class fees
+        const { data: classFees, error: classFeesError } = await supabase
+          .from('class_fee_defaults')
+          .select(`
+            *,
+            fee_categories:fee_category_id(id, name, fee_type)
+          `)
+          .eq('class_group_id', value.class_group_id)
+          .eq('school_id', user.schoolId)
+          .eq('is_active', true)
+          .lte('effective_from', today)
+          .or(`effective_to.is.null,effective_to.gte.${today}`);
+
+        if (!classFeesError && classFees && classFees.length > 0) {
+          // Find tuition/class fee category
+          const tuitionFee = classFees.find((cf: any) => 
+            cf.fee_categories?.fee_type === 'tuition' || !cf.fee_category_id
+          );
+
+          // Apply class fee discount if provided
+          if (tuitionFee && feeConfig.class_fee_discount > 0) {
+            const { error: overrideError } = await supabase
+              .from('student_fee_overrides')
+              .insert({
+                student_id: studentRecord.id,
+                school_id: user.schoolId,
+                fee_category_id: tuitionFee.fee_category_id || null,
+                discount_amount: feeConfig.class_fee_discount,
+                effective_from: today,
+                is_active: true,
+                applied_by: user.id
+              });
+
+            if (overrideError) {
+              console.error('[principal-users] Error creating class fee discount:', overrideError);
+            }
+          }
+        }
+
+        // 2. Set up transport fee profile
+        if (feeConfig.transport_enabled && feeConfig.transport_route_id) {
+          // Verify route exists and get route details
+          const { data: route, error: routeError } = await supabase
+            .from('transport_routes')
+            .select('id, route_name')
+            .eq('id', feeConfig.transport_route_id)
+            .eq('school_id', user.schoolId)
+            .single();
+
+          if (!routeError && route) {
+            // Create student fee profile for transport
+            const { error: profileError } = await supabase
+              .from('student_fee_profile')
+              .insert({
+                student_id: studentRecord.id,
+                school_id: user.schoolId,
+                transport_enabled: true,
+                transport_route: route.route_name,
+                effective_from: today,
+                is_active: true
+              });
+
+            if (profileError) {
+              console.error('[principal-users] Error creating transport profile:', profileError);
+            }
+
+            // Get transport fee for this route
+            const { data: transportFee, error: transportFeeError } = await supabase
+              .from('transport_fees')
+              .select('*, transport_routes:route_id(id, route_name)')
+              .eq('route_id', feeConfig.transport_route_id)
+              .eq('school_id', user.schoolId)
+              .eq('is_active', true)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            // Apply transport fee discount if provided
+            if (!transportFeeError && transportFee && feeConfig.transport_fee_discount > 0) {
+              // Find transport fee category
+              const { data: transportCategory } = await supabase
+                .from('fee_categories')
+                .select('id')
+                .eq('school_id', user.schoolId)
+                .eq('fee_type', 'transport')
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle();
+
+              if (transportCategory) {
+                const { error: transportDiscountError } = await supabase
+                  .from('student_fee_overrides')
+                  .insert({
+                    student_id: studentRecord.id,
+                    school_id: user.schoolId,
+                    fee_category_id: transportCategory.id,
+                    discount_amount: feeConfig.transport_fee_discount,
+                    effective_from: today,
+                    is_active: true,
+                    applied_by: user.id
+                  });
+
+                if (transportDiscountError) {
+                  console.error('[principal-users] Error creating transport fee discount:', transportDiscountError);
+                }
+              }
+            }
+          }
+        } else if (!feeConfig.transport_enabled) {
+          // Disable transport
+          const { error: profileError } = await supabase
+            .from('student_fee_profile')
+            .insert({
+              student_id: studentRecord.id,
+              school_id: user.schoolId,
+              transport_enabled: false,
+              effective_from: today,
+              is_active: true
+            });
+
+          if (profileError) {
+            console.error('[principal-users] Error creating transport profile (disabled):', profileError);
+          }
+        }
+
+        // 3. Set up other fees (Library, Admission, Lab, Sports, etc.)
+        if (feeConfig.other_fees && feeConfig.other_fees.length > 0) {
+          for (const otherFee of feeConfig.other_fees) {
+            if (otherFee.enabled) {
+              // Apply discount if provided
+              if (otherFee.discount > 0) {
+                const { error: otherFeeDiscountError } = await supabase
+                  .from('student_fee_overrides')
+                  .insert({
+                    student_id: studentRecord.id,
+                    school_id: user.schoolId,
+                    fee_category_id: otherFee.fee_category_id,
+                    discount_amount: otherFee.discount,
+                    effective_from: today,
+                    is_active: true,
+                    applied_by: user.id
+                  });
+
+                if (otherFeeDiscountError) {
+                  console.error('[principal-users] Error creating other fee discount:', otherFeeDiscountError);
+                }
+              }
+            } else {
+              // Disable this fee category (set to full free)
+              const { error: disableFeeError } = await supabase
+                .from('student_fee_overrides')
+                .insert({
+                  student_id: studentRecord.id,
+                  school_id: user.schoolId,
+                  fee_category_id: otherFee.fee_category_id,
+                  is_full_free: true,
+                  effective_from: today,
+                  is_active: true,
+                  applied_by: user.id
+                });
+
+              if (disableFeeError) {
+                console.error('[principal-users] Error disabling fee:', disableFeeError);
+              }
+            }
+          }
+        }
+      } catch (feeErr: any) {
+        // Log fee configuration errors but don't fail student creation
+        console.error('[principal-users] Error setting up fee configuration:', feeErr);
       }
     }
 
