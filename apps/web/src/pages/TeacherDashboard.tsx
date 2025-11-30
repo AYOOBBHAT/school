@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
-import { API_URL } from '../utils/api.js';
-
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
   import.meta.env.VITE_SUPABASE_ANON_KEY || ''
@@ -594,13 +592,9 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     if (currentView === 'fees') {
-      if (BILLING_ENABLED) {
-        loadStudentFeeStatus();
-      } else {
-        // billing removed: ensure no fetch is attempted and clear status
-        setStudentFeeStatus({});
-        setLoadingFees(false);
-      }
+      // billing removed: ensure no fetch is attempted and clear status
+      setStudentFeeStatus({});
+      setLoadingFees(false);
     }
     if (currentView === 'salary') {
       loadSalaryData();
@@ -659,7 +653,7 @@ export default function TeacherDashboard() {
             >
               💰 My Salary
             </button>
-              {BILLING_ENABLED ? (
+              {false && (
                 <button
                   onClick={() => setCurrentView('fees')}
                   className={`w-full text-left px-4 py-2 rounded-lg transition ${
@@ -668,8 +662,6 @@ export default function TeacherDashboard() {
                 >
                   💵 Student Fees (View Only)
                 </button>
-              ) : (
-                <div className="text-xs text-gray-400 mt-2 px-4">Billing removed from this deployment</div>
               )}
           </nav>
           <button

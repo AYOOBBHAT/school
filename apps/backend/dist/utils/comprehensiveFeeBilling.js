@@ -101,41 +101,7 @@ export async function getStudentFeeProfile(studentId, schoolId, periodDate, admi
         .eq('is_active', true)
         .lte('effective_from', periodDate.toISOString().split('T')[0])
         .or(`effective_to.is.null,effective_to.gte.${periodDate.toISOString().split('T')[0]}`);
-    // Get custom fees
-    const { data: customFees, error: customFeesError } = await adminSupabase
-        .from('student_custom_fees')
-        .select(`
-      fee_category_id,
-      amount,
-      fee_cycle,
-      description,
-      fee_categories:fee_category_id(name)
-    `)
-        .eq('student_id', studentId)
-        .eq('school_id', schoolId)
-        .eq('is_active', true)
-        .lte('effective_from', periodDate.toISOString().split('T')[0])
-        .or(`effective_to.is.null,effective_to.gte.${periodDate.toISOString().split('T')[0]}`);
-    // Get optional fees (opted in)
-    const { data: optionalFees, error: optionalFeesError } = await adminSupabase
-        .from('student_optional_fees')
-        .select(`
-      optional_fee_definition_id,
-      opted_in,
-      optional_fee_definitions:optional_fee_definition_id(
-        id,
-        fee_category_id,
-        amount,
-        fee_cycle,
-        fee_categories:fee_category_id(name)
-      )
-    `)
-        .eq('student_id', studentId)
-        .eq('school_id', schoolId)
-        .eq('is_active', true)
-        .eq('opted_in', true)
-        .lte('effective_from', periodDate.toISOString().split('T')[0])
-        .or(`effective_to.is.null,effective_to.gte.${periodDate.toISOString().split('T')[0]}`);
+    // Custom fees and optional fees removed - no longer used
     const feeOverridesMap = new Map();
     (overrides || []).forEach((o) => {
         feeOverridesMap.set(o.fee_category_id, parseFloat(o.override_amount) || 0);
@@ -147,20 +113,8 @@ export async function getStudentFeeProfile(studentId, schoolId, periodDate, admi
         tuition_fee_cycle: profile?.tuition_fee_cycle || null,
         transport_fee_cycle: profile?.transport_fee_cycle || null,
         fee_overrides: feeOverridesMap,
-        custom_fees: (customFees || []).map((cf) => ({
-            fee_category_id: cf.fee_category_id,
-            amount: parseFloat(cf.amount) || 0,
-            fee_cycle: cf.fee_cycle,
-            description: cf.description
-        })),
-        optional_fees: (optionalFees || [])
-            .filter((of) => of.opted_in && of.optional_fee_definitions)
-            .map((of) => ({
-            optional_fee_definition_id: of.optional_fee_definition_id,
-            fee_category_id: of.optional_fee_definitions.fee_category_id,
-            amount: parseFloat(of.optional_fee_definitions.amount) || 0,
-            fee_cycle: of.optional_fee_definitions.fee_cycle
-        }))
+        custom_fees: [], // Removed
+        optional_fees: [] // Removed
     };
 }
 /**
@@ -334,51 +288,7 @@ export async function calculateStudentFees(studentId, classGroupId, schoolId, pe
         totalAmount += baseAmount;
         totalDiscount += discount.discountAmount;
     }
-    // Add optional fees (if opted in)
-    for (const optionalFee of studentProfile.optional_fees) {
-        if (optionalFee.fee_cycle !== periodType && optionalFee.fee_cycle !== 'per-bill') {
-            continue;
-        }
-        const { data: category } = await adminSupabase
-            .from('fee_categories')
-            .select('name')
-            .eq('id', optionalFee.fee_category_id)
-            .single();
-        const discount = applyScholarships(optionalFee.amount, optionalFee.fee_category_id, 'optional', scholarships);
-        billItems.push({
-            fee_category_id: optionalFee.fee_category_id,
-            item_name: category?.name || 'Optional Fee',
-            item_type: 'optional',
-            base_amount: optionalFee.amount,
-            discount_amount: discount.discountAmount,
-            final_amount: discount.finalAmount
-        });
-        totalAmount += optionalFee.amount;
-        totalDiscount += discount.discountAmount;
-    }
-    // Add custom fees
-    for (const customFee of studentProfile.custom_fees) {
-        if (customFee.fee_cycle !== periodType && customFee.fee_cycle !== 'per-bill') {
-            continue;
-        }
-        const { data: category } = await adminSupabase
-            .from('fee_categories')
-            .select('name')
-            .eq('id', customFee.fee_category_id)
-            .single();
-        const discount = applyScholarships(customFee.amount, customFee.fee_category_id, 'custom', scholarships);
-        billItems.push({
-            fee_category_id: customFee.fee_category_id,
-            item_name: category?.name || 'Custom Fee',
-            item_type: 'custom',
-            base_amount: customFee.amount,
-            discount_amount: discount.discountAmount,
-            final_amount: discount.finalAmount,
-            description: customFee.description
-        });
-        totalAmount += customFee.amount;
-        totalDiscount += discount.discountAmount;
-    }
+    // Optional fees and custom fees removed - no longer used
     const finalAmount = totalAmount - totalDiscount;
     return {
         billItems,
@@ -395,103 +305,13 @@ export async function generateFeeBill(studentId, classGroupId, schoolId, periodT
     const feeCalculation = await calculateStudentFees(studentId, classGroupId, schoolId, periodType, periodStart, adminSupabase);
     // Generate bill number
     const billNumber = `BILL-${schoolId.substring(0, 8)}-${Date.now()}`;
-    // Create bill
-    const { data: bill, error: billError } = await adminSupabase
-        .from('fee_bills')
-        .insert({
-        student_id: studentId,
-        school_id: schoolId,
-        bill_number: billNumber,
-        bill_date: new Date().toISOString().split('T')[0],
-        due_date: dueDate.toISOString().split('T')[0],
-        period_type: periodType,
-        period_start: periodStart.toISOString().split('T')[0],
-        period_end: periodEnd.toISOString().split('T')[0],
-        period_label: periodLabel,
-        total_amount: feeCalculation.totalAmount,
-        discount_amount: feeCalculation.totalDiscount,
-        pending_amount: feeCalculation.finalAmount,
-        status: 'generated',
-        generated_by: generatedBy
-    })
-        .select()
-        .single();
-    if (billError) {
-        console.error('[generateFeeBill] Error creating bill:', billError);
-        throw new Error(`Failed to create bill: ${billError.message}`);
-    }
-    // Create bill items
-    const billItems = feeCalculation.billItems.map((item) => ({
-        bill_id: bill.id,
-        student_id: studentId,
-        school_id: schoolId,
-        fee_category_id: item.fee_category_id,
-        item_name: item.item_name,
-        item_type: item.item_type,
-        base_amount: item.base_amount,
-        discount_amount: item.discount_amount,
-        final_amount: item.final_amount,
-        description: item.description
-    }));
-    const { error: itemsError } = await adminSupabase
-        .from('fee_bill_items')
-        .insert(billItems);
-    if (itemsError) {
-        console.error('[generateFeeBill] Error creating bill items:', itemsError);
-        // Rollback bill
-        await adminSupabase.from('fee_bills').delete().eq('id', bill.id);
-        throw new Error(`Failed to create bill items: ${itemsError.message}`);
-    }
-    return bill.id;
+    // Fee bills removed - this function is no longer used
+    throw new Error('Fee bills have been removed from the system');
 }
 /**
  * Calculate fine for overdue bill
  */
 export async function calculateFine(billId, schoolId, adminSupabase) {
-    // Get bill
-    const { data: bill, error: billError } = await adminSupabase
-        .from('fee_bills')
-        .select('due_date, pending_amount, fine_amount')
-        .eq('id', billId)
-        .eq('school_id', schoolId)
-        .single();
-    if (billError || !bill) {
-        return 0;
-    }
-    const dueDate = new Date(bill.due_date);
-    const today = new Date();
-    const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysOverdue <= 0) {
-        return 0; // Not overdue
-    }
-    // Get active fine rules
-    const { data: fineRules, error: rulesError } = await adminSupabase
-        .from('fine_rules')
-        .select('*')
-        .eq('school_id', schoolId)
-        .eq('is_active', true)
-        .lte('days_after_due', daysOverdue)
-        .or(`effective_to.is.null,effective_to.gte.${today.toISOString().split('T')[0]}`)
-        .order('days_after_due', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (rulesError || !fineRules) {
-        return 0; // No fine rule
-    }
-    let fineAmount = 0;
-    const pendingAmount = parseFloat(bill.pending_amount) || 0;
-    if (fineRules.fine_type === 'fixed') {
-        fineAmount = parseFloat(fineRules.fine_amount) || 0;
-    }
-    else if (fineRules.fine_type === 'percentage') {
-        fineAmount = (pendingAmount * (parseFloat(fineRules.fine_percentage) || 0)) / 100;
-    }
-    else if (fineRules.fine_type === 'per_day') {
-        fineAmount = (parseFloat(fineRules.fine_amount) || 0) * daysOverdue;
-    }
-    // Apply max fine cap if exists
-    if (fineRules.max_fine_amount) {
-        fineAmount = Math.min(fineAmount, parseFloat(fineRules.max_fine_amount));
-    }
-    return Math.max(0, fineAmount);
+    // Fee bills removed - this function is no longer used
+    return 0;
 }

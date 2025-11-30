@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
-import { API_URL } from '../utils/api.js';
-
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
   import.meta.env.VITE_SUPABASE_ANON_KEY || ''
@@ -85,7 +83,7 @@ function Sidebar({ currentPath }: { currentPath: string }) {
     { path: '/principal/fees', label: 'Fee Management', icon: '💵' },
   ];
 
-  const filteredNav = navItems.filter(item => !(item.path === '/principal/fees' && !BILLING_ENABLED));
+  const filteredNav = navItems;
 
   return (
     <div className="w-64 bg-gray-900 text-white min-h-screen fixed left-0 top-0">
@@ -5378,7 +5376,7 @@ function SalaryManagement() {
 }
 
 function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'clerk' }) {
-  const [activeTab, setActiveTab] = useState<'class-fees' | 'transport' | 'optional' | 'custom' | 'bills' | 'payments' | 'tracking' | 'hikes' | 'overrides'>('bills');
+  const [activeTab, setActiveTab] = useState<'class-fees' | 'transport' | 'tracking' | 'hikes' | 'overrides'>('class-fees');
   const [loading, setLoading] = useState(false);
   const isClerk = userRole === 'clerk';
 
@@ -5413,36 +5411,12 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     notes: ''
   });
 
-  // Optional Fees
-  const [optionalFees, setOptionalFees] = useState<any[]>([]);
-  const [showOptionalFeeModal, setShowOptionalFeeModal] = useState(false);
-  const [optionalFeeForm, setOptionalFeeForm] = useState({
-    name: '',
-    description: '',
-    amount: '', // Changed from default_amount
-    fee_cycle: 'one-time' as 'one-time' | 'monthly' | 'quarterly' | 'yearly'
-  });
-
-  // Custom Fees
+  // Optional Fees - REMOVED
+  // Custom Fees - REMOVED
+  // Bills - REMOVED
+  
+  // Students still needed for other features
   const [students, setStudents] = useState<any[]>([]);
-  const [customFees, setCustomFees] = useState<any[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<string>('');
-  const [customFeeFilterClass, setCustomFeeFilterClass] = useState<string>(''); // For tab filter
-  const [showCustomFeeModal, setShowCustomFeeModal] = useState(false);
-  const [customFeeForm, setCustomFeeForm] = useState({
-    student_id: '',
-    fee_type: 'discount' as 'additional' | 'discount' | 'scholarship' | 'concession' | 'fine' | 'late-fee' | 'waiver',
-    description: '',
-    amount: '',
-    fee_cycle: 'per-bill' as 'one-time' | 'monthly' | 'quarterly' | 'yearly' | 'per-bill',
-    notes: ''
-  });
-  const [customFeeModalFilterClass, setCustomFeeModalFilterClass] = useState<string>(''); // For modal filter
-
-  // Bills
-  const [bills, setBills] = useState<any[]>([]);
-  const [selectedBill, setSelectedBill] = useState<any>(null);
-  const [showGenerateBillModal, setShowGenerateBillModal] = useState(false);
 
   // Fee Tracking
   const [feeTracking, setFeeTracking] = useState<any[]>([]);
@@ -5456,18 +5430,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     year: new Date().getFullYear()
   });
 
-  // Payments
-  const [payments, setPayments] = useState<any[]>([]);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({
-    bill_id: '',
-    amount_paid: '',
-    payment_mode: 'cash' as 'cash' | 'online' | 'upi' | 'card' | 'cheque' | 'bank-transfer',
-    transaction_id: '',
-    cheque_number: '',
-    bank_name: '',
-    notes: ''
-  });
+  // Payments - REMOVED
 
   // Fee Hikes
   const [selectedFeeForHike, setSelectedFeeForHike] = useState<any>(null);
@@ -5503,18 +5466,8 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       loadClassFees();
     }
     else if (activeTab === 'transport') loadTransportData();
-    else if (activeTab === 'optional') loadOptionalFees();
-    else if (activeTab === 'custom') loadCustomFees();
-    else if (activeTab === 'bills') loadBills();
-    else if (activeTab === 'payments') loadPayments();
     else if (activeTab === 'tracking') loadFeeTracking();
   }, [activeTab]);
-
-  useEffect(() => {
-    if (selectedStudent && activeTab === 'custom' && BILLING_ENABLED) {
-      loadCustomFees();
-    }
-  }, [selectedStudent]);
 
   const loadInitialData = async () => {
     try {
@@ -5590,97 +5543,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
   };
 
-  const loadOptionalFees = async () => {
-    if (!BILLING_ENABLED) return;
-    setLoading(true);
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/fees/optional`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setOptionalFees(data.optional_fees || []);
-      }
-    } catch (error) {
-      console.error('Error loading optional fees:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadCustomFees = async () => {
-    if (!BILLING_ENABLED) return;
-    setLoading(true);
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const url = selectedStudent 
-        ? `${API_URL}/fees/custom?student_id=${selectedStudent}`
-        : `${API_URL}/fees/custom`;
-
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCustomFees(data.custom_fees || []);
-      }
-    } catch (error) {
-      console.error('Error loading custom fees:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadBills = async () => {
-    if (!BILLING_ENABLED) return;
-    setLoading(true);
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/fees/bills`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setBills(data.bills || []);
-      }
-    } catch (error) {
-      console.error('Error loading bills:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadPayments = async () => {
-    if (!BILLING_ENABLED) return;
-    setLoading(true);
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/fees/payments`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPayments(data.payments || []);
-      }
-    } catch (error) {
-      console.error('Error loading payments:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // loadOptionalFees, loadCustomFees, loadBills, loadPayments - REMOVED
 
   const handleSaveClassFee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -5798,247 +5661,33 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
   };
 
-  const handleSaveOptionalFee = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!BILLING_ENABLED) {
-      alert('Billing feature is disabled in this deployment');
-      return;
-    }
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/fees/optional`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...optionalFeeForm,
-          amount: parseFloat(optionalFeeForm.amount) // Changed from default_amount
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save optional fee');
-      }
-
-      alert('Optional fee saved successfully!');
-      setShowOptionalFeeModal(false);
-      setOptionalFeeForm({
-        name: '',
-        description: '',
-        amount: '', // Changed from default_amount
-        fee_cycle: 'one-time'
-      });
-      if (BILLING_ENABLED) loadOptionalFees();
-    } catch (error: any) {
-      alert(error.message || 'Failed to save optional fee');
-    }
-  };
-
-  const handleSaveCustomFee = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!BILLING_ENABLED) {
-      alert('Billing feature is disabled in this deployment');
-      return;
-    }
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/fees/custom`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...customFeeForm,
-          amount: parseFloat(customFeeForm.amount)
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save custom fee');
-      }
-
-      alert('Custom fee saved successfully!');
-      setShowCustomFeeModal(false);
-      setCustomFeeForm({
-        student_id: '',
-        fee_type: 'discount',
-        description: '',
-        amount: '',
-        fee_cycle: 'per-bill',
-        notes: ''
-      });
-      if (BILLING_ENABLED) loadCustomFees();
-    } catch (error: any) {
-      alert(error.message || 'Failed to save custom fee');
-    }
-  };
-
-  const handleGenerateBills = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!BILLING_ENABLED) {
-      alert('Billing feature is disabled in this deployment');
-      return;
-    }
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/fees/bills/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(generateBillForm)
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to generate bills');
-      }
-
-      const data = await response.json();
-      alert(`Successfully generated ${data.bills_generated} bill(s)!`);
-      setShowGenerateBillModal(false);
-      setGenerateBillForm({
-        student_id: '',
-        class_group_id: '',
-        month: new Date().getMonth() + 1,
-        year: new Date().getFullYear()
-      });
-      if (BILLING_ENABLED) loadBills();
-    } catch (error: any) {
-      alert(error.message || 'Failed to generate bills');
-    }
-  };
-
-  const handleSavePayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!BILLING_ENABLED) {
-      alert('Billing feature is disabled in this deployment');
-      return;
-    }
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/fees/payments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...paymentForm,
-          amount_paid: parseFloat(paymentForm.amount_paid)
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to record payment');
-      }
-
-      alert('Payment recorded successfully!');
-      setShowPaymentModal(false);
-      setPaymentForm({
-        bill_id: '',
-        amount_paid: '',
-        payment_mode: 'cash',
-        transaction_id: '',
-        cheque_number: '',
-        bank_name: '',
-        notes: ''
-      });
-      if (BILLING_ENABLED) {
-        loadPayments();
-        loadBills();
-      }
-    } catch (error: any) {
-      alert(error.message || 'Failed to record payment');
-    }
-  };
-
-  const viewBill = async (billId: string) => {
-    if (!BILLING_ENABLED) return;
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/fees/bills/${billId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedBill(data.bill);
-      }
-    } catch (error) {
-      console.error('Error loading bill details:', error);
-    }
-  };
+  // handleSaveOptionalFee, handleSaveCustomFee, handleGenerateBills, handleSavePayment, viewBill - REMOVED
 
   const loadFeeTracking = async () => {
-    if (!BILLING_ENABLED) return;
+    // Fee tracking simplified - bills and payments removed
     setLoading(true);
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      // Get all students with their bills and payments
-      const [billsRes, paymentsRes] = await Promise.all([
-        fetch(`${API_URL}/fees/bills`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/fees/payments`, { headers: { Authorization: `Bearer ${token}` } })
+      // Get all students with their class and transport fees
+      const [studentsRes] = await Promise.all([
+        fetch(`${API_URL}/students`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
 
-      if (billsRes.ok && paymentsRes.ok) {
-        const billsData = await billsRes.json();
-        const paymentsData = await paymentsRes.json();
+      if (studentsRes.ok) {
+        const studentsData = await studentsRes.json();
+        
+        // Create simplified fee tracking data
+        const feeTrackingData = (studentsData.students || []).map((student: any) => ({
+          student: student,
+          total_assigned: 0,
+          total_paid: 0,
+          pending_amount: 0,
+          transport_amount: 0
+        }));
 
-        // Group by student
-        const studentFeeMap = new Map();
-
-        // Process bills
-        (billsData.bills || []).forEach((bill: any) => {
-          const studentId = bill.student_id;
-          if (!studentFeeMap.has(studentId)) {
-            studentFeeMap.set(studentId, {
-              student: bill.students,
-              total_assigned: 0,
-              total_paid: 0,
-              pending_amount: 0,
-              transport_amount: 0,
-              bills: [],
-              payments: []
-            });
-          }
-
-          const studentFee = studentFeeMap.get(studentId);
-          studentFee.total_assigned += parseFloat(bill.net_amount || 0);
-          studentFee.total_paid += parseFloat(bill.total_paid || 0);
-          studentFee.pending_amount += parseFloat(bill.balance || 0);
-          studentFee.transport_amount += parseFloat(bill.transport_fee_total || 0);
-          studentFee.bills.push(bill);
-        });
-
-        // Process payments
-        (paymentsData.payments || []).forEach((payment: any) => {
-          const studentId = payment.student_id;
-          if (studentFeeMap.has(studentId)) {
-            studentFeeMap.get(studentId).payments.push(payment);
-          }
-        });
-
-        setFeeTracking(Array.from(studentFeeMap.values()));
+        setFeeTracking(feeTrackingData);
       }
     } catch (error) {
       console.error('Error loading fee tracking:', error);
@@ -6047,7 +5696,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
   };
 
-  const handleHikeFee = async (fee: any, feeType: 'class' | 'transport' | 'optional') => {
+  const handleHikeFee = async (fee: any, feeType: 'class' | 'transport') => {
     setSelectedFeeForHike({ ...fee, feeType });
     setHikeForm({
       new_amount: fee.amount?.toString() || '',
@@ -6066,9 +5715,8 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         url = `${API_URL}/fees/class-fees/${fee.id}/versions`;
       } else if (feeType === 'transport') {
         url = `${API_URL}/fees/transport/fees/${fee.id}/versions`;
-      } else if (feeType === 'optional') {
-        url = `${API_URL}/fees/optional/${fee.id}/versions`;
       }
+      // Optional fees removed
 
       if (url) {
         const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -6095,9 +5743,8 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         url = `${API_URL}/fees/class-fees/${selectedFeeForHike.id}/hike`;
       } else if (selectedFeeForHike.feeType === 'transport') {
         url = `${API_URL}/fees/transport/fees/${selectedFeeForHike.id}/hike`;
-      } else if (selectedFeeForHike.feeType === 'optional') {
-        url = `${API_URL}/fees/optional/${selectedFeeForHike.id}/hike`;
       }
+      // Optional fees removed
 
       if (!url) return;
 
@@ -6131,7 +5778,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       // Reload fees
       if (activeTab === 'class-fees') loadClassFees();
       else if (activeTab === 'transport') loadTransportData();
-      else if (activeTab === 'optional') loadOptionalFees();
+      // Optional fees removed
     } catch (error: any) {
       alert(error.message || 'Failed to hike fee');
     }
@@ -6257,119 +5904,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
   };
 
-  const downloadInvoice = (bill: any) => {
-    // Create invoice HTML
-    const invoiceHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invoice - ${bill.bill_number}</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          .invoice-details { display: flex; justify-content: space-between; margin-bottom: 30px; }
-          .student-info, .bill-info { width: 48%; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-          th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-          th { background-color: #f2f2f2; }
-          .total-row { font-weight: bold; background-color: #f9f9f9; }
-          .summary { float: right; width: 300px; margin-top: 20px; }
-          .summary div { display: flex; justify-content: space-between; margin-bottom: 10px; }
-          .text-right { text-align: right; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>FEE INVOICE</h1>
-          <h2>Bill Number: ${bill.bill_number}</h2>
-        </div>
-        <div class="invoice-details">
-          <div class="student-info">
-            <h3>Student Information</h3>
-            <p><strong>Name:</strong> ${bill.students?.profile?.full_name || '-'}</p>
-            <p><strong>Roll Number:</strong> ${bill.students?.roll_number || '-'}</p>
-            <p><strong>Class:</strong> ${bill.students?.class_groups?.name || '-'}</p>
-          </div>
-          <div class="bill-info">
-            <h3>Bill Information</h3>
-            <p><strong>Bill Date:</strong> ${new Date(bill.bill_date).toLocaleDateString()}</p>
-            <p><strong>Period:</strong> ${new Date(bill.bill_period_start).toLocaleDateString()} - ${new Date(bill.bill_period_end).toLocaleDateString()}</p>
-            <p><strong>Due Date:</strong> ${new Date(bill.due_date).toLocaleDateString()}</p>
-            <p><strong>Status:</strong> ${bill.status}</p>
-          </div>
-        </div>
-        <h3>Bill Items</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th class="text-right">Amount (₹)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${(bill.items || []).map((item: any) => `
-              <tr>
-                <td>${item.item_name}</td>
-                <td class="text-right">${item.amount < 0 ? '-' : ''}₹${Math.abs(parseFloat(item.amount || 0)).toLocaleString()}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        <div class="summary">
-          <div><span>Class Fees:</span><span>₹${parseFloat(bill.class_fees_total || 0).toLocaleString()}</span></div>
-          ${bill.transport_fee_total > 0 ? `<div><span>Transport Fee:</span><span>₹${parseFloat(bill.transport_fee_total || 0).toLocaleString()}</span></div>` : ''}
-          ${bill.optional_fees_total > 0 ? `<div><span>Optional Fees:</span><span>₹${parseFloat(bill.optional_fees_total || 0).toLocaleString()}</span></div>` : ''}
-          ${bill.custom_fees_total !== 0 ? `<div><span>Custom Fees:</span><span>${bill.custom_fees_total < 0 ? '-' : '+'}₹${Math.abs(parseFloat(bill.custom_fees_total || 0)).toLocaleString()}</span></div>` : ''}
-          ${bill.fine_total > 0 ? `<div><span>Fine:</span><span>₹${parseFloat(bill.fine_total || 0).toLocaleString()}</span></div>` : ''}
-          <div class="total-row"><span>Gross Amount:</span><span>₹${parseFloat(bill.gross_amount || 0).toLocaleString()}</span></div>
-          ${bill.discount_amount > 0 ? `<div><span>Discount:</span><span>-₹${parseFloat(bill.discount_amount || 0).toLocaleString()}</span></div>` : ''}
-          ${bill.scholarship_amount > 0 ? `<div><span>Scholarship:</span><span>-₹${parseFloat(bill.scholarship_amount || 0).toLocaleString()}</span></div>` : ''}
-          <div class="total-row" style="font-size: 1.2em; border-top: 2px solid #000; padding-top: 10px;">
-            <span>Net Amount:</span><span>₹${parseFloat(bill.net_amount || 0).toLocaleString()}</span>
-          </div>
-          <div><span>Paid:</span><span>₹${parseFloat(bill.total_paid || 0).toLocaleString()}</span></div>
-          <div class="total-row" style="border-top: 2px solid #000; padding-top: 10px;">
-            <span>Balance:</span><span>₹${parseFloat(bill.balance || 0).toLocaleString()}</span>
-          </div>
-        </div>
-        ${bill.payments && bill.payments.length > 0 ? `
-          <h3 style="clear: both; margin-top: 50px;">Payment History</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Payment Number</th>
-                <th>Amount</th>
-                <th>Mode</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${bill.payments.map((payment: any) => `
-                <tr>
-                  <td>${new Date(payment.payment_date).toLocaleDateString()}</td>
-                  <td>${payment.payment_number}</td>
-                  <td>₹${parseFloat(payment.amount_paid || 0).toLocaleString()}</td>
-                  <td>${payment.payment_mode}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        ` : ''}
-      </body>
-      </html>
-    `;
-
-    // Open print dialog
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(invoiceHTML);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
-    }
-  };
 
   if (loading) {
     return (
@@ -6393,13 +5927,9 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
               ...(isClerk ? [] : [
                 { id: 'class-fees', label: 'Class Fees' },
                 { id: 'transport', label: 'Transport' },
-                { id: 'optional', label: 'Optional Fees' },
-                { id: 'custom', label: 'Custom Fees' },
                 { id: 'hikes', label: 'Fee Hikes' },
                 { id: 'overrides', label: 'Fee Overrides' }
               ]),
-              { id: 'bills', label: 'Fee Bills' },
-              { id: 'payments', label: 'Payments' },
               { id: 'tracking', label: 'Fee Tracking' }
             ].map((tab) => (
               <button
@@ -6577,230 +6107,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         </div>
       )}
 
-      {/* Optional Fees Tab - Only for Principal */}
-      {activeTab === 'optional' && !isClerk && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold">Optional Fees</h3>
-            <button
-              onClick={() => setShowOptionalFeeModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              + Add Optional Fee
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {optionalFees.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
-                      No optional fees found.
-                    </td>
-                  </tr>
-                ) : (
-                  optionalFees.map((fee) => (
-                    <tr key={fee.id}>
-                      <td className="px-6 py-4 font-medium">{fee.name}</td>
-                      <td className="px-6 py-4">₹{parseFloat(fee.amount || 0).toLocaleString()}</td>
-                      <td className="px-6 py-4">{fee.fee_cycle}</td>
-                      <td className="px-6 py-4">
-                        <button className="text-blue-600 hover:text-blue-800">Edit</button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Custom Fees Tab - Only for Principal */}
-      {activeTab === 'custom' && !isClerk && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold">Student Custom Fees</h3>
-            <button
-              onClick={() => setShowCustomFeeModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              + Add Custom Fee
-            </button>
-          </div>
-
-          <div className="mb-4 grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Filter by Class</label>
-              <select
-                value={customFeeFilterClass}
-                onChange={(e) => setCustomFeeFilterClass(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
-              >
-                <option value="">All Classes</option>
-                {classGroups.map((classGroup) => (
-                  <option key={classGroup.id} value={classGroup.id}>
-                    {classGroup.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Filter by Student</label>
-              <select
-                value={selectedStudent}
-                onChange={(e) => setSelectedStudent(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
-              >
-                <option value="">All Students</option>
-                {students
-                  .filter((student) => !customFeeFilterClass || student.class_group_id === customFeeFilterClass)
-                  .map((student) => (
-                    <option key={student.id} value={student.id}>
-                      {student.profile?.full_name} ({student.roll_number}) - {classGroups.find(cg => cg.id === student.class_group_id)?.name || ''}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {customFees.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
-                      No custom fees found.
-                    </td>
-                  </tr>
-                ) : (
-                  customFees.map((fee) => (
-                    <tr key={fee.id}>
-                      <td className="px-6 py-4">{fee.students?.profile?.full_name || '-'}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          ['discount', 'scholarship', 'concession', 'waiver'].includes(fee.fee_type)
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {fee.fee_type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">{fee.description}</td>
-                      <td className={`px-6 py-4 font-semibold ${
-                        fee.amount < 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {fee.amount < 0 ? '-' : '+'}₹{Math.abs(parseFloat(fee.amount || 0)).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4">{fee.fee_cycle}</td>
-                      <td className="px-6 py-4">
-                        <button className="text-blue-600 hover:text-blue-800">Edit</button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Bills Tab */}
-      {activeTab === 'bills' && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold">Fee Bills</h3>
-            <button
-              onClick={() => setShowGenerateBillModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              Generate Bills
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bill Number</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Period</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {bills.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
-                      No bills found. Click "Generate Bills" to create bills.
-                    </td>
-                  </tr>
-                ) : (
-                  bills.map((bill: any) => (
-                    <tr key={bill.id}>
-                      <td className="px-6 py-4 font-medium">{bill.bill_number}</td>
-                      <td className="px-6 py-4">{bill.students?.profile?.full_name || '-'}</td>
-                      <td className="px-6 py-4">
-                        {new Date(bill.bill_period_start).toLocaleDateString()} - {new Date(bill.bill_period_end).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 font-semibold">₹{parseFloat(bill.net_amount || 0).toLocaleString()}</td>
-                      <td className="px-6 py-4">₹{parseFloat(bill.total_paid || 0).toLocaleString()}</td>
-                      <td className="px-6 py-4 font-semibold">₹{parseFloat(bill.balance || 0).toLocaleString()}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          bill.status === 'paid' ? 'bg-green-100 text-green-800' :
-                          bill.status === 'partially-paid' ? 'bg-yellow-100 text-yellow-800' :
-                          bill.status === 'overdue' ? 'bg-red-100 text-red-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {bill.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button
-                          onClick={() => viewBill(bill.id)}
-                          className="text-blue-600 hover:text-blue-800 mr-2"
-                        >
-                          View
-                        </button>
-                        <button
-                          onClick={() => downloadInvoice(bill)}
-                          className="text-green-600 hover:text-green-800 mr-2"
-                        >
-                          Print
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Optional Fees, Custom Fees, Bills - REMOVED */}
 
       {/* Fee Tracking Tab */}
       {activeTab === 'tracking' && (
@@ -6894,7 +6201,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                           <button
                             onClick={() => {
                               setSelectedTrackingStudent(track);
-                              setSelectedBill(null);
                             }}
                             className="text-blue-600 hover:text-blue-800 mr-2"
                           >
@@ -6911,7 +6217,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       )}
 
       {/* Student Fee Details Modal (from Tracking) */}
-      {selectedTrackingStudent && !selectedBill && (
+      {selectedTrackingStudent && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
@@ -6948,151 +6254,12 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                 </div>
               </div>
 
-              {/* Bills */}
-              <div>
-                <h4 className="text-lg font-bold mb-3">Fee Bills</h4>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bill Number</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Period</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Net Amount</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Paid</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {selectedTrackingStudent.bills?.map((bill: any) => (
-                        <tr key={bill.id}>
-                          <td className="px-6 py-4 font-medium">{bill.bill_number}</td>
-                          <td className="px-6 py-4">
-                            {new Date(bill.bill_period_start).toLocaleDateString()} - {new Date(bill.bill_period_end).toLocaleDateString()}
-                          </td>
-                          <td className="px-6 py-4 text-right">₹{parseFloat(bill.net_amount || 0).toLocaleString()}</td>
-                          <td className="px-6 py-4 text-right text-green-600">₹{parseFloat(bill.total_paid || 0).toLocaleString()}</td>
-                          <td className="px-6 py-4 text-right font-semibold">₹{parseFloat(bill.balance || 0).toLocaleString()}</td>
-                          <td className="px-6 py-4">
-                            <span className={`px-2 py-1 rounded text-xs ${
-                              bill.status === 'paid' ? 'bg-green-100 text-green-800' :
-                              bill.status === 'partially-paid' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-red-100 text-red-800'
-                            }`}>
-                              {bill.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <button
-                              onClick={() => {
-                                viewBill(bill.id);
-                                setSelectedTrackingStudent(null);
-                              }}
-                              className="text-blue-600 hover:text-blue-800 mr-2"
-                            >
-                              View
-                            </button>
-                            <button
-                              onClick={() => downloadInvoice(bill)}
-                              className="text-green-600 hover:text-green-800"
-                            >
-                              Print
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Payment History */}
-              {selectedTrackingStudent.payments && selectedTrackingStudent.payments.length > 0 && (
-                <div>
-                  <h4 className="text-lg font-bold mb-3">Payment History</h4>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment Number</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mode</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transaction ID</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {selectedTrackingStudent.payments.map((payment: any) => (
-                          <tr key={payment.id}>
-                            <td className="px-6 py-4">{new Date(payment.payment_date).toLocaleDateString()}</td>
-                            <td className="px-6 py-4 font-medium">{payment.payment_number}</td>
-                            <td className="px-6 py-4 text-right font-semibold">₹{parseFloat(payment.amount_paid || 0).toLocaleString()}</td>
-                            <td className="px-6 py-4">{payment.payment_mode}</td>
-                            <td className="px-6 py-4">{payment.transaction_id || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Payments Tab */}
-      {activeTab === 'payments' && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold">Fee Payments</h3>
-            <button
-              onClick={() => setShowPaymentModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              + Record Payment
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment Number</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bill Number</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mode</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received By</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {payments.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
-                      No payments found.
-                    </td>
-                  </tr>
-                ) : (
-                  payments.map((payment: any) => (
-                    <tr key={payment.id}>
-                      <td className="px-6 py-4 font-medium">{payment.payment_number}</td>
-                      <td className="px-6 py-4">{payment.fee_bills?.bill_number || '-'}</td>
-                      <td className="px-6 py-4">{payment.students?.profile?.full_name || '-'}</td>
-                      <td className="px-6 py-4 font-semibold">₹{parseFloat(payment.amount_paid || 0).toLocaleString()}</td>
-                      <td className="px-6 py-4">{payment.payment_mode}</td>
-                      <td className="px-6 py-4">{new Date(payment.payment_date).toLocaleDateString()}</td>
-                      <td className="px-6 py-4">-</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Payments Tab - REMOVED */}
 
       {/* Modals will be added here - I'll create a simplified version with key modals */}
       {/* Class Fee Modal */}
@@ -7392,679 +6559,14 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         </div>
       )}
 
-      {/* Optional Fee Modal */}
-      {showOptionalFeeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Add Optional Fee</h3>
-            <form onSubmit={handleSaveOptionalFee}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Name *</label>
-                  <input
-                    type="text"
-                    value={optionalFeeForm.name}
-                    onChange={(e) => setOptionalFeeForm({ ...optionalFeeForm, name: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder="e.g., Library Fee, Sports Equipment Fee"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Description</label>
-                  <textarea
-                    value={optionalFeeForm.description}
-                    onChange={(e) => setOptionalFeeForm({ ...optionalFeeForm, description: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    rows={3}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Amount (₹) *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={optionalFeeForm.amount}
-                    onChange={(e) => setOptionalFeeForm({ ...optionalFeeForm, amount: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Fee Cycle *</label>
-                  <select
-                    value={optionalFeeForm.fee_cycle}
-                    onChange={(e) => setOptionalFeeForm({ ...optionalFeeForm, fee_cycle: e.target.value as any })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  >
-                    <option value="one-time">One-time</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="yearly">Yearly</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-4 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowOptionalFeeModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Optional Fee Modal - REMOVED */}
 
-      {/* Custom Fee Modal */}
-      {showCustomFeeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
-            <h3 className="text-xl font-bold mb-4">Add Custom Fee</h3>
-            <form onSubmit={handleSaveCustomFee}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Filter by Class</label>
-                  <select
-                    value={customFeeModalFilterClass}
-                    onChange={(e) => {
-                      setCustomFeeModalFilterClass(e.target.value);
-                      setCustomFeeForm({ ...customFeeForm, student_id: '' }); // Reset student when class changes
-                    }}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-2"
-                  >
-                    <option value="">All Classes</option>
-                    {classGroups.map((classGroup) => (
-                      <option key={classGroup.id} value={classGroup.id}>
-                        {classGroup.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Student *</label>
-                  <select
-                    value={customFeeForm.student_id}
-                    onChange={(e) => setCustomFeeForm({ ...customFeeForm, student_id: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  >
-                    <option value="">Select Student</option>
-                    {students
-                      .filter((student) => !customFeeModalFilterClass || student.class_group_id === customFeeModalFilterClass)
-                      .map((student) => (
-                        <option key={student.id} value={student.id}>
-                          {student.profile?.full_name} ({student.roll_number}) - {classGroups.find(cg => cg.id === student.class_group_id)?.name || ''}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Fee Type *</label>
-                  <select
-                    value={customFeeForm.fee_type}
-                    onChange={(e) => setCustomFeeForm({ ...customFeeForm, fee_type: e.target.value as any })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  >
-                    <option value="discount">Discount</option>
-                    <option value="scholarship">Scholarship</option>
-                    <option value="concession">Concession</option>
-                    <option value="waiver">Waiver</option>
-                    <option value="additional">Additional Fee</option>
-                    <option value="fine">Fine</option>
-                    <option value="late-fee">Late Fee</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Description *</label>
-                  <input
-                    type="text"
-                    value={customFeeForm.description}
-                    onChange={(e) => setCustomFeeForm({ ...customFeeForm, description: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder="e.g., Merit Scholarship, Late Admission Fine"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Amount (₹) * 
-                    <span className="text-gray-500 text-xs ml-2">
-                      (Use positive for additional/fine, negative for discount/scholarship)
-                    </span>
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={customFeeForm.amount}
-                    onChange={(e) => setCustomFeeForm({ ...customFeeForm, amount: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder={['discount', 'scholarship', 'concession', 'waiver'].includes(customFeeForm.fee_type) ? 'e.g., -5000' : 'e.g., 5000'}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Fee Cycle *</label>
-                  <select
-                    value={customFeeForm.fee_cycle}
-                    onChange={(e) => setCustomFeeForm({ ...customFeeForm, fee_cycle: e.target.value as any })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  >
-                    <option value="per-bill">Per Bill</option>
-                    <option value="one-time">One-time</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="yearly">Yearly</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Notes</label>
-                  <textarea
-                    value={customFeeForm.notes}
-                    onChange={(e) => setCustomFeeForm({ ...customFeeForm, notes: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    rows={3}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-4 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCustomFeeModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Custom Fee Modal - REMOVED */}
 
-      {/* Generate Bill Modal */}
-      {showGenerateBillModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Generate Fee Bills</h3>
-            <form onSubmit={handleGenerateBills}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Generate For</label>
-                  <select
-                    value={generateBillForm.student_id ? 'student' : generateBillForm.class_group_id ? 'class' : 'all'}
-                    onChange={(e) => {
-                      if (e.target.value === 'all') {
-                        setGenerateBillForm({ ...generateBillForm, student_id: '', class_group_id: '' });
-                      } else if (e.target.value === 'student') {
-                        setGenerateBillForm({ ...generateBillForm, class_group_id: '' });
-                      } else {
-                        setGenerateBillForm({ ...generateBillForm, student_id: '' });
-                      }
-                    }}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-2"
-                  >
-                    <option value="all">All Students</option>
-                    <option value="class">Specific Class</option>
-                    <option value="student">Specific Student</option>
-                  </select>
-                </div>
-                {generateBillForm.student_id !== '' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Student *</label>
-                    <select
-                      value={generateBillForm.student_id}
-                      onChange={(e) => setGenerateBillForm({ ...generateBillForm, student_id: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      required
-                    >
-                      <option value="">Select Student</option>
-                      {students.map((student) => (
-                        <option key={student.id} value={student.id}>
-                          {student.profile?.full_name} ({student.roll_number})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {generateBillForm.class_group_id !== '' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Class *</label>
-                    <select
-                      value={generateBillForm.class_group_id}
-                      onChange={(e) => setGenerateBillForm({ ...generateBillForm, class_group_id: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      required
-                    >
-                      <option value="">Select Class</option>
-                      {classGroups.map((classGroup) => (
-                        <option key={classGroup.id} value={classGroup.id}>
-                          {classGroup.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Month *</label>
-                    <select
-                      value={generateBillForm.month}
-                      onChange={(e) => setGenerateBillForm({ ...generateBillForm, month: parseInt(e.target.value) })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      required
-                    >
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
-                        <option key={m} value={m}>
-                          {new Date(2000, m - 1).toLocaleString('default', { month: 'long' })}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Year *</label>
-                    <input
-                      type="number"
-                      min="2000"
-                      max="2100"
-                      value={generateBillForm.year}
-                      onChange={(e) => setGenerateBillForm({ ...generateBillForm, year: parseInt(e.target.value) })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-                  <p><strong>Note:</strong> Bills will be generated based on:</p>
-                  <ul className="list-disc list-inside mt-1">
-                    <li>Class fees for the selected period</li>
-                    <li>Transport fees if student is assigned to a route</li>
-                    <li>Optional fees based on their cycle</li>
-                    <li>Custom fees (discounts, scholarships, fines)</li>
-                  </ul>
-                </div>
-              </div>
-              <div className="flex gap-4 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                >
-                  Generate Bills
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowGenerateBillModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Generate Bill Modal - REMOVED */}
 
-      {/* Payment Modal */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
-            <h3 className="text-xl font-bold mb-4">Record Payment</h3>
-            <form onSubmit={handleSavePayment}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Bill *</label>
-                  <select
-                    value={paymentForm.bill_id}
-                    onChange={(e) => {
-                      const bill = bills.find((b: any) => b.id === e.target.value);
-                      setPaymentForm({
-                        ...paymentForm,
-                        bill_id: e.target.value,
-                        amount_paid: bill ? Math.min(bill.balance || bill.net_amount, bill.net_amount).toString() : ''
-                      });
-                    }}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  >
-                    <option value="">Select Bill</option>
-                    {bills.filter((b: any) => (b.balance || b.net_amount) > 0).map((bill: any) => (
-                      <option key={bill.id} value={bill.id}>
-                        {bill.bill_number} - {bill.students?.profile?.full_name} - Balance: ₹{parseFloat(bill.balance || bill.net_amount || 0).toLocaleString()}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Amount Paid (₹) *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    value={paymentForm.amount_paid}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, amount_paid: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Payment Mode *</label>
-                  <select
-                    value={paymentForm.payment_mode}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, payment_mode: e.target.value as any })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="online">Online</option>
-                    <option value="upi">UPI</option>
-                    <option value="card">Card</option>
-                    <option value="cheque">Cheque</option>
-                    <option value="bank-transfer">Bank Transfer</option>
-                  </select>
-                </div>
-                {paymentForm.payment_mode === 'online' || paymentForm.payment_mode === 'upi' || paymentForm.payment_mode === 'card' ? (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Transaction ID</label>
-                    <input
-                      type="text"
-                      value={paymentForm.transaction_id}
-                      onChange={(e) => setPaymentForm({ ...paymentForm, transaction_id: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      placeholder="Enter transaction ID"
-                    />
-                  </div>
-                ) : null}
-                {paymentForm.payment_mode === 'cheque' && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Cheque Number</label>
-                      <input
-                        type="text"
-                        value={paymentForm.cheque_number}
-                        onChange={(e) => setPaymentForm({ ...paymentForm, cheque_number: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Bank Name</label>
-                      <input
-                        type="text"
-                        value={paymentForm.bank_name}
-                        onChange={(e) => setPaymentForm({ ...paymentForm, bank_name: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      />
-                    </div>
-                  </>
-                )}
-                {paymentForm.payment_mode === 'bank-transfer' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Bank Name</label>
-                    <input
-                      type="text"
-                      value={paymentForm.bank_name}
-                      onChange={(e) => setPaymentForm({ ...paymentForm, bank_name: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    />
-                  </div>
-                )}
-                <div>
-                  <label className="block text-sm font-medium mb-2">Notes</label>
-                  <textarea
-                    value={paymentForm.notes}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    rows={3}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-4 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                >
-                  Record Payment
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPaymentModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Bill Detail Modal */}
-      {selectedBill && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-2xl font-bold">Bill Details</h3>
-              <button
-                onClick={() => setSelectedBill(null)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              {/* Bill Header */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Bill Number</p>
-                    <p className="font-semibold">{selectedBill.bill_number}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Student</p>
-                    <p className="font-semibold">{selectedBill.students?.profile?.full_name || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Period</p>
-                    <p className="font-semibold">
-                      {new Date(selectedBill.bill_period_start).toLocaleDateString()} - {new Date(selectedBill.bill_period_end).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Due Date</p>
-                    <p className="font-semibold">{new Date(selectedBill.due_date).toLocaleDateString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Status</p>
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                      selectedBill.status === 'paid' ? 'bg-green-100 text-green-800' :
-                      selectedBill.status === 'partially-paid' ? 'bg-yellow-100 text-yellow-800' :
-                      selectedBill.status === 'overdue' ? 'bg-red-100 text-red-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {selectedBill.status}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bill Items */}
-              <div>
-                <h4 className="text-lg font-bold mb-3">Bill Items</h4>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {selectedBill.items && selectedBill.items.length > 0 ? (
-                        selectedBill.items.map((item: any, index: number) => (
-                          <tr key={index}>
-                            <td className="px-6 py-4">{item.item_name}</td>
-                            <td className={`px-6 py-4 text-right font-semibold ${
-                              item.amount < 0 ? 'text-green-600' : 'text-gray-900'
-                            }`}>
-                              {item.amount < 0 ? '-' : ''}₹{Math.abs(parseFloat(item.amount || 0)).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={2} className="px-6 py-4 text-center text-gray-500">
-                            No items found
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Bill Summary */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Class Fees:</span>
-                    <span className="font-semibold">₹{parseFloat(selectedBill.class_fees_total || 0).toLocaleString()}</span>
-                  </div>
-                  {selectedBill.transport_fee_total > 0 && (
-                    <div className="flex justify-between">
-                      <span>Transport Fee:</span>
-                      <span className="font-semibold">₹{parseFloat(selectedBill.transport_fee_total || 0).toLocaleString()}</span>
-                    </div>
-                  )}
-                  {selectedBill.optional_fees_total > 0 && (
-                    <div className="flex justify-between">
-                      <span>Optional Fees:</span>
-                      <span className="font-semibold">₹{parseFloat(selectedBill.optional_fees_total || 0).toLocaleString()}</span>
-                    </div>
-                  )}
-                  {selectedBill.custom_fees_total !== 0 && (
-                    <div className="flex justify-between">
-                      <span>Custom Fees:</span>
-                      <span className={`font-semibold ${selectedBill.custom_fees_total < 0 ? 'text-green-600' : ''}`}>
-                        {selectedBill.custom_fees_total < 0 ? '-' : '+'}₹{Math.abs(parseFloat(selectedBill.custom_fees_total || 0)).toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                  {selectedBill.fine_total > 0 && (
-                    <div className="flex justify-between">
-                      <span>Fine:</span>
-                      <span className="font-semibold text-red-600">+₹{parseFloat(selectedBill.fine_total || 0).toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div className="border-t border-gray-300 pt-2 flex justify-between">
-                    <span className="font-semibold">Gross Amount:</span>
-                    <span className="font-semibold">₹{parseFloat(selectedBill.gross_amount || 0).toLocaleString()}</span>
-                  </div>
-                  {selectedBill.discount_amount > 0 && (
-                    <div className="flex justify-between text-green-600">
-                      <span>Discount:</span>
-                      <span className="font-semibold">-₹{parseFloat(selectedBill.discount_amount || 0).toLocaleString()}</span>
-                    </div>
-                  )}
-                  {selectedBill.scholarship_amount > 0 && (
-                    <div className="flex justify-between text-green-600">
-                      <span>Scholarship:</span>
-                      <span className="font-semibold">-₹{parseFloat(selectedBill.scholarship_amount || 0).toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div className="border-t-2 border-gray-400 pt-2 flex justify-between text-lg">
-                    <span className="font-bold">Net Amount:</span>
-                    <span className="font-bold">₹{parseFloat(selectedBill.net_amount || 0).toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Paid:</span>
-                    <span className="font-semibold">₹{parseFloat(selectedBill.total_paid || 0).toLocaleString()}</span>
-                  </div>
-                  <div className="border-t border-gray-300 pt-2 flex justify-between text-lg">
-                    <span className="font-bold">Balance:</span>
-                    <span className={`font-bold ${parseFloat(selectedBill.balance || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      ₹{parseFloat(selectedBill.balance || 0).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payments History */}
-              {selectedBill.payments && selectedBill.payments.length > 0 && (
-                <div>
-                  <h4 className="text-lg font-bold mb-3">Payment History</h4>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment Number</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mode</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transaction ID</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {selectedBill.payments.map((payment: any) => (
-                          <tr key={payment.id}>
-                            <td className="px-6 py-4">{new Date(payment.payment_date).toLocaleDateString()}</td>
-                            <td className="px-6 py-4 font-medium">{payment.payment_number}</td>
-                            <td className="px-6 py-4 text-right font-semibold">₹{parseFloat(payment.amount_paid || 0).toLocaleString()}</td>
-                            <td className="px-6 py-4">{payment.payment_mode}</td>
-                            <td className="px-6 py-4">{payment.transaction_id || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex gap-4">
-                <button
-                  onClick={() => downloadInvoice(selectedBill)}
-                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-                >
-                  Download/Print Invoice
-                </button>
-                {selectedBill.balance > 0 && (
-                  <button
-                    onClick={() => {
-                      setPaymentForm({
-                        ...paymentForm,
-                        bill_id: selectedBill.id,
-                        amount_paid: selectedBill.balance.toString()
-                      });
-                      setSelectedBill(null);
-                      setShowPaymentModal(true);
-                    }}
-                    className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                  >
-                    Record Payment
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Payment Modal - REMOVED */}
+      {/* Bill Detail Modal - REMOVED */}
 
       {/* Fee Hikes Tab - Only for Principal */}
       {activeTab === 'hikes' && !isClerk && (
@@ -8165,47 +6667,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
             </div>
           </div>
 
-          {/* Optional Fees Section */}
-          <div>
-            <h4 className="text-lg font-semibold mb-4">Optional Fees</h4>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Amount</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {optionalFees.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
-                        No optional fees found.
-                      </td>
-                    </tr>
-                  ) : (
-                    optionalFees.map((fee) => (
-                      <tr key={fee.id}>
-                        <td className="px-6 py-4">{fee.name}</td>
-                        <td className="px-6 py-4">₹{parseFloat(fee.amount || 0).toLocaleString()}</td>
-                        <td className="px-6 py-4">{fee.fee_cycle}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <button
-                            onClick={() => handleHikeFee(fee, 'optional')}
-                            className="text-blue-600 hover:text-blue-800 mr-4"
-                          >
-                            Hike Fee
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {/* Optional Fees Section - REMOVED */}
         </div>
       )}
 
