@@ -8,6 +8,8 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 );
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 interface StudentProfile {
   id: string;
   roll_number: string;
@@ -127,9 +129,10 @@ export default function StudentDashboard() {
     } else if (activeTab === 'marks') {
       loadMarks();
     } else if (activeTab === 'fees') {
-      if (profile?.id) {
-      loadFees();
-    }
+      // Only attempt to load fees if billing feature is enabled
+      if (BILLING_ENABLED && profile?.id) {
+        loadFees();
+      }
     }
   }, [activeTab, profile]);
 
@@ -506,16 +509,18 @@ export default function StudentDashboard() {
             >
               Marks
             </button>
-            <button
-              onClick={() => setActiveTab('fees')}
-              className={`px-6 py-3 font-medium ${
-                activeTab === 'fees'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Fees
-            </button>
+            {BILLING_ENABLED && (
+              <button
+                onClick={() => setActiveTab('fees')}
+                className={`px-6 py-3 font-medium ${
+                  activeTab === 'fees'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Fees
+              </button>
+            )}
           </div>
         </div>
 
@@ -737,6 +742,11 @@ export default function StudentDashboard() {
           {activeTab === 'fees' && (
             <div>
               <h2 className="text-2xl font-bold mb-6">Fees & Payments</h2>
+              {!BILLING_ENABLED ? (
+                <div className="text-center py-12 text-gray-600">
+                  Billing has been removed from this deployment.
+                </div>
+              ) : (
               {feeSummary && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   <div className="bg-blue-50 rounded-lg p-4">
@@ -871,7 +881,8 @@ export default function StudentDashboard() {
               </div>
 
               {/* Payment History Summary */}
-              {payments.length > 0 && (
+              )}
+              {BILLING_ENABLED && payments.length > 0 && (
                 <div className="mt-6">
                   <h3 className="text-xl font-bold mb-4">All Payments</h3>
                   <div className="overflow-x-auto">
@@ -899,8 +910,9 @@ export default function StudentDashboard() {
                     </table>
               </div>
             </div>
-          )}
-        </div>
+              )}
+              )}
+            </div>
           )}
       </div>
       </div>

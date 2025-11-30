@@ -472,9 +472,7 @@ export default function TeacherDashboard() {
                     const students = data.students || [];
                     for (const student of students) {
                         // Fetch fee status for each student
-                        const feeResponse = await fetch(`${API_URL}/fees/student/${student.id}/status`, {
-                            headers: { Authorization: `Bearer ${token}` }
-                        });
+                        const feeResponse = await Promise.resolve({ ok: false, status: 410, json: async () => ({ error: 'Billing removed' }) });
                         if (feeResponse.ok) {
                             const feeData = await feeResponse.json();
                             statusMap[student.id] = {

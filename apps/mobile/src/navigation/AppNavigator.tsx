@@ -8,6 +8,8 @@ import { useAuth } from './AuthContext';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 
 const Stack = createNativeStackNavigator();
+// Billing feature removed in this deployment
+const BILLING_ENABLED = false;
 
 export function AppNavigator() {
   const { user, loading } = useAuth();
@@ -47,11 +49,13 @@ export function AppNavigator() {
         component={MyMarksScreen}
         options={{ title: 'My Marks' }}
       />
-      <Stack.Screen
-        name="MyFees"
-        component={MyFeesScreen}
-        options={{ title: 'My Fees' }}
-      />
+      {BILLING_ENABLED && (
+        <Stack.Screen
+          name="MyFees"
+          component={MyFeesScreen}
+          options={{ title: 'My Fees' }}
+        />
+      )}
       <Stack.Screen
         name="Students"
         component={() => <View><Text>Students Management</Text></View>}
@@ -72,16 +76,20 @@ export function AppNavigator() {
         component={() => <View><Text>Enter Marks</Text></View>}
         options={{ title: 'Enter Marks' }}
       />
-      <Stack.Screen
-        name="Fees"
-        component={() => <View><Text>Manage Fees</Text></View>}
-        options={{ title: 'Manage Fees' }}
-      />
-      <Stack.Screen
-        name="Payments"
-        component={() => <View><Text>View Payments</Text></View>}
-        options={{ title: 'Payments' }}
-      />
+      {BILLING_ENABLED && (
+        <>
+          <Stack.Screen
+            name="Fees"
+            component={() => <View><Text>Manage Fees</Text></View>}
+            options={{ title: 'Manage Fees' }}
+          />
+          <Stack.Screen
+            name="Payments"
+            component={() => <View><Text>View Payments</Text></View>}
+            options={{ title: 'Payments' }}
+          />
+        </>
+      )}
     </Stack.Navigator>
   );
 }

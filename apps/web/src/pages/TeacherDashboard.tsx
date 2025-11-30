@@ -8,6 +8,8 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 );
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 interface Assignment {
   id: string;
   class_group_id: string;
@@ -592,7 +594,13 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     if (currentView === 'fees') {
-      loadStudentFeeStatus();
+      if (BILLING_ENABLED) {
+        loadStudentFeeStatus();
+      } else {
+        // billing removed: ensure no fetch is attempted and clear status
+        setStudentFeeStatus({});
+        setLoadingFees(false);
+      }
     }
     if (currentView === 'salary') {
       loadSalaryData();
@@ -651,14 +659,18 @@ export default function TeacherDashboard() {
             >
               💰 My Salary
             </button>
-            <button
-              onClick={() => setCurrentView('fees')}
-              className={`w-full text-left px-4 py-2 rounded-lg transition ${
-                currentView === 'fees' ? 'bg-blue-600' : 'hover:bg-gray-800'
-              }`}
-            >
-              💵 Student Fees (View Only)
-            </button>
+              {BILLING_ENABLED ? (
+                <button
+                  onClick={() => setCurrentView('fees')}
+                  className={`w-full text-left px-4 py-2 rounded-lg transition ${
+                    currentView === 'fees' ? 'bg-blue-600' : 'hover:bg-gray-800'
+                  }`}
+                >
+                  💵 Student Fees (View Only)
+                </button>
+              ) : (
+                <div className="text-xs text-gray-400 mt-2 px-4">Billing removed from this deployment</div>
+              )}
           </nav>
           <button
             onClick={handleLogout}

@@ -8,6 +8,8 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 );
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 interface GenderBreakdown {
   total: number;
   male: number;
@@ -83,12 +85,14 @@ function Sidebar({ currentPath }: { currentPath: string }) {
     { path: '/principal/fees', label: 'Fee Management', icon: '💵' },
   ];
 
+  const filteredNav = navItems.filter(item => !(item.path === '/principal/fees' && !BILLING_ENABLED));
+
   return (
     <div className="w-64 bg-gray-900 text-white min-h-screen fixed left-0 top-0">
       <div className="p-6">
         <h1 className="text-2xl font-bold mb-8">JhelumVerse</h1>
         <nav className="space-y-2">
-          {navItems.map((item) => (
+          {filteredNav.map((item) => (
             <Link
               key={item.path}
               to={item.path}
@@ -5504,18 +5508,10 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     else if (activeTab === 'bills') loadBills();
     else if (activeTab === 'payments') loadPayments();
     else if (activeTab === 'tracking') loadFeeTracking();
-    else if (activeTab === 'hikes') {
-      loadClassFees();
-      loadTransportData();
-      loadOptionalFees();
-    }
-    else if (activeTab === 'overrides') {
-      loadFeeOverrides();
-    }
   }, [activeTab]);
 
   useEffect(() => {
-    if (selectedStudent && activeTab === 'custom') {
+    if (selectedStudent && activeTab === 'custom' && BILLING_ENABLED) {
       loadCustomFees();
     }
   }, [selectedStudent]);
@@ -5595,6 +5591,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   };
 
   const loadOptionalFees = async () => {
+    if (!BILLING_ENABLED) return;
     setLoading(true);
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
@@ -5616,6 +5613,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   };
 
   const loadCustomFees = async () => {
+    if (!BILLING_ENABLED) return;
     setLoading(true);
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
@@ -5641,6 +5639,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   };
 
   const loadBills = async () => {
+    if (!BILLING_ENABLED) return;
     setLoading(true);
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
@@ -5662,6 +5661,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   };
 
   const loadPayments = async () => {
+    if (!BILLING_ENABLED) return;
     setLoading(true);
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
@@ -5800,6 +5800,10 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
 
   const handleSaveOptionalFee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!BILLING_ENABLED) {
+      alert('Billing feature is disabled in this deployment');
+      return;
+    }
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
@@ -5829,7 +5833,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         amount: '', // Changed from default_amount
         fee_cycle: 'one-time'
       });
-      loadOptionalFees();
+      if (BILLING_ENABLED) loadOptionalFees();
     } catch (error: any) {
       alert(error.message || 'Failed to save optional fee');
     }
@@ -5837,6 +5841,10 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
 
   const handleSaveCustomFee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!BILLING_ENABLED) {
+      alert('Billing feature is disabled in this deployment');
+      return;
+    }
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
@@ -5868,7 +5876,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         fee_cycle: 'per-bill',
         notes: ''
       });
-      loadCustomFees();
+      if (BILLING_ENABLED) loadCustomFees();
     } catch (error: any) {
       alert(error.message || 'Failed to save custom fee');
     }
@@ -5876,6 +5884,10 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
 
   const handleGenerateBills = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!BILLING_ENABLED) {
+      alert('Billing feature is disabled in this deployment');
+      return;
+    }
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
@@ -5903,7 +5915,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         month: new Date().getMonth() + 1,
         year: new Date().getFullYear()
       });
-      loadBills();
+      if (BILLING_ENABLED) loadBills();
     } catch (error: any) {
       alert(error.message || 'Failed to generate bills');
     }
@@ -5911,6 +5923,10 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
 
   const handleSavePayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!BILLING_ENABLED) {
+      alert('Billing feature is disabled in this deployment');
+      return;
+    }
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
@@ -5943,14 +5959,17 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         bank_name: '',
         notes: ''
       });
-      loadPayments();
-      loadBills();
+      if (BILLING_ENABLED) {
+        loadPayments();
+        loadBills();
+      }
     } catch (error: any) {
       alert(error.message || 'Failed to record payment');
     }
   };
 
   const viewBill = async (billId: string) => {
+    if (!BILLING_ENABLED) return;
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
@@ -5969,6 +5988,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   };
 
   const loadFeeTracking = async () => {
+    if (!BILLING_ENABLED) return;
     setLoading(true);
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;

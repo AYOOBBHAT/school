@@ -139,10 +139,10 @@ export default function StudentDashboard() {
             if (!profile?.id)
                 return;
             const [billsRes, paymentsRes] = await Promise.all([
-                fetch(`${API_URL}/fees/bills?student_id=${profile.id}`, {
+                Promise.resolve({ ok: false, status: 410, json: async () => ({ error: 'Billing removed' }) }),
                     headers: { Authorization: `Bearer ${token}` }
                 }),
-                fetch(`${API_URL}/fees/payments?student_id=${profile.id}`, {
+                Promise.resolve({ ok: false, status: 410, json: async () => ({ error: 'Billing removed' }) }),
                     headers: { Authorization: `Bearer ${token}` }
                 })
             ]);
@@ -175,7 +175,7 @@ export default function StudentDashboard() {
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
                 return;
-            const response = await fetch(`${API_URL}/fees/bills/${billId}`, {
+            const response = await Promise.resolve({ ok: false, status: 410, json: async () => ({ error: 'Billing removed' }) });
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {

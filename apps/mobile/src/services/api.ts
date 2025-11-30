@@ -1,6 +1,8 @@
 import { AuthResponse, User, Student, ClassGroup, Subject, Attendance, Mark, Fee, DashboardStats } from '../types';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.31.10.67:4000';
+// Billing disabled in this deployment
+const BILLING_ENABLED = false;
 
 class ApiService {
   private token: string | null = null;
@@ -141,6 +143,10 @@ class ApiService {
 
   // Fees
   async getFees(params?: { student_id?: string; status?: string }): Promise<{ fees: Fee[] }> {
+    if (!BILLING_ENABLED) {
+      return { fees: [] } as { fees: Fee[] };
+    }
+
     const query = new URLSearchParams();
     if (params?.student_id) query.append('student_id', params.student_id);
     if (params?.status) query.append('status', params.status);
@@ -149,6 +155,10 @@ class ApiService {
   }
 
   async getPayments(params?: { student_id?: string }): Promise<{ payments: any[] }> {
+    if (!BILLING_ENABLED) {
+      return { payments: [] };
+    }
+
     const query = new URLSearchParams();
     if (params?.student_id) query.append('student_id', params.student_id);
     
