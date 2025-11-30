@@ -305,6 +305,7 @@ function DashboardOverview() {
 function StaffManagement() {
     const [staff, setStaff] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [allClasses, setAllClasses] = useState([]);
     const [allSubjects, setAllSubjects] = useState([]);
     const [sections, setSections] = useState({});
@@ -431,19 +432,27 @@ function StaffManagement() {
     };
     const loadStaff = async () => {
         try {
+            setError(null);
+            setLoading(true);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
-            if (!token)
+            if (!token) {
+                setError('No authentication token found. Please log in again.');
+                setLoading(false);
                 return;
+            }
             const response = await fetch(`${API_URL}/staff-admin`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (!response.ok)
-                throw new Error('Failed to load staff');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to load staff' }));
+                throw new Error(errorData.error || `Failed to load staff: ${response.status} ${response.statusText}`);
+            }
             const data = await response.json();
             setStaff(data.staff || []);
         }
         catch (error) {
             console.error('Error loading staff:', error);
+            setError(error.message || 'Failed to load staff. Please try again.');
         }
         finally {
             setLoading(false);
@@ -679,7 +688,13 @@ function StaffManagement() {
         return allAssignments.filter(a => a.teacher_id === teacherId).length;
     };
     if (loading)
-        return _jsx("div", { className: "p-6", children: "Loading..." });
+        return _jsx("div", { className: "p-6", children: "Loading staff..." });
+    if (error) {
+        return (_jsx("div", { className: "p-6", children: _jsxs("div", { className: "bg-red-50 border border-red-200 rounded-lg p-4 mb-4", children: [_jsxs("div", { className: "flex items-center", children: [_jsx("span", { className: "text-red-600 text-xl mr-2", children: "\u26A0\uFE0F" }), _jsxs("div", { children: [_jsx("h3", { className: "text-red-800 font-semibold", children: "Error Loading Staff" }), _jsx("p", { className: "text-red-600 text-sm mt-1", children: error })] })] }), _jsx("button", { onClick: () => {
+                            setError(null);
+                            loadStaff();
+                        }, className: "mt-3 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700", children: "Retry" })] }) }));
+    }
     const handleAddStaff = async (e) => {
         e.preventDefault();
         try {
@@ -755,6 +770,7 @@ function StaffManagement() {
 function ClassesManagement() {
     const [classes, setClasses] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [editModal, setEditModal] = useState(false);
     const [editingClass, setEditingClass] = useState(null);
@@ -922,8 +938,11 @@ function ClassesManagement() {
     };
     const loadClasses = async () => {
         try {
+            setError(null);
+            setLoading(true);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token) {
+                setError('No authentication token found. Please log in again.');
                 setLoading(false);
                 return;
             }
@@ -933,13 +952,15 @@ function ClassesManagement() {
                 },
             });
             if (!response.ok) {
-                throw new Error('Failed to load classes');
+                const errorData = await response.json().catch(() => ({ error: 'Failed to load classes' }));
+                throw new Error(errorData.error || `Failed to load classes: ${response.status} ${response.statusText}`);
             }
             const data = await response.json();
             setClasses(data.classes || []);
         }
         catch (error) {
             console.error('Error loading classes:', error);
+            setError(error.message || 'Failed to load classes. Please try again.');
         }
         finally {
             setLoading(false);
@@ -1023,7 +1044,13 @@ function ClassesManagement() {
         }
     };
     if (loading)
-        return _jsx("div", { className: "p-6", children: "Loading..." });
+        return _jsx("div", { className: "p-6", children: "Loading classes..." });
+    if (error) {
+        return (_jsx("div", { className: "p-6", children: _jsxs("div", { className: "bg-red-50 border border-red-200 rounded-lg p-4 mb-4", children: [_jsxs("div", { className: "flex items-center", children: [_jsx("span", { className: "text-red-600 text-xl mr-2", children: "\u26A0\uFE0F" }), _jsxs("div", { children: [_jsx("h3", { className: "text-red-800 font-semibold", children: "Error Loading Classes" }), _jsx("p", { className: "text-red-600 text-sm mt-1", children: error })] })] }), _jsx("button", { onClick: () => {
+                            setError(null);
+                            loadClasses();
+                        }, className: "mt-3 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700", children: "Retry" })] }) }));
+    }
     return (_jsxs("div", { className: "p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-6", children: [_jsx("h2", { className: "text-3xl font-bold", children: "Classes Management" }), _jsx("button", { onClick: () => setShowModal(true), className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "+ Create Class" })] }), showModal && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Create New Class" }), _jsxs("form", { onSubmit: handleCreateClass, children: [_jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Class Name" }), _jsx("input", { type: "text", value: formData.name, onChange: (e) => setFormData({ ...formData, name: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Description" }), _jsx("textarea", { value: formData.description, onChange: (e) => setFormData({ ...formData, description: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", rows: 3 })] }), _jsxs("div", { className: "mb-4", children: [_jsxs("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: ["Classifications ", classificationTypes.length > 0 && _jsx("span", { className: "text-gray-500 font-normal", children: "(Optional)" })] }), classificationTypes.length === 0 ? (_jsxs("div", { className: "border border-yellow-200 bg-yellow-50 rounded-lg p-3", children: [_jsx("p", { className: "text-xs text-yellow-800 mb-2", children: _jsx("strong", { children: "No classification types available." }) }), _jsx("p", { className: "text-xs text-yellow-700", children: "Create classification types (e.g., \"Grade\", \"Stream\", \"House\") in the Classifications section first, then add values to categorize your classes." })] })) : (_jsxs(_Fragment, { children: [_jsx("p", { className: "text-xs text-gray-500 mb-3", children: "Select classification values to categorize this class. You can select multiple values from different types." }), _jsx("div", { className: "space-y-3 max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50", children: classificationTypes.map((type) => (_jsxs("div", { className: "border-b border-gray-200 pb-3 last:border-b-0 last:pb-0", children: [_jsxs("div", { className: "font-semibold text-sm mb-2 text-gray-700 flex items-center gap-2", children: [_jsx("span", { className: "text-blue-600", children: "\u25CF" }), type.name] }), _jsx("div", { className: "flex flex-wrap gap-2 ml-4", children: classificationValues[type.id] && classificationValues[type.id].length > 0 ? (classificationValues[type.id].map((value) => (_jsxs("label", { className: "flex items-center space-x-2 cursor-pointer px-2 py-1 bg-white border border-gray-300 rounded hover:bg-blue-50 hover:border-blue-300 transition-colors", children: [_jsx("input", { type: "checkbox", checked: selectedClassificationValues.includes(value.id), onChange: (e) => {
                                                                                 if (e.target.checked) {
                                                                                     setSelectedClassificationValues([...selectedClassificationValues, value.id]);
@@ -1065,6 +1092,7 @@ function ClassesManagement() {
 function SubjectsManagement() {
     const [subjects, setSubjects] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [formData, setFormData] = useState({ name: '', code: '' });
     const [editingSubject, setEditingSubject] = useState(null);
@@ -1073,8 +1101,11 @@ function SubjectsManagement() {
     }, []);
     const loadSubjects = async () => {
         try {
+            setError(null);
+            setLoading(true);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token) {
+                setError('No authentication token found. Please log in again.');
                 setLoading(false);
                 return;
             }
@@ -1084,13 +1115,15 @@ function SubjectsManagement() {
                 },
             });
             if (!response.ok) {
-                throw new Error('Failed to load subjects');
+                const errorData = await response.json().catch(() => ({ error: 'Failed to load subjects' }));
+                throw new Error(errorData.error || `Failed to load subjects: ${response.status} ${response.statusText}`);
             }
             const data = await response.json();
             setSubjects(data.subjects || []);
         }
         catch (error) {
             console.error('Error loading subjects:', error);
+            setError(error.message || 'Failed to load subjects. Please try again.');
         }
         finally {
             setLoading(false);
@@ -1146,7 +1179,13 @@ function SubjectsManagement() {
         }
     };
     if (loading)
-        return _jsx("div", { className: "p-6", children: "Loading..." });
+        return _jsx("div", { className: "p-6", children: "Loading subjects..." });
+    if (error) {
+        return (_jsx("div", { className: "p-6", children: _jsxs("div", { className: "bg-red-50 border border-red-200 rounded-lg p-4 mb-4", children: [_jsxs("div", { className: "flex items-center", children: [_jsx("span", { className: "text-red-600 text-xl mr-2", children: "\u26A0\uFE0F" }), _jsxs("div", { children: [_jsx("h3", { className: "text-red-800 font-semibold", children: "Error Loading Subjects" }), _jsx("p", { className: "text-red-600 text-sm mt-1", children: error })] })] }), _jsx("button", { onClick: () => {
+                            setError(null);
+                            loadSubjects();
+                        }, className: "mt-3 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700", children: "Retry" })] }) }));
+    }
     return (_jsxs("div", { className: "p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-6", children: [_jsx("h2", { className: "text-3xl font-bold", children: "Subjects Management" }), _jsx("button", { onClick: () => {
                             setShowModal(true);
                             setEditingSubject(null);
@@ -1166,6 +1205,7 @@ function StudentsManagement() {
     const [unassignedStudents, setUnassignedStudents] = useState([]);
     const [expandedClasses, setExpandedClasses] = useState(new Set());
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [totalStudents, setTotalStudents] = useState(0);
     const [allClasses, setAllClasses] = useState([]);
     const [sections, setSections] = useState({});
@@ -1264,16 +1304,23 @@ function StudentsManagement() {
     useEffect(() => {
         const loadStudents = async () => {
             try {
+                setError(null);
+                setLoading(true);
                 const token = (await supabase.auth.getSession()).data.session?.access_token;
-                if (!token)
+                if (!token) {
+                    setError('No authentication token found. Please log in again.');
+                    setLoading(false);
                     return;
+                }
                 const response = await fetch(`${API_URL}/students-admin`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
                 });
-                if (!response.ok)
-                    throw new Error('Failed to load students');
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Failed to load students' }));
+                    throw new Error(errorData.error || `Failed to load students: ${response.status} ${response.statusText}`);
+                }
                 const data = await response.json();
                 setClassesWithStudents(data.classes || []);
                 setUnassignedStudents(data.unassigned || []);
@@ -1285,6 +1332,7 @@ function StudentsManagement() {
             }
             catch (error) {
                 console.error('Error loading students:', error);
+                setError(error.message || 'Failed to load students. Please try again.');
             }
             finally {
                 setLoading(false);
@@ -1303,13 +1351,16 @@ function StudentsManagement() {
                     Authorization: `Bearer ${token}`,
                 },
             });
-            if (!response.ok)
-                throw new Error('Failed to load classes');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to load classes' }));
+                throw new Error(errorData.error || `Failed to load classes: ${response.status}`);
+            }
             const data = await response.json();
             setAllClasses(data.classes || []);
         }
         catch (error) {
             console.error('Error loading classes:', error);
+            // Don't set error state here as it's a secondary load
         }
     };
     const loadSections = async (classId) => {
@@ -1475,7 +1526,14 @@ function StudentsManagement() {
         });
     };
     if (loading) {
-        return (_jsxs("div", { className: "p-6", children: [_jsx("h2", { className: "text-3xl font-bold mb-6", children: "Students Management" }), _jsx("div", { className: "bg-white rounded-lg shadow-md p-12 text-center", children: _jsx("div", { className: "text-2xl mb-4", children: "Loading..." }) })] }));
+        return (_jsxs("div", { className: "p-6", children: [_jsx("h2", { className: "text-3xl font-bold mb-6", children: "Students Management" }), _jsx("div", { className: "bg-white rounded-lg shadow-md p-12 text-center", children: _jsx("div", { className: "text-2xl mb-4", children: "Loading students..." }) })] }));
+    }
+    if (error) {
+        return (_jsx("div", { className: "p-6", children: _jsxs("div", { className: "bg-red-50 border border-red-200 rounded-lg p-4 mb-4", children: [_jsxs("div", { className: "flex items-center", children: [_jsx("span", { className: "text-red-600 text-xl mr-2", children: "\u26A0\uFE0F" }), _jsxs("div", { children: [_jsx("h3", { className: "text-red-800 font-semibold", children: "Error Loading Students" }), _jsx("p", { className: "text-red-600 text-sm mt-1", children: error })] })] }), _jsx("button", { onClick: () => {
+                            setError(null);
+                            setLoading(true);
+                            window.location.reload();
+                        }, className: "mt-3 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700", children: "Retry" })] }) }));
     }
     const handleAddStudent = async (e) => {
         e.preventDefault();
@@ -1663,6 +1721,7 @@ const getExampleHint = (typeName) => {
 function ClassificationsManagement() {
     const [types, setTypes] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [showTypeModal, setShowTypeModal] = useState(false);
     const [showValueModal, setShowValueModal] = useState(false);
     const [selectedTypeId, setSelectedTypeId] = useState(null);
@@ -1674,16 +1733,21 @@ function ClassificationsManagement() {
     }, []);
     const loadTypes = async () => {
         try {
+            setError(null);
+            setLoading(true);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token) {
+                setError('No authentication token found. Please log in again.');
                 setLoading(false);
                 return;
             }
             const response = await fetch(`${API_URL}/classifications/types`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (!response.ok)
-                throw new Error('Failed to load classification types');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to load classification types' }));
+                throw new Error(errorData.error || `Failed to load classification types: ${response.status} ${response.statusText}`);
+            }
             const data = await response.json();
             setTypes(data.types || []);
             // Load values for each type
@@ -1693,6 +1757,7 @@ function ClassificationsManagement() {
         }
         catch (error) {
             console.error('Error loading types:', error);
+            setError(error.message || 'Failed to load classification types. Please try again.');
         }
         finally {
             setLoading(false);
@@ -1812,7 +1877,13 @@ function ClassificationsManagement() {
         }
     };
     if (loading)
-        return _jsx("div", { className: "p-6", children: "Loading..." });
+        return _jsx("div", { className: "p-6", children: "Loading classifications..." });
+    if (error) {
+        return (_jsx("div", { className: "p-6", children: _jsxs("div", { className: "bg-red-50 border border-red-200 rounded-lg p-4 mb-4", children: [_jsxs("div", { className: "flex items-center", children: [_jsx("span", { className: "text-red-600 text-xl mr-2", children: "\u26A0\uFE0F" }), _jsxs("div", { children: [_jsx("h3", { className: "text-red-800 font-semibold", children: "Error Loading Classifications" }), _jsx("p", { className: "text-red-600 text-sm mt-1", children: error })] })] }), _jsx("button", { onClick: () => {
+                            setError(null);
+                            loadTypes();
+                        }, className: "mt-3 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700", children: "Retry" })] }) }));
+    }
     return (_jsxs("div", { className: "p-6", children: [_jsxs("div", { className: "flex justify-between items-start mb-6", children: [_jsxs("div", { className: "flex-1", children: [_jsx("h2", { className: "text-3xl font-bold mb-2", children: "Dynamic Class Classifications" }), _jsx("p", { className: "text-gray-600 mb-3", children: "Create custom classification types to organize your classes. Each school can define their own structure." }), _jsxs("div", { className: "bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4", children: [_jsx("h4", { className: "font-semibold text-blue-900 mb-2", children: "\uD83D\uDCA1 Examples:" }), _jsxs("ul", { className: "text-sm text-blue-800 space-y-1 list-disc list-inside", children: [_jsxs("li", { children: [_jsx("strong", { children: "Gender-based:" }), " Create type \"Gender\" with values \"Boys\", \"Girls\" \u2192 Classes: \"Grade 9 \u2013 Boys\", \"Grade 9 \u2013 Girls\""] }), _jsxs("li", { children: [_jsx("strong", { children: "House system:" }), " Create type \"House\" with values \"Blue House\", \"Red House\", \"Green House\""] }), _jsxs("li", { children: [_jsx("strong", { children: "Section-based:" }), " Create type \"Section\" with values \"A\", \"B\", \"C\""] }), _jsxs("li", { children: [_jsx("strong", { children: "Custom:" }), " Create type \"Level\" with values \"Junior Group\", \"Senior Group\""] })] })] })] }), _jsx("button", { onClick: () => setShowTypeModal(true), className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shadow-md", children: "+ Add Classification Type" })] }), _jsxs("div", { className: "space-y-6", children: [types.map((type) => (_jsxs("div", { className: "bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow", children: [_jsxs("div", { className: "flex justify-between items-center mb-4 pb-4 border-b border-gray-200", children: [_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-bold text-gray-900", children: type.name }), _jsxs("p", { className: "text-xs text-gray-500 mt-1", children: [valuesMap[type.id]?.length || 0, " value", (valuesMap[type.id]?.length || 0) !== 1 ? 's' : '', " defined"] })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: () => {
                                                     setSelectedTypeId(type.id);
                                                     setShowValueModal(true);
