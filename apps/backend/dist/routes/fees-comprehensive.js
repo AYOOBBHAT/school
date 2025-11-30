@@ -383,7 +383,7 @@ router.get('/optional', requireRoles(['principal', 'clerk', 'student', 'parent']
     if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { data, error } = await supabase
-        .from('optional_fee_definitions')
+        .from('optional_fees')
         .select('*')
         .eq('school_id', user.schoolId)
         .eq('is_active', true)
@@ -393,62 +393,25 @@ router.get('/optional', requireRoles(['principal', 'clerk', 'student', 'parent']
     return res.json({ optional_fees: data || [] });
 });
 // Create optional fee
-router.post('/optional', requireRoles(['principal']), async (req, res) => {
+router.post('/optional', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { error, value } = optionalFeeSchema.validate(req.body);
     if (error)
         return res.status(400).json({ error: error.message });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { user } = req;
-    if (!user || !user.schoolId)
+    const { supabase, user } = req;
+    if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    try {
-        const payload = { ...value, school_id: user.schoolId };
-        const { data: optionalFee, error: dbError } = await adminSupabase
-            .from('optional_fee_definitions')
-            .insert(payload)
-            .select()
-            .single();
-        if (dbError)
-            return res.status(400).json({ error: dbError.message });
-        // Get first class for class_group_id (optional fees can be school-wide)
-        const { data: firstClass } = await adminSupabase
-            .from('class_groups')
-            .select('id')
-            .eq('school_id', user.schoolId)
-            .limit(1)
-            .single();
-        // Create initial version
-        const today = new Date();
-        const todayStr = today.toISOString().split('T')[0];
-        const { error: versionError } = await adminSupabase
-            .from('optional_fee_versions')
-            .insert({
-            school_id: user.schoolId,
-            class_group_id: firstClass?.id || null,
-            fee_category_id: optionalFee.fee_category_id || null,
-            version_number: 1,
-            amount: value.amount, // Changed from default_amount
-            fee_cycle: value.fee_cycle,
-            effective_from_date: todayStr,
-            effective_to_date: null,
-            is_active: true,
-            created_by: user.id
-        });
-        if (versionError) {
-            console.error('[create-optional-fee] Error creating initial version:', versionError);
-        }
-        return res.status(201).json({ optional_fee: optionalFee });
-    }
-    catch (err) {
-        console.error('[create-optional-fee] Error:', err);
-        return res.status(500).json({ error: err.message || 'Failed to create optional fee' });
-    }
+    const payload = { ...value, school_id: user.schoolId };
+    const { data, error: dbError } = await supabase
+        .from('optional_fees')
+        .insert(payload)
+        .select()
+        .single();
+    if (dbError)
+        return res.status(400).json({ error: dbError.message });
+    return res.status(201).json({ optional_fee: data });
 });
 // Update optional fee
-router.put('/optional/:id', requireRoles(['principal']), async (req, res) => {
+router.put('/optional/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { error, value } = optionalFeeSchema.validate(req.body);
     if (error)
         return res.status(400).json({ error: error.message });
@@ -456,7 +419,7 @@ router.put('/optional/:id', requireRoles(['principal']), async (req, res) => {
     if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { data, error: dbError } = await supabase
-        .from('optional_fee_definitions')
+        .from('optional_fees')
         .update(value)
         .eq('id', req.params.id)
         .eq('school_id', user.schoolId)
@@ -571,7 +534,7 @@ const studentCustomFeeSchema = Joi.object({
     notes: Joi.string().allow('', null).optional()
 });
 // Create student custom fee
-router.post('/custom', requireRoles(['principal']), async (req, res) => {
+router.post('/custom', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { error, value } = studentCustomFeeSchema.validate(req.body);
     if (error)
         return res.status(400).json({ error: error.message });
@@ -597,29 +560,10 @@ router.post('/custom', requireRoles(['principal']), async (req, res) => {
 });
 // Get student custom fees
 router.get('/custom', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
-    const { supabase, user } = req;
-    if (!supabase || !user)
-        return res.status(500).json({ error: 'Server misconfigured' });
-    const studentId = req.query.student_id;
-    if (!studentId) {
-        return res.status(400).json({ error: 'student_id is required' });
-    }
-    const { data, error } = await supabase
-        .from('student_custom_fees')
-        .select(`
-      *,
-      students:student_id(id, roll_number, profile:profiles!students_profile_id_fkey(full_name))
-    `)
-        .eq('student_id', studentId)
-        .eq('school_id', user.schoolId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-    if (error)
-        return res.status(400).json({ error: error.message });
-    return res.json({ custom_fees: data || [] });
+    return res.status(410).json({ error: 'Student custom fees have been removed from the system' });
 });
 // Update student custom fee
-router.put('/custom/:id', requireRoles(['principal']), async (req, res) => {
+router.put('/custom/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { error, value } = studentCustomFeeSchema.validate(req.body);
     if (error)
         return res.status(400).json({ error: error.message });
@@ -643,7 +587,7 @@ router.put('/custom/:id', requireRoles(['principal']), async (req, res) => {
     return res.json({ custom_fee: data });
 });
 // Deactivate student custom fee
-router.delete('/custom/:id', requireRoles(['principal']), async (req, res) => {
+router.delete('/custom/:id', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { supabase, user } = req;
     if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
@@ -681,7 +625,7 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
     }
     const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     const { user } = req;
-    if (!user || !user.schoolId)
+    if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
     try {
         const now = new Date();
@@ -734,7 +678,7 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
             const billItems = [];
             // 1. Class Fees
             const { data: classFees } = await adminSupabase
-                .from('class_fee_defaults')
+                .from('class_fees')
                 .select('*, fee_categories:fee_category_id(name)')
                 .eq('class_group_id', student.class_group_id)
                 .eq('school_id', user.schoolId)
@@ -767,7 +711,7 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
                 .single();
             if (transportAssignment) {
                 const { data: transportFee } = await adminSupabase
-                    .from('transport_fee_defaults')
+                    .from('transport_fees')
                     .select('*, transport_routes:route_id(route_name)')
                     .eq('route_id', transportAssignment.route_id)
                     .eq('school_id', user.schoolId)
@@ -793,7 +737,7 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
             }
             // 3. Optional Fees (for now, include if they're monthly or one-time)
             const { data: optionalFees } = await adminSupabase
-                .from('optional_fee_definitions')
+                .from('optional_fees')
                 .select('*')
                 .eq('school_id', user.schoolId)
                 .eq('is_active', true);
@@ -857,7 +801,7 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
             const grossAmount = classFeesTotal + transportFeeTotal + optionalFeesTotal + Math.max(0, customFeesTotal);
             const netAmount = Math.max(0, grossAmount - discountAmount - scholarshipAmount + fineTotal);
             // Get due date (default to end of period)
-            const dueDay = classFees && classFees.length > 0 ? (classFees[0]?.due_day || 5) : 5; // Default to 5th of next month
+            const dueDay = classFees && classFees.length > 0 ? classFees[0]?.due_day || 5 : 5; // Default to 5th of next month
             const dueDate = new Date(year, month, dueDay);
             // Generate bill number
             const { data: billNumberData } = await adminSupabase.rpc('generate_bill_number', {
@@ -918,87 +862,11 @@ router.post('/bills/generate', requireRoles(['principal', 'clerk']), async (req,
 });
 // Get fee bills
 router.get('/bills', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
-    const { supabase, user } = req;
-    if (!supabase || !user)
-        return res.status(500).json({ error: 'Server misconfigured' });
-    const studentId = req.query.student_id;
-    const status = req.query.status;
-    let query = supabase
-        .from('fee_bills')
-        .select(`
-      *,
-      students:student_id(
-        id,
-        roll_number,
-        profile:profiles!students_profile_id_fkey(full_name),
-        class_groups:class_group_id(name)
-      ),
-      fee_payments(*)
-    `)
-        .eq('school_id', user.schoolId)
-        .order('created_at', { ascending: false });
-    if (studentId) {
-        query = query.eq('student_id', studentId);
-    }
-    if (status) {
-        query = query.eq('status', status);
-    }
-    const { data, error } = await query;
-    if (error)
-        return res.status(400).json({ error: error.message });
-    // Calculate paid amount for each bill
-    const billsWithPaid = (data || []).map((bill) => {
-        const totalPaid = (bill.fee_payments || []).reduce((sum, payment) => sum + parseFloat(payment.amount_paid || 0), 0);
-        return {
-            ...bill,
-            total_paid: totalPaid,
-            balance: Math.max(0, bill.net_amount - totalPaid)
-        };
-    });
-    return res.json({ bills: billsWithPaid });
+    return res.status(410).json({ error: 'Fee bills have been removed from the system' });
 });
 // Get single bill with items
 router.get('/bills/:id', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
-    const { supabase, user } = req;
-    if (!supabase || !user)
-        return res.status(500).json({ error: 'Server misconfigured' });
-    const { data: bill, error: billError } = await supabase
-        .from('fee_bills')
-        .select(`
-      *,
-      students:student_id(
-        id,
-        roll_number,
-        profile:profiles!students_profile_id_fkey(full_name),
-        class_groups:class_group_id(name)
-      )
-    `)
-        .eq('id', req.params.id)
-        .eq('school_id', user.schoolId)
-        .single();
-    if (billError || !bill) {
-        return res.status(404).json({ error: 'Bill not found' });
-    }
-    const { data: items } = await supabase
-        .from('fee_bill_items')
-        .select('*')
-        .eq('bill_id', bill.id)
-        .order('display_order', { ascending: true });
-    const { data: payments } = await supabase
-        .from('fee_payments')
-        .select('*')
-        .eq('bill_id', bill.id)
-        .order('payment_date', { ascending: false });
-    const totalPaid = (payments || []).reduce((sum, payment) => sum + parseFloat(payment.amount_paid || 0), 0);
-    return res.json({
-        bill: {
-            ...bill,
-            items: items || [],
-            payments: payments || [],
-            total_paid: totalPaid,
-            balance: Math.max(0, bill.net_amount - totalPaid)
-        }
-    });
+    return res.status(410).json({ error: 'Fee bills have been removed from the system' });
 });
 // ============================================
 // FEE PAYMENTS
@@ -1014,89 +882,11 @@ const feePaymentSchema = Joi.object({
 });
 // Create payment
 router.post('/payments', requireRoles(['principal', 'clerk']), async (req, res) => {
-    const { error, value } = feePaymentSchema.validate(req.body);
-    if (error)
-        return res.status(400).json({ error: error.message });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { user } = req;
-    if (!user)
-        return res.status(500).json({ error: 'Server misconfigured' });
-    // Get bill
-    const { data: bill, error: billError } = await adminSupabase
-        .from('fee_bills')
-        .select('*, students:student_id(id)')
-        .eq('id', value.bill_id)
-        .eq('school_id', user.schoolId)
-        .single();
-    if (billError || !bill) {
-        return res.status(404).json({ error: 'Bill not found' });
-    }
-    // Generate payment number
-    const { data: paymentNumberData } = await adminSupabase.rpc('generate_payment_number', {
-        school_uuid: user.schoolId
-    });
-    const paymentPayload = {
-        bill_id: value.bill_id,
-        student_id: bill.students.id,
-        school_id: user.schoolId,
-        payment_number: paymentNumberData || `PMT-${Date.now()}`,
-        amount_paid: value.amount_paid,
-        payment_mode: value.payment_mode,
-        transaction_id: value.transaction_id,
-        cheque_number: value.cheque_number,
-        bank_name: value.bank_name,
-        received_by: user.id,
-        notes: value.notes
-    };
-    const { data: payment, error: paymentError } = await adminSupabase
-        .from('fee_payments')
-        .insert(paymentPayload)
-        .select(`
-      *,
-      fee_bills:bill_id(*)
-    `)
-        .single();
-    if (paymentError)
-        return res.status(400).json({ error: paymentError.message });
-    // Log payment
-    await adminSupabase.from('clerk_logs').insert({
-        clerk_id: user.id,
-        school_id: user.schoolId,
-        action: 'fee_payment_recorded',
-        entity: 'fee_payment',
-        entity_id: payment.id
-    });
-    return res.status(201).json({ payment });
+    return res.status(410).json({ error: 'Fee payments have been removed from the system' });
 });
 // Get payments
 router.get('/payments', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
-    const { supabase, user } = req;
-    if (!supabase || !user)
-        return res.status(500).json({ error: 'Server misconfigured' });
-    const billId = req.query.bill_id;
-    const studentId = req.query.student_id;
-    let query = supabase
-        .from('fee_payments')
-        .select(`
-      *,
-      fee_bills:bill_id(bill_number, net_amount),
-      students:student_id(roll_number, profile:profiles!students_profile_id_fkey(full_name))
-    `)
-        .eq('school_id', user.schoolId)
-        .order('payment_date', { ascending: false });
-    if (billId) {
-        query = query.eq('bill_id', billId);
-    }
-    if (studentId) {
-        query = query.eq('student_id', studentId);
-    }
-    const { data, error } = await query;
-    if (error)
-        return res.status(400).json({ error: error.message });
-    return res.json({ payments: data || [] });
+    return res.status(410).json({ error: 'Fee payments have been removed from the system' });
 });
 // ============================================
 // STUDENT FEE CYCLES
