@@ -52,13 +52,20 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     }
 
     // Get user profile to get role and school_id
-    const { data: profile, error: profileError } = await supabase
+    // Use service role key to bypass RLS for profile lookup
+    if (!supabaseServiceKey) {
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
+    
+    const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+    const { data: profile, error: profileError } = await adminSupabase
       .from('profiles')
       .select('id, role, school_id')
       .eq('id', user.id)
       .single();
 
     if (profileError || !profile) {
+      console.error('[authMiddleware] Error fetching profile:', profileError);
       return res.status(403).json({ error: 'Profile not found' });
     }
 
