@@ -8,7 +8,8 @@ const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 // Schema for fee configuration when adding student
 const feeConfigSchema = Joi.object({
-    // Class fee discount
+    // Class fee selection and discount
+    class_fee_id: Joi.string().uuid().allow('', null).optional(),
     class_fee_discount: Joi.number().min(0).default(0),
     // Transport configuration
     transport_enabled: Joi.boolean().default(true),
@@ -380,16 +381,24 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                     .lte('effective_from', today)
                     .or(`effective_to.is.null,effective_to.gte.${today}`);
                 if (!classFeesError && classFees && classFees.length > 0) {
-                    // Find tuition/class fee category
-                    const tuitionFee = classFees.find((cf) => cf.fee_categories?.fee_type === 'tuition' || !cf.fee_category_id);
-                    // Apply class fee discount if provided
-                    if (tuitionFee && feeConfig.class_fee_discount > 0) {
+                    // Use selected class fee ID if provided, otherwise find tuition/class fee category
+                    let selectedClassFee = null;
+                    if (feeConfig.class_fee_id) {
+                        // Find the specific class fee by ID
+                        selectedClassFee = classFees.find((cf) => cf.id === feeConfig.class_fee_id);
+                    }
+                    else {
+                        // Fallback: Find tuition/class fee category (default behavior)
+                        selectedClassFee = classFees.find((cf) => cf.fee_categories?.fee_type === 'tuition' || !cf.fee_category_id);
+                    }
+                    // Apply class fee discount if provided and class fee is selected
+                    if (selectedClassFee && feeConfig.class_fee_discount > 0) {
                         const { error: overrideError } = await supabase
                             .from('student_fee_overrides')
                             .insert({
                             student_id: studentRecord.id,
                             school_id: user.schoolId,
-                            fee_category_id: tuitionFee.fee_category_id || null,
+                            fee_category_id: selectedClassFee.fee_category_id || null,
                             discount_amount: feeConfig.class_fee_discount,
                             effective_from: today,
                             is_active: true,
