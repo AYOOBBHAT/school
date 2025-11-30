@@ -10,7 +10,7 @@
 drop policy if exists mt_fee_categories_select on fee_categories;
 drop policy if exists mt_transport_routes_select on transport_routes;
 drop policy if exists mt_transport_fees_select on transport_fees;
-drop policy if exists mt_optional_fees_select on optional_fees;
+-- Note: optional_fees table was removed in migration 012, so we skip it here
 drop policy if exists mt_class_fees_select on class_fees;
 
 -- ============================================
@@ -57,15 +57,7 @@ create policy mt_transport_fees_select on transport_fees
     )
   );
 
--- Optional Fees - Simplified (no student_guardians join)
-create policy mt_optional_fees_select on optional_fees
-  for select using (
-    school_id = auth_claim('school_id')::uuid
-    and (
-      auth_claim('role') in ('principal', 'clerk')
-      or auth_claim('role') in ('student', 'parent')
-    )
-  );
+-- Note: optional_fees table was removed in migration 012, so we skip creating policy for it
 
 -- ============================================
 -- FIX STUDENT GUARDIANS POLICIES
@@ -125,123 +117,9 @@ create policy mt_student_transport_modify on student_transport
 -- FIX OTHER POLICIES THAT HAD CIRCULAR JOINS
 -- ============================================
 
--- Drop and recreate student_custom_fees policies
-drop policy if exists mt_student_custom_fees_select on student_custom_fees;
-drop policy if exists mt_student_custom_fees_modify on student_custom_fees;
+-- Note: student_custom_fees table was removed in migration 012, so we skip it here
 
-create policy mt_student_custom_fees_select on student_custom_fees
-  for select using (
-    school_id = auth_claim('school_id')::uuid
-    and (
-      auth_claim('role') in ('principal', 'clerk')
-      or (auth_claim('role') = 'student' and student_id in (
-        select s.id from students s where s.profile_id = auth.uid()
-      ))
-      or (auth_claim('role') = 'parent' and student_id in (
-        select sg.student_id from student_guardians sg
-        where sg.guardian_profile_id = auth.uid()
-      ))
-    )
-  );
-
-create policy mt_student_custom_fees_modify on student_custom_fees
-  for all using (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk')
-  ) with check (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk')
-  );
-
--- Drop and recreate fee_bills policies
-drop policy if exists mt_fee_bills_select on fee_bills;
-drop policy if exists mt_fee_bills_modify on fee_bills;
-
-create policy mt_fee_bills_select on fee_bills
-  for select using (
-    school_id = auth_claim('school_id')::uuid
-    and (
-      auth_claim('role') in ('principal', 'clerk')
-      or (auth_claim('role') = 'student' and student_id in (
-        select s.id from students s where s.profile_id = auth.uid()
-      ))
-      or (auth_claim('role') = 'parent' and student_id in (
-        select sg.student_id from student_guardians sg
-        where sg.guardian_profile_id = auth.uid()
-      ))
-    )
-  );
-
-create policy mt_fee_bills_modify on fee_bills
-  for all using (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk')
-  ) with check (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk')
-  );
-
--- Drop and recreate fee_bill_items policies
-drop policy if exists mt_fee_bill_items_select on fee_bill_items;
-drop policy if exists mt_fee_bill_items_modify on fee_bill_items;
-
-create policy mt_fee_bill_items_select on fee_bill_items
-  for select using (
-    bill_id in (
-      select id from fee_bills where school_id = auth_claim('school_id')::uuid
-      and (
-        auth_claim('role') in ('principal', 'clerk')
-        or (auth_claim('role') = 'student' and student_id in (
-          select s.id from students s where s.profile_id = auth.uid()
-        ))
-        or (auth_claim('role') = 'parent' and student_id in (
-          select sg.student_id from student_guardians sg
-          where sg.guardian_profile_id = auth.uid()
-        ))
-      )
-    )
-  );
-
-create policy mt_fee_bill_items_modify on fee_bill_items
-  for all using (
-    bill_id in (
-      select id from fee_bills where school_id = auth_claim('school_id')::uuid
-      and auth_claim('role') in ('principal', 'clerk')
-    )
-  ) with check (
-    bill_id in (
-      select id from fee_bills where school_id = auth_claim('school_id')::uuid
-      and auth_claim('role') in ('principal', 'clerk')
-    )
-  );
-
--- Drop and recreate fee_payments policies
-drop policy if exists mt_fee_payments_select on fee_payments;
-drop policy if exists mt_fee_payments_modify on fee_payments;
-
-create policy mt_fee_payments_select on fee_payments
-  for select using (
-    school_id = auth_claim('school_id')::uuid
-    and (
-      auth_claim('role') in ('principal', 'clerk')
-      or (auth_claim('role') = 'student' and student_id in (
-        select s.id from students s where s.profile_id = auth.uid()
-      ))
-      or (auth_claim('role') = 'parent' and student_id in (
-        select sg.student_id from student_guardians sg
-        where sg.guardian_profile_id = auth.uid()
-      ))
-    )
-  );
-
-create policy mt_fee_payments_modify on fee_payments
-  for all using (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk')
-  ) with check (
-    school_id = auth_claim('school_id')::uuid
-    and auth_claim('role') in ('principal', 'clerk')
-  );
+-- Note: fee_bills, fee_bill_items, and fee_payments tables were removed in migration 012, so we skip them here
 
 -- ============================================
 -- Refresh schema cache
