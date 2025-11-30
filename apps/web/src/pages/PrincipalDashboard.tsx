@@ -2848,6 +2848,7 @@ function StudentsManagement() {
   } | null>(null);
   const [loadingFees, setLoadingFees] = useState(false);
   const [feeConfig, setFeeConfig] = useState({
+    class_fee_id: '', // Selected class fee ID
     class_fee_discount: 0,
     transport_enabled: true,
     transport_route_id: '',
@@ -3044,7 +3045,11 @@ function StudentsManagement() {
         discount: 0
       }));
 
+      // Set default class fee (first one if available)
+      const defaultClassFeeId = data.class_fees && data.class_fees.length > 0 ? data.class_fees[0].id : '';
+      
       setFeeConfig({
+        class_fee_id: defaultClassFeeId,
         class_fee_discount: 0,
         transport_enabled: true,
         transport_route_id: '',
@@ -3321,6 +3326,7 @@ function StudentsManagement() {
       setUsernameStatus({ checking: false, available: null, message: '' });
       setDefaultFees(null);
       setFeeConfig({
+        class_fee_id: '',
         class_fee_discount: 0,
         transport_enabled: true,
         transport_route_id: '',
@@ -3901,35 +3907,64 @@ function StudentsManagement() {
                       {defaultFees.class_fees && defaultFees.class_fees.length > 0 && (
                         <div className="bg-blue-50 p-4 rounded-lg">
                           <h5 className="font-semibold text-gray-700 mb-2">Class Fee</h5>
-                          {defaultFees.class_fees.map((cf: any) => {
-                            const categoryName = cf.fee_categories?.name || 'Class Fee';
-                            const defaultAmount = parseFloat(cf.amount || 0);
-                            const finalAmount = Math.max(0, defaultAmount - feeConfig.class_fee_discount);
-                            return (
-                              <div key={cf.id} className="space-y-2">
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-gray-600">{categoryName}:</span>
-                                  <span className="font-medium">₹{defaultAmount.toFixed(2)}/{cf.fee_cycle}</span>
-                                </div>
-                                <div>
-                                  <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={feeConfig.class_fee_discount}
-                                    onChange={(e) => setFeeConfig({ ...feeConfig, class_fee_discount: parseFloat(e.target.value) || 0 })}
-                                    className="w-full px-2 py-1 border rounded text-sm"
-                                    placeholder="0"
-                                  />
-                                </div>
-                                <div className="flex justify-between text-sm font-semibold pt-1 border-t">
-                                  <span>Final Amount:</span>
-                                  <span className="text-green-600">₹{finalAmount.toFixed(2)}/{cf.fee_cycle}</span>
-                                </div>
-                              </div>
-                            );
-                          })}
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Select Class Fee</label>
+                              <select
+                                value={feeConfig.class_fee_id}
+                                onChange={(e) => setFeeConfig({ ...feeConfig, class_fee_id: e.target.value, class_fee_discount: 0 })}
+                                className="w-full px-2 py-1 border rounded text-sm"
+                              >
+                                <option value="">Select Class Fee</option>
+                                {defaultFees.class_fees.map((cf: any) => {
+                                  const categoryName = cf.fee_categories?.name || 'Class Fee';
+                                  const defaultAmount = parseFloat(cf.amount || 0);
+                                  return (
+                                    <option key={cf.id} value={cf.id}>
+                                      {categoryName} - ₹{defaultAmount.toFixed(2)}/{cf.fee_cycle}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+                            {feeConfig.class_fee_id && (() => {
+                              const selectedClassFee = defaultFees.class_fees.find((cf: any) => cf.id === feeConfig.class_fee_id);
+                              if (!selectedClassFee) return null;
+                              
+                              const categoryName = selectedClassFee.fee_categories?.name || 'Class Fee';
+                              const defaultAmount = parseFloat(selectedClassFee.amount || 0);
+                              const finalAmount = Math.max(0, defaultAmount - feeConfig.class_fee_discount);
+                              
+                              return (
+                                <>
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-600">{categoryName}:</span>
+                                    <span className="font-medium">₹{defaultAmount.toFixed(2)}/{selectedClassFee.fee_cycle}</span>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      max={defaultAmount}
+                                      value={feeConfig.class_fee_discount}
+                                      onChange={(e) => {
+                                        const discount = parseFloat(e.target.value) || 0;
+                                        setFeeConfig({ ...feeConfig, class_fee_discount: Math.min(discount, defaultAmount) });
+                                      }}
+                                      className="w-full px-2 py-1 border rounded text-sm"
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                  <div className="flex justify-between text-sm font-semibold pt-1 border-t">
+                                    <span>Final Amount:</span>
+                                    <span className="text-green-600">₹{finalAmount.toFixed(2)}/{selectedClassFee.fee_cycle}</span>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
                         </div>
                       )}
 
@@ -4172,6 +4207,7 @@ function StudentsManagement() {
                     setUsernameStatus({ checking: false, available: null, message: '' });
                     setDefaultFees(null);
                     setFeeConfig({
+                      class_fee_id: '',
                       class_fee_discount: 0,
                       transport_enabled: true,
                       transport_route_id: '',
