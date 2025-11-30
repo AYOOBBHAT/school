@@ -149,7 +149,9 @@ router.post('/class-fees', requireRoles(['principal']), async (req, res) => {
 
   try {
     // Create class fee default
-    const payload = { ...value, school_id: user.schoolId };
+    // Remove due_day and due_date from payload as class_fee_defaults doesn't have these columns
+    const { due_day, due_date, ...feeData } = value;
+    const payload = { ...feeData, school_id: user.schoolId };
     const { data: classFee, error: dbError } = await adminSupabase
       .from('class_fee_defaults')
       .insert(payload)
@@ -248,10 +250,15 @@ const transportRouteSchema = Joi.object({
 
 // Get transport routes
 router.get('/transport/routes', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
-  const { supabase, user } = req;
-  if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
 
-  const { data, error } = await supabase
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+  const { user } = req;
+  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+
+  const { data, error } = await adminSupabase
     .from('transport_routes')
     .select('*')
     .eq('school_id', user.schoolId)
@@ -267,11 +274,16 @@ router.post('/transport/routes', requireRoles(['principal']), async (req, res) =
   const { error, value } = transportRouteSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  const { supabase, user } = req;
-  if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+  const { user } = req;
+  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
   const payload = { ...value, school_id: user.schoolId };
-  const { data, error: dbError } = await supabase
+  const { data, error: dbError } = await adminSupabase
     .from('transport_routes')
     .insert(payload)
     .select()
@@ -286,10 +298,15 @@ router.put('/transport/routes/:id', requireRoles(['principal']), async (req, res
   const { error, value } = transportRouteSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  const { supabase, user } = req;
-  if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
 
-  const { data, error: dbError } = await supabase
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+  const { user } = req;
+  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+
+  const { data, error: dbError } = await adminSupabase
     .from('transport_routes')
     .update(value)
     .eq('id', req.params.id)

@@ -74,6 +74,53 @@ alter table classification_values enable row level security;
 alter table class_classifications enable row level security;
 alter table class_subjects enable row level security;
 alter table teacher_assignments enable row level security;
+alter table transport_routes enable row level security;
+alter table class_fee_defaults enable row level security;
+
+-- ============================================
+-- RLS Policies - Transport Routes
+-- ============================================
+drop policy if exists mt_transport_routes_select on transport_routes;
+create policy mt_transport_routes_select on transport_routes
+  for select using (
+    school_id = get_user_school_id()
+    and get_user_school_id() is not null
+    and get_user_role() in ('principal', 'clerk', 'teacher', 'student', 'parent')
+  );
+
+drop policy if exists mt_transport_routes_modify on transport_routes;
+create policy mt_transport_routes_modify on transport_routes
+  for all using (
+    school_id = get_user_school_id()
+    and get_user_school_id() is not null
+    and get_user_role() = 'principal'
+  ) with check (
+    school_id = get_user_school_id()
+    and get_user_school_id() is not null
+    and get_user_role() = 'principal'
+  );
+
+-- ============================================
+-- RLS Policies - Class Fee Defaults
+-- ============================================
+drop policy if exists mt_class_fee_defaults_select on class_fee_defaults;
+create policy mt_class_fee_defaults_select on class_fee_defaults
+  for select using (
+    school_id = get_user_school_id()
+    and get_user_school_id() is not null
+  );
+
+drop policy if exists mt_class_fee_defaults_modify on class_fee_defaults;
+create policy mt_class_fee_defaults_modify on class_fee_defaults
+  for all using (
+    school_id = get_user_school_id()
+    and get_user_school_id() is not null
+    and get_user_role() = 'principal'
+  ) with check (
+    school_id = get_user_school_id()
+    and get_user_school_id() is not null
+    and get_user_role() = 'principal'
+  );
 
 -- ============================================
 -- Refresh schema cache
