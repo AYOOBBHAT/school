@@ -599,6 +599,7 @@ function DashboardOverview() {
 function StaffManagement() {
   const [staff, setStaff] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [allClasses, setAllClasses] = useState<ClassGroup[]>([]);
   const [allSubjects, setAllSubjects] = useState<Array<{ id: string; name: string; code: string }>>([]);
   const [sections, setSections] = useState<Record<string, Array<{ id: string; name: string }>>>({});
@@ -736,19 +737,29 @@ function StaffManagement() {
 
   const loadStaff = async () => {
     try {
+      setError(null);
+      setLoading(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
+      if (!token) {
+        setError('No authentication token found. Please log in again.');
+        setLoading(false);
+        return;
+      }
 
       const response = await fetch(`${API_URL}/staff-admin`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!response.ok) throw new Error('Failed to load staff');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to load staff' }));
+        throw new Error(errorData.error || `Failed to load staff: ${response.status} ${response.statusText}`);
+      }
 
       const data = await response.json();
       setStaff(data.staff || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading staff:', error);
+      setError(error.message || 'Failed to load staff. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -1003,7 +1014,32 @@ function StaffManagement() {
     return allAssignments.filter(a => a.teacher_id === teacherId).length;
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading) return <div className="p-6">Loading staff...</div>;
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center">
+            <span className="text-red-600 text-xl mr-2">⚠️</span>
+            <div>
+              <h3 className="text-red-800 font-semibold">Error Loading Staff</h3>
+              <p className="text-red-600 text-sm mt-1">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              loadStaff();
+            }}
+            className="mt-3 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1714,6 +1750,7 @@ function StaffManagement() {
 function ClassesManagement() {
   const [classes, setClasses] = useState<ClassGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editModal, setEditModal] = useState(false);
   const [editingClass, setEditingClass] = useState<ClassGroup | null>(null);
@@ -1890,8 +1927,11 @@ function ClassesManagement() {
 
   const loadClasses = async () => {
     try {
+      setError(null);
+      setLoading(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) {
+        setError('No authentication token found. Please log in again.');
         setLoading(false);
         return;
       }
@@ -1903,13 +1943,15 @@ function ClassesManagement() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to load classes');
+        const errorData = await response.json().catch(() => ({ error: 'Failed to load classes' }));
+        throw new Error(errorData.error || `Failed to load classes: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
       setClasses(data.classes || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading classes:', error);
+      setError(error.message || 'Failed to load classes. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -1999,7 +2041,32 @@ function ClassesManagement() {
     }
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading) return <div className="p-6">Loading classes...</div>;
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center">
+            <span className="text-red-600 text-xl mr-2">⚠️</span>
+            <div>
+              <h3 className="text-red-800 font-semibold">Error Loading Classes</h3>
+              <p className="text-red-600 text-sm mt-1">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              loadClasses();
+            }}
+            className="mt-3 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -2443,6 +2510,7 @@ function ClassesManagement() {
 function SubjectsManagement() {
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string; code?: string; created_at: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ name: '', code: '' });
   const [editingSubject, setEditingSubject] = useState<{ id: string; name: string; code?: string } | null>(null);
@@ -2453,8 +2521,11 @@ function SubjectsManagement() {
 
   const loadSubjects = async () => {
     try {
+      setError(null);
+      setLoading(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) {
+        setError('No authentication token found. Please log in again.');
         setLoading(false);
         return;
       }
@@ -2466,13 +2537,15 @@ function SubjectsManagement() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to load subjects');
+        const errorData = await response.json().catch(() => ({ error: 'Failed to load subjects' }));
+        throw new Error(errorData.error || `Failed to load subjects: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
       setSubjects(data.subjects || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading subjects:', error);
+      setError(error.message || 'Failed to load subjects. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -2532,7 +2605,32 @@ function SubjectsManagement() {
     }
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading) return <div className="p-6">Loading subjects...</div>;
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center">
+            <span className="text-red-600 text-xl mr-2">⚠️</span>
+            <div>
+              <h3 className="text-red-800 font-semibold">Error Loading Subjects</h3>
+              <p className="text-red-600 text-sm mt-1">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              loadSubjects();
+            }}
+            className="mt-3 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -2693,6 +2791,7 @@ function StudentsManagement() {
   const [unassignedStudents, setUnassignedStudents] = useState<any[]>([]);
   const [expandedClasses, setExpandedClasses] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [totalStudents, setTotalStudents] = useState(0);
   const [allClasses, setAllClasses] = useState<ClassGroup[]>([]);
   const [sections, setSections] = useState<Record<string, Array<{ id: string; name: string }>>>({});
@@ -2807,8 +2906,14 @@ function StudentsManagement() {
   useEffect(() => {
     const loadStudents = async () => {
       try {
+        setError(null);
+        setLoading(true);
         const token = (await supabase.auth.getSession()).data.session?.access_token;
-        if (!token) return;
+        if (!token) {
+          setError('No authentication token found. Please log in again.');
+          setLoading(false);
+          return;
+        }
 
         const response = await fetch(`${API_URL}/students-admin`, {
           headers: {
@@ -2816,7 +2921,10 @@ function StudentsManagement() {
           },
         });
 
-        if (!response.ok) throw new Error('Failed to load students');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Failed to load students' }));
+          throw new Error(errorData.error || `Failed to load students: ${response.status} ${response.statusText}`);
+        }
 
         const data = await response.json();
         setClassesWithStudents(data.classes || []);
@@ -2827,8 +2935,9 @@ function StudentsManagement() {
         if (data.classes && data.classes.length > 0) {
           setExpandedClasses(new Set([data.classes[0].id]));
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error loading students:', error);
+        setError(error.message || 'Failed to load students. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -2849,12 +2958,16 @@ function StudentsManagement() {
         },
       });
 
-      if (!response.ok) throw new Error('Failed to load classes');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to load classes' }));
+        throw new Error(errorData.error || `Failed to load classes: ${response.status}`);
+      }
 
       const data = await response.json();
       setAllClasses(data.classes || []);
     } catch (error) {
       console.error('Error loading classes:', error);
+      // Don't set error state here as it's a secondary load
     }
   };
 
@@ -3040,7 +3153,33 @@ function StudentsManagement() {
       <div className="p-6">
         <h2 className="text-3xl font-bold mb-6">Students Management</h2>
         <div className="bg-white rounded-lg shadow-md p-12 text-center">
-          <div className="text-2xl mb-4">Loading...</div>
+          <div className="text-2xl mb-4">Loading students...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center">
+            <span className="text-red-600 text-xl mr-2">⚠️</span>
+            <div>
+              <h3 className="text-red-800 font-semibold">Error Loading Students</h3>
+              <p className="text-red-600 text-sm mt-1">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              setLoading(true);
+              window.location.reload();
+            }}
+            className="mt-3 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -3866,6 +4005,7 @@ const getExampleHint = (typeName: string): string => {
 function ClassificationsManagement() {
   const [types, setTypes] = useState<ClassificationType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showTypeModal, setShowTypeModal] = useState(false);
   const [showValueModal, setShowValueModal] = useState(false);
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
@@ -3879,8 +4019,11 @@ function ClassificationsManagement() {
 
   const loadTypes = async () => {
     try {
+      setError(null);
+      setLoading(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) {
+        setError('No authentication token found. Please log in again.');
         setLoading(false);
         return;
       }
@@ -3889,7 +4032,11 @@ function ClassificationsManagement() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!response.ok) throw new Error('Failed to load classification types');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to load classification types' }));
+        throw new Error(errorData.error || `Failed to load classification types: ${response.status} ${response.statusText}`);
+      }
+      
       const data = await response.json();
       setTypes(data.types || []);
 
@@ -3897,8 +4044,9 @@ function ClassificationsManagement() {
       for (const type of data.types || []) {
         loadValuesForType(type.id);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading types:', error);
+      setError(error.message || 'Failed to load classification types. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -4021,7 +4169,32 @@ function ClassificationsManagement() {
     }
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading) return <div className="p-6">Loading classifications...</div>;
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center">
+            <span className="text-red-600 text-xl mr-2">⚠️</span>
+            <div>
+              <h3 className="text-red-800 font-semibold">Error Loading Classifications</h3>
+              <p className="text-red-600 text-sm mt-1">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              loadTypes();
+            }}
+            className="mt-3 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
