@@ -1221,6 +1221,16 @@ function StudentsManagement() {
         section_id: '',
         roll_number: ''
     });
+    const [editFeeConfig, setEditFeeConfig] = useState({
+        class_fee_id: '',
+        class_fee_discount: 0,
+        transport_enabled: false,
+        transport_route_id: '',
+        transport_fee_discount: 0,
+        other_fees: []
+    });
+    const [editDefaultFees, setEditDefaultFees] = useState(null);
+    const [loadingEditFees, setLoadingEditFees] = useState(false);
     const [promoteForm, setPromoteForm] = useState({
         target_class_id: '',
         section_id: ''
@@ -1248,6 +1258,17 @@ function StudentsManagement() {
         guardian_phone: '',
         guardian_email: '',
         guardian_relationship: 'parent'
+    });
+    // Fee configuration state
+    const [defaultFees, setDefaultFees] = useState(null);
+    const [loadingFees, setLoadingFees] = useState(false);
+    const [feeConfig, setFeeConfig] = useState({
+        class_fee_id: '', // Selected class fee ID
+        class_fee_discount: 0,
+        transport_enabled: true,
+        transport_route_id: '',
+        transport_fee_discount: 0,
+        other_fees: []
     });
     const [usernameStatus, setUsernameStatus] = useState({
         checking: false,
@@ -1391,7 +1412,52 @@ function StudentsManagement() {
             setSections(prev => ({ ...prev, [classId]: [] }));
         }
     };
-    const handleEditStudent = (student) => {
+    const loadDefaultFees = async (classId) => {
+        try {
+            setLoadingFees(true);
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            const response = await fetch(`${API_URL}/principal-users/classes/${classId}/default-fees`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+            if (!response.ok) {
+                throw new Error('Failed to load default fees');
+            }
+            const data = await response.json();
+            console.log('[Add Student] Loaded default fees:', data);
+            setDefaultFees(data);
+            // Initialize other_fees array with all fee categories
+            const otherFeesConfig = (data.other_fee_categories || []).map((cat) => ({
+                fee_category_id: cat.id,
+                enabled: true,
+                discount: 0
+            }));
+            // Set default class fee (first one if available)
+            const defaultClassFeeId = data.class_fees && data.class_fees.length > 0 ? data.class_fees[0].id : '';
+            console.log('[Add Student] Default class fee ID:', defaultClassFeeId);
+            console.log('[Add Student] Class fees count:', data.class_fees?.length || 0);
+            console.log('[Add Student] Other fees count:', data.other_fee_categories?.length || 0);
+            setFeeConfig({
+                class_fee_id: defaultClassFeeId,
+                class_fee_discount: 0,
+                transport_enabled: true,
+                transport_route_id: '',
+                transport_fee_discount: 0,
+                other_fees: otherFeesConfig
+            });
+        }
+        catch (error) {
+            console.error('Error loading default fees:', error);
+            setDefaultFees(null);
+        }
+        finally {
+            setLoadingFees(false);
+        }
+    };
+    const handleEditStudent = async (student) => {
         setSelectedStudent(student);
         setEditForm({
             class_group_id: student.class_group_id || '',
@@ -1399,6 +1465,62 @@ function StudentsManagement() {
             roll_number: student.roll_number || ''
         });
         setEditModalOpen(true);
+        // Load current fee configuration
+        if (student.id) {
+            try {
+                const token = (await supabase.auth.getSession()).data.session?.access_token;
+                if (!token)
+                    return;
+                const response = await fetch(`${API_URL}/students-admin/${student.id}/fee-config`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+                if (response.ok) {
+                    const feeConfig = await response.json();
+                    setEditFeeConfig({
+                        class_fee_id: feeConfig.class_fee_id || '',
+                        class_fee_discount: feeConfig.class_fee_discount || 0,
+                        transport_enabled: feeConfig.transport_enabled ?? false,
+                        transport_route_id: feeConfig.transport_route_id || '',
+                        transport_fee_discount: feeConfig.transport_fee_discount || 0,
+                        other_fees: feeConfig.other_fees || []
+                    });
+                }
+            }
+            catch (error) {
+                console.error('Error loading fee config:', error);
+            }
+        }
+        // Load default fees for the class
+        if (student.class_group_id) {
+            loadEditDefaultFees(student.class_group_id);
+        }
+    };
+    const loadEditDefaultFees = async (classId) => {
+        try {
+            setLoadingEditFees(true);
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            const response = await fetch(`${API_URL}/principal-users/classes/${classId}/default-fees`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+            if (!response.ok) {
+                throw new Error('Failed to load default fees');
+            }
+            const data = await response.json();
+            setEditDefaultFees(data);
+        }
+        catch (error) {
+            console.error('Error loading default fees:', error);
+            setEditDefaultFees(null);
+        }
+        finally {
+            setLoadingEditFees(false);
+        }
     };
     const handlePromoteStudent = (student) => {
         setSelectedStudent(student);
@@ -1423,15 +1545,23 @@ function StudentsManagement() {
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
                 return;
-            // Remove section_id from the form data since sections are part of the class
-            const { section_id, ...formData } = editForm;
+            // Prepare update data
+            const updateData = {
+                class_group_id: editForm.class_group_id || null,
+                section_id: editForm.section_id || null,
+                roll_number: editForm.roll_number || null
+            };
+            // Include fee_config if class is selected
+            if (editForm.class_group_id && editDefaultFees) {
+                updateData.fee_config = editFeeConfig;
+            }
             const response = await fetch(`${API_URL}/students-admin/${selectedStudent.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify(formData),
+                body: JSON.stringify(updateData),
             });
             if (!response.ok) {
                 const error = await response.json();
@@ -1576,7 +1706,9 @@ function StudentsManagement() {
                     guardian_name: addStudentForm.guardian_name,
                     guardian_phone: addStudentForm.guardian_phone,
                     guardian_email: addStudentForm.guardian_email || null,
-                    guardian_relationship: addStudentForm.guardian_relationship
+                    guardian_relationship: addStudentForm.guardian_relationship,
+                    // Include fee configuration if class is selected
+                    fee_config: addStudentForm.class_group_id ? feeConfig : undefined
                 }),
             });
             if (!response.ok) {
@@ -1604,6 +1736,15 @@ function StudentsManagement() {
                 guardian_relationship: 'parent'
             });
             setUsernameStatus({ checking: false, available: null, message: '' });
+            setDefaultFees(null);
+            setFeeConfig({
+                class_fee_id: '',
+                class_fee_discount: 0,
+                transport_enabled: true,
+                transport_route_id: '',
+                transport_fee_discount: 0,
+                other_fees: []
+            });
             window.location.reload();
         }
         catch (error) {
@@ -1623,21 +1764,101 @@ function StudentsManagement() {
                                                                     : 'bg-red-100 text-red-800'}`, children: student.status }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium", children: _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: () => handleEditStudent(student), className: "text-blue-600 hover:text-blue-900", title: "Edit student", children: "\u270F\uFE0F Edit" }), _jsx("button", { onClick: () => handlePromoteStudent(student), className: "text-green-600 hover:text-green-900", title: "Promote/Demote student", children: "\u2B06 Promote" })] }) })] }, student.id))) })] }) }) }))] }, classItem.id));
                 }) }), unassignedStudents.length > 0 && (_jsxs("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: [_jsxs("div", { className: "px-6 py-4 bg-yellow-50 border-b border-yellow-200", children: [_jsxs("h3", { className: "text-lg font-semibold text-yellow-800", children: ["Unassigned Students (", unassignedStudents.length, ")"] }), _jsx("p", { className: "text-sm text-yellow-700 mt-1", children: "These students haven't been assigned to a class yet." })] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Roll No." }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Email" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Phone" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Status" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: unassignedStudents.map((student) => (_jsxs("tr", { className: "hover:bg-gray-50", children: [_jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900", children: student.roll_number || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-900", children: student.profile?.full_name || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: student.profile?.email || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: student.profile?.phone || 'N/A' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("span", { className: `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${student.status === 'active'
                                                         ? 'bg-green-100 text-green-800'
-                                                        : 'bg-red-100 text-red-800'}`, children: student.status }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium", children: _jsx("button", { onClick: () => handleEditStudent(student), className: "text-blue-600 hover:text-blue-900", title: "Assign class to student", children: "\u270F\uFE0F Assign Class" }) })] }, student.id))) })] }) })] })), classesWithStudents.length === 0 && unassignedStudents.length === 0 && (_jsxs("div", { className: "bg-white rounded-lg shadow-md p-12 text-center", children: [_jsx("div", { className: "text-gray-500 text-lg", children: "No students found." }), _jsx("div", { className: "text-gray-400 text-sm mt-2", children: "Students will appear here once they are approved and assigned to classes." })] })), editModalOpen && selectedStudent && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Edit Student: ", selectedStudent.profile?.full_name] }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class" }), _jsxs("select", { value: editForm.class_group_id, onChange: (e) => {
-                                                setEditForm({ ...editForm, class_group_id: e.target.value, section_id: '' });
+                                                        : 'bg-red-100 text-red-800'}`, children: student.status }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium", children: _jsx("button", { onClick: () => handleEditStudent(student), className: "text-blue-600 hover:text-blue-900", title: "Assign class to student", children: "\u270F\uFE0F Assign Class" }) })] }, student.id))) })] }) })] })), classesWithStudents.length === 0 && unassignedStudents.length === 0 && (_jsxs("div", { className: "bg-white rounded-lg shadow-md p-12 text-center", children: [_jsx("div", { className: "text-gray-500 text-lg", children: "No students found." }), _jsx("div", { className: "text-gray-400 text-sm mt-2", children: "Students will appear here once they are approved and assigned to classes." })] })), editModalOpen && selectedStudent && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Edit Student: ", selectedStudent.profile?.full_name] }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class" }), _jsxs("select", { value: editForm.class_group_id, onChange: (e) => {
+                                                const newClassId = e.target.value;
+                                                setEditForm({ ...editForm, class_group_id: newClassId, section_id: '' });
+                                                if (newClassId) {
+                                                    // Load default fees for the new class
+                                                    loadEditDefaultFees(newClassId);
+                                                    // Reset fee config to defaults for new class
+                                                    setEditFeeConfig({
+                                                        class_fee_id: '',
+                                                        class_fee_discount: 0,
+                                                        transport_enabled: false,
+                                                        transport_route_id: '',
+                                                        transport_fee_discount: 0,
+                                                        other_fees: []
+                                                    });
+                                                }
+                                                else {
+                                                    setEditDefaultFees(null);
+                                                    setEditFeeConfig({
+                                                        class_fee_id: '',
+                                                        class_fee_discount: 0,
+                                                        transport_enabled: false,
+                                                        transport_route_id: '',
+                                                        transport_fee_discount: 0,
+                                                        other_fees: []
+                                                    });
+                                                }
                                             }, className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "No Class" }), allClasses.map((cls) => {
                                                     const classificationText = cls.classifications && cls.classifications.length > 0
                                                         ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
                                                         : '';
                                                     return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
-                                                })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Roll Number" }), _jsx("input", { type: "text", value: editForm.roll_number, onChange: (e) => setEditForm({ ...editForm, roll_number: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handleUpdateStudent, className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Update" }), _jsx("button", { onClick: () => setEditModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), promoteModalOpen && selectedStudent && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Promote/Demote Student: ", selectedStudent.profile?.full_name] }), _jsx("div", { className: "space-y-4", children: _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Target Class" }), _jsxs("select", { value: promoteForm.target_class_id, onChange: (e) => {
+                                                })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Roll Number" }), _jsx("input", { type: "text", value: editForm.roll_number, onChange: (e) => setEditForm({ ...editForm, roll_number: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), editForm.class_group_id && (_jsxs("div", { className: "border-t pt-4 mt-4", children: [_jsx("h4", { className: "text-lg font-semibold mb-3 text-gray-700", children: "Fee Configuration" }), loadingEditFees ? (_jsxs("div", { className: "text-center py-4", children: [_jsx("div", { className: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" }), _jsx("p", { className: "text-sm text-gray-500 mt-2", children: "Loading fee information..." })] })) : editDefaultFees ? (_jsxs("div", { className: "space-y-4", children: [_jsxs("div", { className: "bg-blue-50 p-4 rounded-lg", children: [_jsx("h5", { className: "font-semibold text-gray-700 mb-2", children: "Class Fee (Default for this class)" }), editDefaultFees.class_fees && editDefaultFees.class_fees.length > 0 ? (_jsxs("div", { className: "space-y-2", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Select Class Fee" }), _jsxs("select", { value: editFeeConfig.class_fee_id, onChange: (e) => setEditFeeConfig({ ...editFeeConfig, class_fee_id: e.target.value, class_fee_discount: 0 }), className: "w-full px-2 py-1 border rounded text-sm", children: [_jsx("option", { value: "", children: "Select Class Fee" }), editDefaultFees.class_fees.map((cf) => {
+                                                                                    const categoryName = cf.fee_categories?.name || 'Class Fee';
+                                                                                    const defaultAmount = parseFloat(cf.amount || 0);
+                                                                                    return (_jsxs("option", { value: cf.id, children: [categoryName, " - \u20B9", defaultAmount.toFixed(2), "/", cf.fee_cycle] }, cf.id));
+                                                                                })] })] }), editFeeConfig.class_fee_id && (() => {
+                                                                    const selectedClassFee = editDefaultFees.class_fees.find((cf) => cf.id === editFeeConfig.class_fee_id);
+                                                                    if (!selectedClassFee)
+                                                                        return null;
+                                                                    const categoryName = selectedClassFee.fee_categories?.name || 'Class Fee';
+                                                                    const defaultAmount = parseFloat(selectedClassFee.amount || 0);
+                                                                    const finalAmount = Math.max(0, defaultAmount - editFeeConfig.class_fee_discount);
+                                                                    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "flex justify-between text-sm", children: [_jsxs("span", { className: "text-gray-600", children: [categoryName, ":"] }), _jsxs("span", { className: "font-medium", children: ["\u20B9", defaultAmount.toFixed(2), "/", selectedClassFee.fee_cycle] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Discount (\u20B9)" }), _jsx("input", { type: "number", min: "0", step: "0.01", max: defaultAmount, value: editFeeConfig.class_fee_discount, onChange: (e) => {
+                                                                                            const discount = parseFloat(e.target.value) || 0;
+                                                                                            setEditFeeConfig({ ...editFeeConfig, class_fee_discount: Math.min(discount, defaultAmount) });
+                                                                                        }, className: "w-full px-2 py-1 border rounded text-sm", placeholder: "0" })] }), _jsxs("div", { className: "flex justify-between text-sm font-semibold pt-1 border-t", children: [_jsx("span", { children: "Final Amount:" }), _jsxs("span", { className: "text-green-600", children: ["\u20B9", finalAmount.toFixed(2), "/", selectedClassFee.fee_cycle] })] })] }));
+                                                                })()] })) : (_jsx("p", { className: "text-sm text-gray-500", children: "No class fees configured for this class yet." }))] }), _jsxs("div", { className: "bg-green-50 p-4 rounded-lg", children: [_jsxs("div", { className: "flex items-center justify-between mb-2", children: [_jsx("h5", { className: "font-semibold text-gray-700", children: "Transport Fee" }), _jsxs("label", { className: "flex items-center gap-2 cursor-pointer", children: [_jsx("input", { type: "checkbox", checked: editFeeConfig.transport_enabled, onChange: (e) => setEditFeeConfig({ ...editFeeConfig, transport_enabled: e.target.checked, transport_route_id: e.target.checked ? editFeeConfig.transport_route_id : '' }), className: "rounded" }), _jsx("span", { className: "text-sm text-gray-600", children: "Enable Transport" })] })] }), editFeeConfig.transport_enabled && (_jsxs("div", { className: "space-y-2", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Select Route" }), _jsxs("select", { value: editFeeConfig.transport_route_id, onChange: (e) => setEditFeeConfig({ ...editFeeConfig, transport_route_id: e.target.value }), className: "w-full px-2 py-1 border rounded text-sm", children: [_jsx("option", { value: "", children: "Select Transport Route" }), editDefaultFees.transport_routes.map((route) => (_jsxs("option", { value: route.id, children: [route.route_name, " ", route.bus_number ? `(${route.bus_number})` : '', " - \u20B9", route.fee?.total?.toFixed(2) || '0.00', "/", route.fee?.fee_cycle || 'monthly'] }, route.id)))] })] }), editFeeConfig.transport_route_id && (() => {
+                                                                    const selectedRoute = editDefaultFees.transport_routes.find((r) => r.id === editFeeConfig.transport_route_id);
+                                                                    const routeFee = selectedRoute?.fee;
+                                                                    const defaultTransportAmount = routeFee ? parseFloat(routeFee.total || 0) : 0;
+                                                                    const finalTransportAmount = Math.max(0, defaultTransportAmount - editFeeConfig.transport_fee_discount);
+                                                                    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "flex justify-between text-sm", children: [_jsx("span", { className: "text-gray-600", children: "Route Fee:" }), _jsxs("span", { className: "font-medium", children: ["\u20B9", defaultTransportAmount.toFixed(2), "/", routeFee?.fee_cycle || 'monthly'] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Discount (\u20B9)" }), _jsx("input", { type: "number", min: "0", step: "0.01", value: editFeeConfig.transport_fee_discount, onChange: (e) => setEditFeeConfig({ ...editFeeConfig, transport_fee_discount: parseFloat(e.target.value) || 0 }), className: "w-full px-2 py-1 border rounded text-sm", placeholder: "0" })] }), _jsxs("div", { className: "flex justify-between text-sm font-semibold pt-1 border-t", children: [_jsx("span", { children: "Final Amount:" }), _jsxs("span", { className: "text-green-600", children: ["\u20B9", finalTransportAmount.toFixed(2), "/", routeFee?.fee_cycle || 'monthly'] })] })] }));
+                                                                })()] }))] }), editDefaultFees.other_fee_categories && editDefaultFees.other_fee_categories.length > 0 && (_jsxs("div", { className: "bg-yellow-50 p-4 rounded-lg", children: [_jsx("h5", { className: "font-semibold text-gray-700 mb-3", children: "Other Fees" }), _jsx("div", { className: "space-y-3", children: editDefaultFees.other_fee_categories.map((category) => {
+                                                                const feeConfigItem = editFeeConfig.other_fees.find(f => f.fee_category_id === category.id) || {
+                                                                    fee_category_id: category.id,
+                                                                    enabled: true,
+                                                                    discount: 0
+                                                                };
+                                                                const defaultAmount = parseFloat(category.amount || 0);
+                                                                const finalAmount = Math.max(0, defaultAmount - feeConfigItem.discount);
+                                                                return (_jsxs("div", { className: "bg-white p-3 rounded border", children: [_jsxs("div", { className: "flex items-center justify-between mb-2", children: [_jsxs("div", { className: "flex-1", children: [_jsxs("div", { className: "flex items-center justify-between", children: [_jsx("span", { className: "font-medium text-sm", children: category.name }), _jsxs("span", { className: "text-sm font-medium text-gray-600", children: ["\u20B9", defaultAmount.toFixed(2), "/", category.fee_cycle || 'monthly'] })] }), category.description && (_jsx("p", { className: "text-xs text-gray-500 mt-1", children: category.description }))] }), _jsxs("label", { className: "flex items-center gap-2 cursor-pointer ml-3", children: [_jsx("input", { type: "checkbox", checked: feeConfigItem.enabled, onChange: (e) => {
+                                                                                                const updatedOtherFees = editFeeConfig.other_fees.map(f => f.fee_category_id === category.id
+                                                                                                    ? { ...f, enabled: e.target.checked, discount: e.target.checked ? f.discount : 0 }
+                                                                                                    : f);
+                                                                                                if (!editFeeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
+                                                                                                    updatedOtherFees.push({
+                                                                                                        fee_category_id: category.id,
+                                                                                                        enabled: e.target.checked,
+                                                                                                        discount: 0
+                                                                                                    });
+                                                                                                }
+                                                                                                setEditFeeConfig({ ...editFeeConfig, other_fees: updatedOtherFees });
+                                                                                            }, className: "rounded" }), _jsx("span", { className: "text-xs text-gray-600", children: "Enable" })] })] }), feeConfigItem.enabled && (_jsxs("div", { className: "mt-2 space-y-2", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Discount (\u20B9)" }), _jsx("input", { type: "number", min: "0", step: "0.01", max: defaultAmount, value: feeConfigItem.discount, onChange: (e) => {
+                                                                                                const discount = parseFloat(e.target.value) || 0;
+                                                                                                const updatedOtherFees = editFeeConfig.other_fees.map(f => f.fee_category_id === category.id
+                                                                                                    ? { ...f, discount: Math.min(discount, defaultAmount) }
+                                                                                                    : f);
+                                                                                                if (!editFeeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
+                                                                                                    updatedOtherFees.push({
+                                                                                                        fee_category_id: category.id,
+                                                                                                        enabled: true,
+                                                                                                        discount: Math.min(discount, defaultAmount)
+                                                                                                    });
+                                                                                                }
+                                                                                                setEditFeeConfig({ ...editFeeConfig, other_fees: updatedOtherFees });
+                                                                                            }, className: "w-full px-2 py-1 border rounded text-sm", placeholder: "0" })] }), _jsxs("div", { className: "flex justify-between text-xs font-semibold pt-1 border-t", children: [_jsx("span", { children: "Final Amount:" }), _jsxs("span", { className: "text-green-600", children: ["\u20B9", finalAmount.toFixed(2), "/", category.fee_cycle || 'monthly'] })] })] }))] }, category.id));
+                                                            }) })] }))] })) : (_jsx("p", { className: "text-sm text-gray-500", children: "Select a class to configure fees" }))] }))] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handleUpdateStudent, className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Update" }), _jsx("button", { onClick: () => setEditModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), promoteModalOpen && selectedStudent && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Promote/Demote Student: ", selectedStudent.profile?.full_name] }), _jsx("div", { className: "space-y-4", children: _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Target Class" }), _jsxs("select", { value: promoteForm.target_class_id, onChange: (e) => {
                                             setPromoteForm({ ...promoteForm, target_class_id: e.target.value, section_id: '' });
                                         }, className: "w-full px-3 py-2 border rounded-md", required: true, children: [_jsx("option", { value: "", children: "Select Target Class" }), allClasses.map((cls) => {
                                                 const classificationText = cls.classifications && cls.classifications.length > 0
                                                     ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
                                                     : '';
                                                 return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
-                                            })] })] }) }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handlePromoteStudentSubmit, className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Promote" }), _jsx("button", { onClick: () => setPromoteModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), addStudentModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Add New Student" }), _jsxs("form", { onSubmit: handleAddStudent, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name *" }), _jsx("input", { type: "text", required: true, value: addStudentForm.full_name, onChange: (e) => setAddStudentForm({ ...addStudentForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email *" }), _jsx("input", { type: "email", required: true, value: addStudentForm.email, onChange: (e) => setAddStudentForm({ ...addStudentForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Username *" }), _jsxs("div", { className: "relative", children: [_jsx("input", { type: "text", required: true, value: addStudentForm.username, onChange: (e) => setAddStudentForm({ ...addStudentForm, username: e.target.value }), className: `w-full px-3 py-2 pr-10 border rounded-md ${usernameStatus.available === false
+                                            })] })] }) }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handlePromoteStudentSubmit, className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Promote" }), _jsx("button", { onClick: () => setPromoteModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), addStudentModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Add New Student" }), _jsxs("form", { onSubmit: handleAddStudent, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name *" }), _jsx("input", { type: "text", required: true, value: addStudentForm.full_name, onChange: (e) => setAddStudentForm({ ...addStudentForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email *" }), _jsx("input", { type: "email", required: true, value: addStudentForm.email, onChange: (e) => setAddStudentForm({ ...addStudentForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Username *" }), _jsxs("div", { className: "relative", children: [_jsx("input", { type: "text", required: true, value: addStudentForm.username, onChange: (e) => setAddStudentForm({ ...addStudentForm, username: e.target.value }), className: `w-full px-3 py-2 pr-10 border rounded-md ${usernameStatus.available === false
                                                         ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
                                                         : usernameStatus.available === true
                                                             ? 'border-green-500 focus:border-green-500 focus:ring-green-500'
@@ -1645,17 +1866,88 @@ function StudentsManagement() {
                                                     ? 'text-green-600'
                                                     : usernameStatus.available === false
                                                         ? 'text-red-600'
-                                                        : 'text-gray-500'}`, children: usernameStatus.message })) : null })), addStudentForm.username.trim().length === 0 && (_jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Username must be unique within your school" }))] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Password *" }), _jsx("input", { type: "password", required: true, minLength: 8, value: addStudentForm.password, onChange: (e) => setAddStudentForm({ ...addStudentForm, password: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Minimum 8 characters" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "tel", value: addStudentForm.phone, onChange: (e) => setAddStudentForm({ ...addStudentForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Gender" }), _jsxs("select", { value: addStudentForm.gender, onChange: (e) => setAddStudentForm({ ...addStudentForm, gender: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Gender" }), _jsx("option", { value: "male", children: "Male" }), _jsx("option", { value: "female", children: "Female" }), _jsx("option", { value: "other", children: "Other" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Roll Number" }), _jsx("input", { type: "text", value: addStudentForm.roll_number, onChange: (e) => setAddStudentForm({ ...addStudentForm, roll_number: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class" }), _jsxs("select", { value: addStudentForm.class_group_id, onChange: (e) => {
-                                                setAddStudentForm({ ...addStudentForm, class_group_id: e.target.value, section_id: '' });
-                                                if (e.target.value) {
-                                                    loadSections(e.target.value);
+                                                        : 'text-gray-500'}`, children: usernameStatus.message })) : null })), addStudentForm.username.trim().length === 0 && (_jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Username must be unique within your school" }))] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Password *" }), _jsx("input", { type: "password", required: true, minLength: 8, value: addStudentForm.password, onChange: (e) => setAddStudentForm({ ...addStudentForm, password: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Minimum 8 characters" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "tel", value: addStudentForm.phone, onChange: (e) => setAddStudentForm({ ...addStudentForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Gender" }), _jsxs("select", { value: addStudentForm.gender, onChange: (e) => setAddStudentForm({ ...addStudentForm, gender: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Gender" }), _jsx("option", { value: "male", children: "Male" }), _jsx("option", { value: "female", children: "Female" }), _jsx("option", { value: "other", children: "Other" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Roll Number" }), _jsx("input", { type: "text", value: addStudentForm.roll_number, onChange: (e) => setAddStudentForm({ ...addStudentForm, roll_number: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class" }), _jsxs("select", { value: addStudentForm.class_group_id, onChange: async (e) => {
+                                                const classId = e.target.value;
+                                                setAddStudentForm({ ...addStudentForm, class_group_id: classId, section_id: '' });
+                                                if (classId) {
+                                                    loadSections(classId);
+                                                    // Load default fees for this class
+                                                    await loadDefaultFees(classId);
+                                                }
+                                                else {
+                                                    setDefaultFees(null);
+                                                    setFeeConfig({
+                                                        class_fee_id: '',
+                                                        class_fee_discount: 0,
+                                                        transport_enabled: true,
+                                                        transport_route_id: '',
+                                                        transport_fee_discount: 0,
+                                                        other_fees: []
+                                                    });
                                                 }
                                             }, className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Class (Optional)" }), allClasses.map((cls) => {
                                                     const classificationText = cls.classifications && cls.classifications.length > 0
                                                         ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
                                                         : '';
                                                     return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
-                                                })] })] }), addStudentForm.class_group_id && sections[addStudentForm.class_group_id] && (_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Section" }), _jsxs("select", { value: addStudentForm.section_id, onChange: (e) => setAddStudentForm({ ...addStudentForm, section_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Section (Optional)" }), sections[addStudentForm.class_group_id].map((section) => (_jsx("option", { value: section.id, children: section.name }, section.id)))] })] })), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Date of Birth" }), _jsx("input", { type: "date", value: addStudentForm.date_of_birth, onChange: (e) => setAddStudentForm({ ...addStudentForm, date_of_birth: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Home Address" }), _jsx("textarea", { value: addStudentForm.home_address, onChange: (e) => setAddStudentForm({ ...addStudentForm, home_address: e.target.value }), className: "w-full px-3 py-2 border rounded-md", rows: 3, placeholder: "Enter home address" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Admission Date" }), _jsx("input", { type: "date", value: addStudentForm.admission_date, onChange: (e) => setAddStudentForm({ ...addStudentForm, admission_date: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { className: "border-t pt-4 mt-4", children: [_jsx("h4", { className: "text-lg font-semibold mb-3 text-gray-700", children: "Parent/Guardian Information" }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Parent/Guardian Name *" }), _jsx("input", { type: "text", required: true, value: addStudentForm.guardian_name, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Full name of parent or guardian" })] }), _jsxs("div", { className: "mt-3", children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Parent/Guardian Phone Number *" }), _jsx("input", { type: "tel", required: true, value: addStudentForm.guardian_phone, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Phone number" })] }), _jsxs("div", { className: "mt-3", children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Parent/Guardian Email" }), _jsx("input", { type: "email", value: addStudentForm.guardian_email, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_email: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Email address (optional)" })] }), _jsxs("div", { className: "mt-3", children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Relationship" }), _jsxs("select", { value: addStudentForm.guardian_relationship, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_relationship: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "parent", children: "Parent" }), _jsx("option", { value: "guardian", children: "Guardian" }), _jsx("option", { value: "relative", children: "Relative" }), _jsx("option", { value: "other", children: "Other" })] })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { type: "submit", disabled: usernameStatus.checking || usernameStatus.available === false, className: `flex-1 px-4 py-2 rounded-lg ${usernameStatus.checking || usernameStatus.available === false
+                                                })] })] }), addStudentForm.class_group_id && sections[addStudentForm.class_group_id] && (_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Section" }), _jsxs("select", { value: addStudentForm.section_id, onChange: (e) => setAddStudentForm({ ...addStudentForm, section_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Section (Optional)" }), sections[addStudentForm.class_group_id].map((section) => (_jsx("option", { value: section.id, children: section.name }, section.id)))] })] })), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Date of Birth" }), _jsx("input", { type: "date", value: addStudentForm.date_of_birth, onChange: (e) => setAddStudentForm({ ...addStudentForm, date_of_birth: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Home Address" }), _jsx("textarea", { value: addStudentForm.home_address, onChange: (e) => setAddStudentForm({ ...addStudentForm, home_address: e.target.value }), className: "w-full px-3 py-2 border rounded-md", rows: 3, placeholder: "Enter home address" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Admission Date" }), _jsx("input", { type: "date", value: addStudentForm.admission_date, onChange: (e) => setAddStudentForm({ ...addStudentForm, admission_date: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), addStudentForm.class_group_id && (_jsxs("div", { className: "border-t pt-4 mt-4", children: [_jsx("h4", { className: "text-lg font-semibold mb-3 text-gray-700", children: "Fee Configuration" }), loadingFees ? (_jsxs("div", { className: "text-center py-4", children: [_jsx("div", { className: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" }), _jsx("p", { className: "text-sm text-gray-500 mt-2", children: "Loading fee information..." })] })) : defaultFees ? (_jsxs("div", { className: "space-y-4", children: [_jsxs("div", { className: "bg-blue-50 p-4 rounded-lg border border-blue-200", children: [_jsx("h5", { className: "font-semibold text-gray-700 mb-2", children: "Class Fee (Default for this class)" }), defaultFees.class_fees && Array.isArray(defaultFees.class_fees) && defaultFees.class_fees.length > 0 ? (_jsxs("div", { className: "space-y-2", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Select Class Fee" }), _jsxs("select", { value: feeConfig.class_fee_id, onChange: (e) => setFeeConfig({ ...feeConfig, class_fee_id: e.target.value, class_fee_discount: 0 }), className: "w-full px-2 py-1 border rounded text-sm", children: [_jsx("option", { value: "", children: "Select Class Fee" }), defaultFees.class_fees.map((cf) => {
+                                                                                    const categoryName = cf.fee_categories?.name || 'Class Fee';
+                                                                                    const defaultAmount = parseFloat(cf.amount || 0);
+                                                                                    return (_jsxs("option", { value: cf.id, children: [categoryName, " - \u20B9", defaultAmount.toFixed(2), "/", cf.fee_cycle] }, cf.id));
+                                                                                })] })] }), feeConfig.class_fee_id && (() => {
+                                                                    const selectedClassFee = defaultFees.class_fees.find((cf) => cf.id === feeConfig.class_fee_id);
+                                                                    if (!selectedClassFee)
+                                                                        return null;
+                                                                    const categoryName = selectedClassFee.fee_categories?.name || 'Class Fee';
+                                                                    const defaultAmount = parseFloat(selectedClassFee.amount || 0);
+                                                                    const finalAmount = Math.max(0, defaultAmount - feeConfig.class_fee_discount);
+                                                                    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "flex justify-between text-sm", children: [_jsxs("span", { className: "text-gray-600", children: [categoryName, ":"] }), _jsxs("span", { className: "font-medium", children: ["\u20B9", defaultAmount.toFixed(2), "/", selectedClassFee.fee_cycle] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Discount (\u20B9)" }), _jsx("input", { type: "number", min: "0", step: "0.01", max: defaultAmount, value: feeConfig.class_fee_discount, onChange: (e) => {
+                                                                                            const discount = parseFloat(e.target.value) || 0;
+                                                                                            setFeeConfig({ ...feeConfig, class_fee_discount: Math.min(discount, defaultAmount) });
+                                                                                        }, className: "w-full px-2 py-1 border rounded text-sm", placeholder: "0" })] }), _jsxs("div", { className: "flex justify-between text-sm font-semibold pt-1 border-t", children: [_jsx("span", { children: "Final Amount:" }), _jsxs("span", { className: "text-green-600", children: ["\u20B9", finalAmount.toFixed(2), "/", selectedClassFee.fee_cycle] })] })] }));
+                                                                })()] })) : (_jsx("p", { className: "text-sm text-gray-500", children: "No class fees configured for this class yet." }))] }), _jsxs("div", { className: "bg-green-50 p-4 rounded-lg", children: [_jsxs("div", { className: "flex items-center justify-between mb-2", children: [_jsx("h5", { className: "font-semibold text-gray-700", children: "Transport Fee" }), _jsxs("label", { className: "flex items-center gap-2 cursor-pointer", children: [_jsx("input", { type: "checkbox", checked: feeConfig.transport_enabled, onChange: (e) => setFeeConfig({ ...feeConfig, transport_enabled: e.target.checked, transport_route_id: e.target.checked ? feeConfig.transport_route_id : '' }), className: "rounded" }), _jsx("span", { className: "text-sm text-gray-600", children: "Enable Transport" })] })] }), feeConfig.transport_enabled && (_jsxs("div", { className: "space-y-2", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Select Route" }), _jsxs("select", { value: feeConfig.transport_route_id, onChange: (e) => setFeeConfig({ ...feeConfig, transport_route_id: e.target.value }), className: "w-full px-2 py-1 border rounded text-sm", children: [_jsx("option", { value: "", children: "Select Transport Route" }), defaultFees.transport_routes.map((route) => (_jsxs("option", { value: route.id, children: [route.route_name, " ", route.bus_number ? `(${route.bus_number})` : '', " - \u20B9", route.fee?.total?.toFixed(2) || '0.00', "/", route.fee?.fee_cycle || 'monthly'] }, route.id)))] })] }), feeConfig.transport_route_id && (() => {
+                                                                    const selectedRoute = defaultFees.transport_routes.find((r) => r.id === feeConfig.transport_route_id);
+                                                                    const routeFee = selectedRoute?.fee;
+                                                                    const defaultTransportAmount = routeFee ? parseFloat(routeFee.total || 0) : 0;
+                                                                    const finalTransportAmount = Math.max(0, defaultTransportAmount - feeConfig.transport_fee_discount);
+                                                                    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "flex justify-between text-sm", children: [_jsx("span", { className: "text-gray-600", children: "Route Fee:" }), _jsxs("span", { className: "font-medium", children: ["\u20B9", defaultTransportAmount.toFixed(2), "/", routeFee?.fee_cycle || 'monthly'] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Discount (\u20B9)" }), _jsx("input", { type: "number", min: "0", step: "0.01", value: feeConfig.transport_fee_discount, onChange: (e) => setFeeConfig({ ...feeConfig, transport_fee_discount: parseFloat(e.target.value) || 0 }), className: "w-full px-2 py-1 border rounded text-sm", placeholder: "0" })] }), _jsxs("div", { className: "flex justify-between text-sm font-semibold pt-1 border-t", children: [_jsx("span", { children: "Final Amount:" }), _jsxs("span", { className: "text-green-600", children: ["\u20B9", finalTransportAmount.toFixed(2), "/", routeFee?.fee_cycle || 'monthly'] })] })] }));
+                                                                })()] }))] }), _jsxs("div", { className: "bg-yellow-50 p-4 rounded-lg border border-yellow-200", children: [_jsx("h5", { className: "font-semibold text-gray-700 mb-3", children: "Other Fees" }), defaultFees.other_fee_categories && Array.isArray(defaultFees.other_fee_categories) && defaultFees.other_fee_categories.length > 0 ? (_jsx("div", { className: "space-y-3", children: defaultFees.other_fee_categories.map((category) => {
+                                                                const feeConfigItem = feeConfig.other_fees.find(f => f.fee_category_id === category.id) || {
+                                                                    fee_category_id: category.id,
+                                                                    enabled: true,
+                                                                    discount: 0
+                                                                };
+                                                                const defaultAmount = parseFloat(category.amount || 0);
+                                                                const finalAmount = Math.max(0, defaultAmount - feeConfigItem.discount);
+                                                                return (_jsxs("div", { className: "bg-white p-3 rounded border", children: [_jsxs("div", { className: "flex items-center justify-between mb-2", children: [_jsxs("div", { className: "flex-1", children: [_jsxs("div", { className: "flex items-center justify-between", children: [_jsx("span", { className: "font-medium text-sm", children: category.name }), _jsxs("span", { className: "text-sm font-medium text-gray-600", children: ["\u20B9", defaultAmount.toFixed(2), "/", category.fee_cycle || 'monthly'] })] }), category.description && (_jsx("p", { className: "text-xs text-gray-500 mt-1", children: category.description }))] }), _jsxs("label", { className: "flex items-center gap-2 cursor-pointer ml-3", children: [_jsx("input", { type: "checkbox", checked: feeConfigItem.enabled, onChange: (e) => {
+                                                                                                const updatedOtherFees = feeConfig.other_fees.map(f => f.fee_category_id === category.id
+                                                                                                    ? { ...f, enabled: e.target.checked, discount: e.target.checked ? f.discount : 0 }
+                                                                                                    : f);
+                                                                                                // If not found, add it
+                                                                                                if (!feeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
+                                                                                                    updatedOtherFees.push({
+                                                                                                        fee_category_id: category.id,
+                                                                                                        enabled: e.target.checked,
+                                                                                                        discount: 0
+                                                                                                    });
+                                                                                                }
+                                                                                                setFeeConfig({ ...feeConfig, other_fees: updatedOtherFees });
+                                                                                            }, className: "rounded" }), _jsx("span", { className: "text-xs text-gray-600", children: "Enable" })] })] }), feeConfigItem.enabled && (_jsxs("div", { className: "mt-2 space-y-2", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-xs text-gray-600 mb-1", children: "Discount (\u20B9)" }), _jsx("input", { type: "number", min: "0", step: "0.01", max: defaultAmount, value: feeConfigItem.discount, onChange: (e) => {
+                                                                                                const discount = parseFloat(e.target.value) || 0;
+                                                                                                const updatedOtherFees = feeConfig.other_fees.map(f => f.fee_category_id === category.id
+                                                                                                    ? { ...f, discount: Math.min(discount, defaultAmount) }
+                                                                                                    : f);
+                                                                                                // If not found, add it
+                                                                                                if (!feeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
+                                                                                                    updatedOtherFees.push({
+                                                                                                        fee_category_id: category.id,
+                                                                                                        enabled: true,
+                                                                                                        discount: Math.min(discount, defaultAmount)
+                                                                                                    });
+                                                                                                }
+                                                                                                setFeeConfig({ ...feeConfig, other_fees: updatedOtherFees });
+                                                                                            }, className: "w-full px-2 py-1 border rounded text-sm", placeholder: "0" })] }), _jsxs("div", { className: "flex justify-between text-xs font-semibold pt-1 border-t", children: [_jsx("span", { children: "Final Amount:" }), _jsxs("span", { className: "text-green-600", children: ["\u20B9", finalAmount.toFixed(2), "/", category.fee_cycle || 'monthly'] })] })] }))] }, category.id));
+                                                            }) })) : (_jsx("p", { className: "text-sm text-gray-500", children: "No other fees configured for this class yet." }))] })] })) : (_jsx("p", { className: "text-sm text-gray-500", children: "Select a class to configure fees" }))] })), _jsxs("div", { className: "border-t pt-4 mt-4", children: [_jsx("h4", { className: "text-lg font-semibold mb-3 text-gray-700", children: "Parent/Guardian Information" }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Parent/Guardian Name *" }), _jsx("input", { type: "text", required: true, value: addStudentForm.guardian_name, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Full name of parent or guardian" })] }), _jsxs("div", { className: "mt-3", children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Parent/Guardian Phone Number *" }), _jsx("input", { type: "tel", required: true, value: addStudentForm.guardian_phone, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Phone number" })] }), _jsxs("div", { className: "mt-3", children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Parent/Guardian Email" }), _jsx("input", { type: "email", value: addStudentForm.guardian_email, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_email: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Email address (optional)" })] }), _jsxs("div", { className: "mt-3", children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Relationship" }), _jsxs("select", { value: addStudentForm.guardian_relationship, onChange: (e) => setAddStudentForm({ ...addStudentForm, guardian_relationship: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "parent", children: "Parent" }), _jsx("option", { value: "guardian", children: "Guardian" }), _jsx("option", { value: "relative", children: "Relative" }), _jsx("option", { value: "other", children: "Other" })] })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { type: "submit", disabled: usernameStatus.checking || usernameStatus.available === false, className: `flex-1 px-4 py-2 rounded-lg ${usernameStatus.checking || usernameStatus.available === false
                                                 ? 'bg-gray-400 cursor-not-allowed text-white'
                                                 : 'bg-green-600 text-white hover:bg-green-700'}`, children: usernameStatus.checking ? 'Checking...' : 'Add Student' }), _jsx("button", { type: "button", onClick: () => {
                                                 setAddStudentModalOpen(false);
@@ -1678,6 +1970,15 @@ function StudentsManagement() {
                                                     guardian_relationship: 'parent'
                                                 });
                                                 setUsernameStatus({ checking: false, available: null, message: '' });
+                                                setDefaultFees(null);
+                                                setFeeConfig({
+                                                    class_fee_id: '',
+                                                    class_fee_discount: 0,
+                                                    transport_enabled: true,
+                                                    transport_route_id: '',
+                                                    transport_fee_discount: 0,
+                                                    other_fees: []
+                                                });
                                             }, className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] })] }) })), promoteClassModalOpen && selectedClassId && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Promote Entire Class" }), _jsx("p", { className: "text-sm text-gray-600 mb-4", children: "This will move all active students from the current class to the target class." }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Target Class" }), _jsxs("select", { value: promoteClassForm.target_class_id, onChange: (e) => setPromoteClassForm({ ...promoteClassForm, target_class_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", required: true, children: [_jsx("option", { value: "", children: "Select Target Class" }), allClasses.filter(cls => cls.id !== selectedClassId).map((cls) => {
                                                     const classificationText = cls.classifications && cls.classifications.length > 0
                                                         ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
