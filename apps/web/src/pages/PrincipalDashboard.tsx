@@ -4179,6 +4179,7 @@ function StudentsManagement() {
                     } else {
                       setDefaultFees(null);
                       setFeeConfig({
+                        class_fee_id: '',
                         class_fee_discount: 0,
                         transport_enabled: true,
                         transport_route_id: '',
@@ -4486,8 +4487,10 @@ function StudentsManagement() {
                               );
                             })}
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <p className="text-sm text-gray-500">No other fees configured for this class yet.</p>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <p className="text-sm text-gray-500">Select a class to configure fees</p>
