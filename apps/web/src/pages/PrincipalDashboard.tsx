@@ -2809,6 +2809,21 @@ function StudentsManagement() {
     section_id: '',
     roll_number: ''
   });
+  const [editFeeConfig, setEditFeeConfig] = useState({
+    class_fee_id: '',
+    class_fee_discount: 0,
+    transport_enabled: false,
+    transport_route_id: '',
+    transport_fee_discount: 0,
+    other_fees: [] as Array<{ fee_category_id: string; enabled: boolean; discount: number }>
+  });
+  const [editDefaultFees, setEditDefaultFees] = useState<{
+    class_fees: any[];
+    transport_routes: any[];
+    other_fee_categories: any[];
+    optional_fees: any[];
+  } | null>(null);
+  const [loadingEditFees, setLoadingEditFees] = useState(false);
   const [promoteForm, setPromoteForm] = useState({
     target_class_id: '',
     section_id: ''
@@ -3064,7 +3079,7 @@ function StudentsManagement() {
     }
   };
 
-  const handleEditStudent = (student: any) => {
+  const handleEditStudent = async (student: any) => {
     setSelectedStudent(student);
     setEditForm({
       class_group_id: student.class_group_id || '',
@@ -3072,6 +3087,65 @@ function StudentsManagement() {
       roll_number: student.roll_number || ''
     });
     setEditModalOpen(true);
+    
+    // Load current fee configuration
+    if (student.id) {
+      try {
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        if (!token) return;
+
+        const response = await fetch(`${API_URL}/students-admin/${student.id}/fee-config`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const feeConfig = await response.json();
+          setEditFeeConfig({
+            class_fee_id: feeConfig.class_fee_id || '',
+            class_fee_discount: feeConfig.class_fee_discount || 0,
+            transport_enabled: feeConfig.transport_enabled ?? false,
+            transport_route_id: feeConfig.transport_route_id || '',
+            transport_fee_discount: feeConfig.transport_fee_discount || 0,
+            other_fees: feeConfig.other_fees || []
+          });
+        }
+      } catch (error) {
+        console.error('Error loading fee config:', error);
+      }
+    }
+    
+    // Load default fees for the class
+    if (student.class_group_id) {
+      loadEditDefaultFees(student.class_group_id);
+    }
+  };
+
+  const loadEditDefaultFees = async (classId: string) => {
+    try {
+      setLoadingEditFees(true);
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/principal-users/classes/${classId}/default-fees`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load default fees');
+      }
+
+      const data = await response.json();
+      setEditDefaultFees(data);
+    } catch (error) {
+      console.error('Error loading default fees:', error);
+      setEditDefaultFees(null);
+    } finally {
+      setLoadingEditFees(false);
+    }
   };
 
   const handlePromoteStudent = (student: any) => {
@@ -3099,15 +3173,25 @@ function StudentsManagement() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      // Remove section_id from the form data since sections are part of the class
-      const { section_id, ...formData } = editForm;
+      // Prepare update data
+      const updateData: any = {
+        class_group_id: editForm.class_group_id || null,
+        section_id: editForm.section_id || null,
+        roll_number: editForm.roll_number || null
+      };
+
+      // Include fee_config if class is selected
+      if (editForm.class_group_id && editDefaultFees) {
+        updateData.fee_config = editFeeConfig;
+      }
+
       const response = await fetch(`${API_URL}/students-admin/${selectedStudent.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(updateData),
       });
 
       if (!response.ok) {
@@ -3581,7 +3665,7 @@ function StudentsManagement() {
       {/* Edit Student Modal */}
       {editModalOpen && selectedStudent && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-4">Edit Student: {selectedStudent.profile?.full_name}</h3>
             <div className="space-y-4">
               <div>
@@ -3589,7 +3673,31 @@ function StudentsManagement() {
                 <select
                   value={editForm.class_group_id}
                   onChange={(e) => {
-                    setEditForm({ ...editForm, class_group_id: e.target.value, section_id: '' });
+                    const newClassId = e.target.value;
+                    setEditForm({ ...editForm, class_group_id: newClassId, section_id: '' });
+                    if (newClassId) {
+                      // Load default fees for the new class
+                      loadEditDefaultFees(newClassId);
+                      // Reset fee config to defaults for new class
+                      setEditFeeConfig({
+                        class_fee_id: '',
+                        class_fee_discount: 0,
+                        transport_enabled: false,
+                        transport_route_id: '',
+                        transport_fee_discount: 0,
+                        other_fees: []
+                      });
+                    } else {
+                      setEditDefaultFees(null);
+                      setEditFeeConfig({
+                        class_fee_id: '',
+                        class_fee_discount: 0,
+                        transport_enabled: false,
+                        transport_route_id: '',
+                        transport_fee_discount: 0,
+                        other_fees: []
+                      });
+                    }
                   }}
                   className="w-full px-3 py-2 border rounded-md"
                 >
@@ -3615,6 +3723,251 @@ function StudentsManagement() {
                   className="w-full px-3 py-2 border rounded-md"
                 />
               </div>
+
+              {/* Fee Configuration Section */}
+              {editForm.class_group_id && (
+                <div className="border-t pt-4 mt-4">
+                  <h4 className="text-lg font-semibold mb-3 text-gray-700">Fee Configuration</h4>
+                  
+                  {loadingEditFees ? (
+                    <div className="text-center py-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                      <p className="text-sm text-gray-500 mt-2">Loading fee information...</p>
+                    </div>
+                  ) : editDefaultFees ? (
+                    <div className="space-y-4">
+                      {/* Class Fee Section */}
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <h5 className="font-semibold text-gray-700 mb-2">Class Fee (Default for this class)</h5>
+                        {editDefaultFees.class_fees && editDefaultFees.class_fees.length > 0 ? (
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Select Class Fee</label>
+                              <select
+                                value={editFeeConfig.class_fee_id}
+                                onChange={(e) => setEditFeeConfig({ ...editFeeConfig, class_fee_id: e.target.value, class_fee_discount: 0 })}
+                                className="w-full px-2 py-1 border rounded text-sm"
+                              >
+                                <option value="">Select Class Fee</option>
+                                {editDefaultFees.class_fees.map((cf: any) => {
+                                  const categoryName = cf.fee_categories?.name || 'Class Fee';
+                                  const defaultAmount = parseFloat(cf.amount || 0);
+                                  return (
+                                    <option key={cf.id} value={cf.id}>
+                                      {categoryName} - ₹{defaultAmount.toFixed(2)}/{cf.fee_cycle}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+                            {editFeeConfig.class_fee_id && (() => {
+                              const selectedClassFee = editDefaultFees.class_fees.find((cf: any) => cf.id === editFeeConfig.class_fee_id);
+                              if (!selectedClassFee) return null;
+                              
+                              const categoryName = selectedClassFee.fee_categories?.name || 'Class Fee';
+                              const defaultAmount = parseFloat(selectedClassFee.amount || 0);
+                              const finalAmount = Math.max(0, defaultAmount - editFeeConfig.class_fee_discount);
+                              
+                              return (
+                                <>
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-600">{categoryName}:</span>
+                                    <span className="font-medium">₹{defaultAmount.toFixed(2)}/{selectedClassFee.fee_cycle}</span>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      max={defaultAmount}
+                                      value={editFeeConfig.class_fee_discount}
+                                      onChange={(e) => {
+                                        const discount = parseFloat(e.target.value) || 0;
+                                        setEditFeeConfig({ ...editFeeConfig, class_fee_discount: Math.min(discount, defaultAmount) });
+                                      }}
+                                      className="w-full px-2 py-1 border rounded text-sm"
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                  <div className="flex justify-between text-sm font-semibold pt-1 border-t">
+                                    <span>Final Amount:</span>
+                                    <span className="text-green-600">₹{finalAmount.toFixed(2)}/{selectedClassFee.fee_cycle}</span>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">No class fees configured for this class yet.</p>
+                        )}
+                      </div>
+
+                      {/* Transport Fee Section */}
+                      <div className="bg-green-50 p-4 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <h5 className="font-semibold text-gray-700">Transport Fee</h5>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={editFeeConfig.transport_enabled}
+                              onChange={(e) => setEditFeeConfig({ ...editFeeConfig, transport_enabled: e.target.checked, transport_route_id: e.target.checked ? editFeeConfig.transport_route_id : '' })}
+                              className="rounded"
+                            />
+                            <span className="text-sm text-gray-600">Enable Transport</span>
+                          </label>
+                        </div>
+                        {editFeeConfig.transport_enabled && (
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Select Route</label>
+                              <select
+                                value={editFeeConfig.transport_route_id}
+                                onChange={(e) => setEditFeeConfig({ ...editFeeConfig, transport_route_id: e.target.value })}
+                                className="w-full px-2 py-1 border rounded text-sm"
+                              >
+                                <option value="">Select Transport Route</option>
+                                {editDefaultFees.transport_routes.map((route: any) => (
+                                  <option key={route.id} value={route.id}>
+                                    {route.route_name} {route.bus_number ? `(${route.bus_number})` : ''} - ₹{route.fee?.total?.toFixed(2) || '0.00'}/{route.fee?.fee_cycle || 'monthly'}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            {editFeeConfig.transport_route_id && (() => {
+                              const selectedRoute = editDefaultFees.transport_routes.find((r: any) => r.id === editFeeConfig.transport_route_id);
+                              const routeFee = selectedRoute?.fee;
+                              const defaultTransportAmount = routeFee ? parseFloat(routeFee.total || 0) : 0;
+                              const finalTransportAmount = Math.max(0, defaultTransportAmount - editFeeConfig.transport_fee_discount);
+                              return (
+                                <>
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-600">Route Fee:</span>
+                                    <span className="font-medium">₹{defaultTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}</span>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={editFeeConfig.transport_fee_discount}
+                                      onChange={(e) => setEditFeeConfig({ ...editFeeConfig, transport_fee_discount: parseFloat(e.target.value) || 0 })}
+                                      className="w-full px-2 py-1 border rounded text-sm"
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                  <div className="flex justify-between text-sm font-semibold pt-1 border-t">
+                                    <span>Final Amount:</span>
+                                    <span className="text-green-600">₹{finalTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}</span>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Other Fees Section */}
+                      {editDefaultFees.other_fee_categories && editDefaultFees.other_fee_categories.length > 0 && (
+                        <div className="bg-yellow-50 p-4 rounded-lg">
+                          <h5 className="font-semibold text-gray-700 mb-3">Other Fees</h5>
+                          <div className="space-y-3">
+                            {editDefaultFees.other_fee_categories.map((category: any) => {
+                              const feeConfigItem = editFeeConfig.other_fees.find(f => f.fee_category_id === category.id) || {
+                                fee_category_id: category.id,
+                                enabled: true,
+                                discount: 0
+                              };
+                              const defaultAmount = parseFloat(category.amount || 0);
+                              const finalAmount = Math.max(0, defaultAmount - feeConfigItem.discount);
+                              
+                              return (
+                                <div key={category.id} className="bg-white p-3 rounded border">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex-1">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-medium text-sm">{category.name}</span>
+                                        <span className="text-sm font-medium text-gray-600">
+                                          ₹{defaultAmount.toFixed(2)}/{category.fee_cycle || 'monthly'}
+                                        </span>
+                                      </div>
+                                      {category.description && (
+                                        <p className="text-xs text-gray-500 mt-1">{category.description}</p>
+                                      )}
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer ml-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={feeConfigItem.enabled}
+                                        onChange={(e) => {
+                                          const updatedOtherFees = editFeeConfig.other_fees.map(f =>
+                                            f.fee_category_id === category.id
+                                              ? { ...f, enabled: e.target.checked, discount: e.target.checked ? f.discount : 0 }
+                                              : f
+                                          );
+                                          if (!editFeeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
+                                            updatedOtherFees.push({
+                                              fee_category_id: category.id,
+                                              enabled: e.target.checked,
+                                              discount: 0
+                                            });
+                                          }
+                                          setEditFeeConfig({ ...editFeeConfig, other_fees: updatedOtherFees });
+                                        }}
+                                        className="rounded"
+                                      />
+                                      <span className="text-xs text-gray-600">Enable</span>
+                                    </label>
+                                  </div>
+                                  {feeConfigItem.enabled && (
+                                    <div className="mt-2 space-y-2">
+                                      <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          max={defaultAmount}
+                                          value={feeConfigItem.discount}
+                                          onChange={(e) => {
+                                            const discount = parseFloat(e.target.value) || 0;
+                                            const updatedOtherFees = editFeeConfig.other_fees.map(f =>
+                                              f.fee_category_id === category.id
+                                                ? { ...f, discount: Math.min(discount, defaultAmount) }
+                                                : f
+                                            );
+                                            if (!editFeeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
+                                              updatedOtherFees.push({
+                                                fee_category_id: category.id,
+                                                enabled: true,
+                                                discount: Math.min(discount, defaultAmount)
+                                              });
+                                            }
+                                            setEditFeeConfig({ ...editFeeConfig, other_fees: updatedOtherFees });
+                                          }}
+                                          className="w-full px-2 py-1 border rounded text-sm"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between text-xs font-semibold pt-1 border-t">
+                                        <span>Final Amount:</span>
+                                        <span className="text-green-600">₹{finalAmount.toFixed(2)}/{category.fee_cycle || 'monthly'}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">Select a class to configure fees</p>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex gap-3 mt-6">
               <button
