@@ -67,6 +67,9 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
     try {
         const today = new Date().toISOString().split('T')[0];
         // 1. Get class fees (default fees for the class)
+        // Get all active fees for this class
+        // Note: Simplified query - get all active fees regardless of effective dates
+        // This ensures fees set by principal are always visible
         const { data: classFees, error: classFeesError } = await supabase
             .from('class_fee_defaults')
             .select(`
@@ -76,12 +79,11 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
             .eq('class_group_id', classId)
             .eq('school_id', user.schoolId)
             .eq('is_active', true)
-            .lte('effective_from', today)
-            .or(`effective_to.is.null,effective_to.gte.${today}`)
             .order('created_at', { ascending: false });
         if (classFeesError) {
             console.error('[default-fees] Error fetching class fees:', classFeesError);
         }
+        console.log(`[default-fees] Found ${classFees?.length || 0} class fees for class ${classId}`);
         // 2. Get transport routes and their fees
         const { data: transportRoutes, error: transportRoutesError } = await supabase
             .from('transport_routes')
@@ -133,6 +135,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
             console.error('[default-fees] Error fetching optional fees:', optionalFeesError);
         }
         // Get fee amounts for other categories from class_fee_defaults (for this class)
+        // This is for fees that have a specific category (Library, Lab, etc.) - excludes general tuition fees
         const { data: otherClassFees, error: otherClassFeesError } = await supabase
             .from('class_fee_defaults')
             .select(`
@@ -142,7 +145,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
             .eq('class_group_id', classId)
             .eq('school_id', user.schoolId)
             .eq('is_active', true)
-            .lte('effective_from', today)
+            .or(`effective_from.is.null,effective_from.lte.${today}`)
             .or(`effective_to.is.null,effective_to.gte.${today}`)
             .not('fee_category_id', 'is', null); // Only fees with categories (not general class fees)
         if (otherClassFeesError) {
