@@ -3051,6 +3051,7 @@ function StudentsManagement() {
       }
 
       const data = await response.json();
+      console.log('[Add Student] Loaded default fees:', data);
       setDefaultFees(data);
 
       // Initialize other_fees array with all fee categories
@@ -3062,6 +3063,9 @@ function StudentsManagement() {
 
       // Set default class fee (first one if available)
       const defaultClassFeeId = data.class_fees && data.class_fees.length > 0 ? data.class_fees[0].id : '';
+      console.log('[Add Student] Default class fee ID:', defaultClassFeeId);
+      console.log('[Add Student] Class fees count:', data.class_fees?.length || 0);
+      console.log('[Add Student] Other fees count:', data.other_fee_categories?.length || 0);
       
       setFeeConfig({
         class_fee_id: defaultClassFeeId,
@@ -4257,9 +4261,9 @@ function StudentsManagement() {
                   ) : defaultFees ? (
                     <div className="space-y-4">
                       {/* Class Fee Section - Always show if class is selected */}
-                      <div className="bg-blue-50 p-4 rounded-lg">
+                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                         <h5 className="font-semibold text-gray-700 mb-2">Class Fee (Default for this class)</h5>
-                        {defaultFees.class_fees && defaultFees.class_fees.length > 0 ? (
+                        {defaultFees.class_fees && Array.isArray(defaultFees.class_fees) && defaultFees.class_fees.length > 0 ? (
                           <div className="space-y-2">
                             <div>
                               <label className="block text-xs text-gray-600 mb-1">Select Class Fee</label>
@@ -4388,10 +4392,10 @@ function StudentsManagement() {
                         )}
                       </div>
 
-                      {/* Other Fees Section */}
-                      {defaultFees.other_fee_categories && defaultFees.other_fee_categories.length > 0 && (
-                        <div className="bg-yellow-50 p-4 rounded-lg">
-                          <h5 className="font-semibold text-gray-700 mb-3">Other Fees</h5>
+                      {/* Other Fees Section - Always show if class is selected */}
+                      <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                        <h5 className="font-semibold text-gray-700 mb-3">Other Fees</h5>
+                        {defaultFees.other_fee_categories && Array.isArray(defaultFees.other_fee_categories) && defaultFees.other_fee_categories.length > 0 ? (
                           <div className="space-y-3">
                             {defaultFees.other_fee_categories.map((category: any) => {
                               const feeConfigItem = feeConfig.other_fees.find(f => f.fee_category_id === category.id) || {
