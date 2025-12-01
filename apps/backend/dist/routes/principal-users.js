@@ -116,6 +116,22 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
         if (categoriesError) {
             console.error('[default-fees] Error fetching fee categories:', categoriesError);
         }
+        // 4. Get optional fee definitions for this class (fetch before using it)
+        const { data: optionalFees, error: optionalFeesError } = await supabase
+            .from('optional_fee_definitions')
+            .select(`
+        *,
+        fee_categories:fee_category_id(id, name, description, fee_type)
+      `)
+            .eq('class_group_id', classId)
+            .eq('school_id', user.schoolId)
+            .eq('is_active', true)
+            .lte('effective_from', today)
+            .or(`effective_to.is.null,effective_to.gte.${today}`)
+            .order('created_at', { ascending: false });
+        if (optionalFeesError) {
+            console.error('[default-fees] Error fetching optional fees:', optionalFeesError);
+        }
         // Get fee amounts for other categories from class_fee_defaults (for this class)
         const { data: otherClassFees, error: otherClassFeesError } = await supabase
             .from('class_fee_defaults')
@@ -133,6 +149,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
             console.error('[default-fees] Error fetching other class fees:', otherClassFeesError);
         }
         // Combine fee categories with their amounts
+        // Show all fee categories, even if they don't have amounts yet (principal can still enable/disable them)
         const otherFeesWithAmounts = (feeCategories || []).map((category) => {
             // Find if there's a class fee default for this category
             const classFeeForCategory = (otherClassFees || []).find((cf) => cf.fee_category_id === category.id);
@@ -146,23 +163,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
                 class_fee_id: classFeeForCategory?.id || null,
                 optional_fee_id: optionalFeeForCategory?.id || null
             };
-        }).filter((fee) => fee.amount > 0); // Only show fees that have amounts
-        // 4. Get optional fee definitions for this class
-        const { data: optionalFees, error: optionalFeesError } = await supabase
-            .from('optional_fee_definitions')
-            .select(`
-        *,
-        fee_categories:fee_category_id(id, name, description, fee_type)
-      `)
-            .eq('class_group_id', classId)
-            .eq('school_id', user.schoolId)
-            .eq('is_active', true)
-            .lte('effective_from', today)
-            .or(`effective_to.is.null,effective_to.gte.${today}`)
-            .order('created_at', { ascending: false });
-        if (optionalFeesError) {
-            console.error('[default-fees] Error fetching optional fees:', optionalFeesError);
-        }
+        }); // Removed filter - show all fee categories so principal can see and configure them
         return res.json({
             class_fees: classFees || [],
             transport_routes: (transportRoutes || []).map((route) => ({

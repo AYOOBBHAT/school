@@ -199,7 +199,146 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
   }
 });
 
-// Update student class assignment
+// Get student's current fee configuration
+router.get('/:studentId/fee-config', requireRoles(['principal', 'clerk']), async (req, res) => {
+  const { user } = req;
+  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+  const { studentId } = req.params;
+  const today = new Date().toISOString().split('T')[0];
+
+  try {
+    // Verify student belongs to the school
+    const { data: student, error: studentError } = await adminSupabase
+      .from('students')
+      .select('id, school_id, class_group_id')
+      .eq('id', studentId)
+      .eq('school_id', user.schoolId)
+      .single();
+
+    if (studentError || !student) {
+      return res.status(404).json({ error: 'Student not found or access denied' });
+    }
+
+    // Get current fee profile
+    const { data: feeProfile } = await adminSupabase
+      .from('student_fee_profile')
+      .select('*')
+      .eq('student_id', studentId)
+      .eq('school_id', user.schoolId)
+      .eq('is_active', true)
+      .lte('effective_from', today)
+      .or(`effective_to.is.null,effective_to.gte.${today}`)
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Get current fee overrides (discounts)
+    const { data: feeOverrides } = await adminSupabase
+      .from('student_fee_overrides')
+      .select(`
+        *,
+        fee_categories:fee_category_id(id, name, fee_type)
+      `)
+      .eq('student_id', studentId)
+      .eq('school_id', user.schoolId)
+      .eq('is_active', true)
+      .lte('effective_from', today)
+      .or(`effective_to.is.null,effective_to.gte.${today}`);
+
+    // Get student transport route
+    const { data: studentTransport } = await adminSupabase
+      .from('student_transport')
+      .select('*, transport_routes:route_id(id, route_name)')
+      .eq('student_id', studentId)
+      .eq('school_id', user.schoolId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Get class fees to find which one is selected
+    let selectedClassFeeId = null;
+    let classFeeDiscount = 0;
+    if (student.class_group_id) {
+      const { data: classFees } = await adminSupabase
+        .from('class_fee_defaults')
+        .select('id, fee_category_id')
+        .eq('class_group_id', student.class_group_id)
+        .eq('school_id', user.schoolId)
+        .eq('is_active', true)
+        .lte('effective_from', today)
+        .or(`effective_to.is.null,effective_to.gte.${today}`)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (classFees && classFees.length > 0) {
+        selectedClassFeeId = classFees[0].id;
+        // Find discount for class fee category
+        const classFeeOverride = feeOverrides?.find((fo: any) => 
+          fo.fee_category_id === classFees[0].fee_category_id
+        );
+        if (classFeeOverride) {
+          classFeeDiscount = parseFloat(classFeeOverride.discount_amount || 0);
+        }
+      }
+    }
+
+    // Get transport fee discount
+    let transportFeeDiscount = 0;
+    const transportCategory = feeOverrides?.find((fo: any) => 
+      fo.fee_categories?.fee_type === 'transport'
+    );
+    if (transportCategory) {
+      transportFeeDiscount = parseFloat(transportCategory.discount_amount || 0);
+    }
+
+    // Get all fee categories to include in other_fees
+    const { data: allFeeCategories } = await adminSupabase
+      .from('fee_categories')
+      .select('id, name, fee_type')
+      .eq('school_id', user.schoolId)
+      .eq('is_active', true)
+      .neq('fee_type', 'transport')
+      .neq('fee_type', 'tuition');
+
+    // Get other fees discounts and build complete list
+    const feeOverridesMap = new Map();
+    (feeOverrides || []).forEach((fo: any) => {
+      if (fo.fee_categories?.fee_type && 
+          fo.fee_categories.fee_type !== 'transport' && 
+          fo.fee_categories.fee_type !== 'tuition') {
+        feeOverridesMap.set(fo.fee_category_id, parseFloat(fo.discount_amount || 0));
+      }
+    });
+
+    // Build other_fees array with all categories (enabled if has discount, or default to enabled)
+    const otherFees = (allFeeCategories || []).map((cat: any) => ({
+      fee_category_id: cat.id,
+      enabled: feeOverridesMap.has(cat.id) || true, // Enabled if has discount or default true
+      discount: feeOverridesMap.get(cat.id) || 0
+    }));
+
+    return res.json({
+      class_fee_id: selectedClassFeeId,
+      class_fee_discount: classFeeDiscount,
+      transport_enabled: feeProfile?.transport_enabled ?? true,
+      transport_route_id: studentTransport?.route_id || null,
+      transport_fee_discount: transportFeeDiscount,
+      other_fees: otherFees
+    });
+  } catch (err: any) {
+    console.error('[students-admin] Error fetching fee config:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// Update student class assignment and fee configuration
 router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res) => {
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
@@ -210,13 +349,14 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
 
   const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { studentId } = req.params;
-  const { class_group_id, section_id, roll_number } = req.body;
+  const { class_group_id, section_id, roll_number, fee_config } = req.body;
+  const today = new Date().toISOString().split('T')[0];
 
   try {
     // Verify student belongs to the school
     const { data: student, error: studentError } = await adminSupabase
       .from('students')
-      .select('id, school_id, profile_id')
+      .select('id, school_id, profile_id, class_group_id')
       .eq('id', studentId)
       .eq('school_id', user.schoolId)
       .single();
@@ -226,35 +366,39 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
     }
 
     // If class_group_id is provided, verify it belongs to the school
-    if (class_group_id) {
-      const { data: classGroup, error: classError } = await adminSupabase
-        .from('class_groups')
-        .select('id, school_id')
-        .eq('id', class_group_id)
-        .eq('school_id', user.schoolId)
-        .single();
-
-      if (classError || !classGroup) {
-        return res.status(400).json({ error: 'Invalid class group or access denied' });
-      }
-
-      // If section_id is provided, verify it belongs to the class_group
-      if (section_id) {
-        const { data: section, error: sectionError } = await adminSupabase
-          .from('sections')
-          .select('id, class_group_id')
-          .eq('id', section_id)
-          .eq('class_group_id', class_group_id)
+    if (class_group_id !== undefined) {
+      if (class_group_id) {
+        const { data: classGroup, error: classError } = await adminSupabase
+          .from('class_groups')
+          .select('id, school_id')
+          .eq('id', class_group_id)
+          .eq('school_id', user.schoolId)
           .single();
 
-        if (sectionError || !section) {
-          return res.status(400).json({ error: 'Invalid section or section does not belong to the class' });
+        if (classError || !classGroup) {
+          return res.status(400).json({ error: 'Invalid class group or access denied' });
+        }
+
+        // If section_id is provided, verify it belongs to the class_group
+        if (section_id) {
+          const { data: section, error: sectionError } = await adminSupabase
+            .from('sections')
+            .select('id, class_group_id')
+            .eq('id', section_id)
+            .eq('class_group_id', class_group_id)
+            .single();
+
+          if (sectionError || !section) {
+            return res.status(400).json({ error: 'Invalid section or section does not belong to the class' });
+          }
         }
       }
     }
 
     // Update student record
     const updateData: any = {};
+    const classChanged = class_group_id !== undefined && class_group_id !== student.class_group_id;
+    
     if (class_group_id !== undefined) {
       updateData.class_group_id = class_group_id || null;
     }
@@ -275,6 +419,248 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
     if (updateError) {
       console.error('[students-admin] Error updating student:', updateError);
       return res.status(400).json({ error: updateError.message });
+    }
+
+    // If class changed or fee_config provided, update fee configuration with versioning
+    const finalClassId = class_group_id !== undefined ? class_group_id : student.class_group_id;
+    if ((classChanged || fee_config) && finalClassId) {
+      // IMPORTANT: Versioning logic - close old records and create new ones
+      // This ensures historical fee data remains unchanged for past months
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      // Close all active fee profiles (set effective_to to yesterday, marking them as historical)
+      // This preserves the fee history for past months
+      const { error: profileCloseError } = await adminSupabase
+        .from('student_fee_profile')
+        .update({ 
+          effective_to: yesterdayStr, 
+          is_active: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('student_id', studentId)
+        .eq('school_id', user.schoolId)
+        .eq('is_active', true)
+        .is('effective_to', null);
+
+      if (profileCloseError) {
+        console.error('[students-admin] Error closing old fee profiles:', profileCloseError);
+      }
+
+      // Close all active fee overrides (discounts, custom fees)
+      // This preserves discount history for past months
+      const { error: overrideCloseError } = await adminSupabase
+        .from('student_fee_overrides')
+        .update({ 
+          effective_to: yesterdayStr, 
+          is_active: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('student_id', studentId)
+        .eq('school_id', user.schoolId)
+        .eq('is_active', true)
+        .is('effective_to', null);
+
+      if (overrideCloseError) {
+        console.error('[students-admin] Error closing old fee overrides:', overrideCloseError);
+      }
+
+      // Deactivate old student transport records (transport doesn't use effective dates)
+      // Historical transport data is preserved in student_fee_profile
+      const { error: transportDeactivateError } = await adminSupabase
+        .from('student_transport')
+        .update({ 
+          is_active: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('student_id', studentId)
+        .eq('school_id', user.schoolId)
+        .eq('is_active', true);
+
+      if (transportDeactivateError) {
+        console.error('[students-admin] Error deactivating old transport:', transportDeactivateError);
+      }
+
+      // If fee_config provided, use it; otherwise, if class changed, use new class defaults
+      let feeConfigToApply = fee_config;
+      
+      if (classChanged && !fee_config) {
+        // Class changed but no fee_config provided - use new class defaults
+        const { data: defaultFees } = await adminSupabase
+          .from('class_fee_defaults')
+          .select('id')
+          .eq('class_group_id', finalClassId)
+          .eq('school_id', user.schoolId)
+          .eq('is_active', true)
+          .lte('effective_from', today)
+          .or(`effective_to.is.null,effective_to.gte.${today}`)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        feeConfigToApply = {
+          class_fee_id: defaultFees && defaultFees.length > 0 ? defaultFees[0].id : null,
+          class_fee_discount: 0,
+          transport_enabled: false,
+          transport_route_id: null,
+          transport_fee_discount: 0,
+          other_fees: []
+        };
+      }
+
+      if (feeConfigToApply) {
+        // Apply fee configuration (similar to add student logic)
+        // Get default class fees
+        const { data: classFees } = await adminSupabase
+          .from('class_fee_defaults')
+          .select(`
+            *,
+            fee_categories:fee_category_id(id, name, fee_type)
+          `)
+          .eq('class_group_id', finalClassId)
+          .eq('school_id', user.schoolId)
+          .eq('is_active', true)
+          .lte('effective_from', today)
+          .or(`effective_to.is.null,effective_to.gte.${today}`);
+
+        if (classFees && classFees.length > 0) {
+          let selectedClassFee = null;
+          if (feeConfigToApply.class_fee_id) {
+            selectedClassFee = classFees.find((cf: any) => cf.id === feeConfigToApply.class_fee_id);
+          } else {
+            selectedClassFee = classFees.find((cf: any) => 
+              cf.fee_categories?.fee_type === 'tuition' || !cf.fee_category_id
+            );
+          }
+
+          // Apply class fee discount
+          if (selectedClassFee && feeConfigToApply.class_fee_discount > 0) {
+            await adminSupabase
+              .from('student_fee_overrides')
+              .insert({
+                student_id: studentId,
+                school_id: user.schoolId,
+                fee_category_id: selectedClassFee.fee_category_id || null,
+                discount_amount: feeConfigToApply.class_fee_discount,
+                effective_from: today,
+                is_active: true,
+                applied_by: user.id
+              });
+          }
+        }
+
+        // Set up transport
+        if (feeConfigToApply.transport_enabled && feeConfigToApply.transport_route_id) {
+          const { data: route } = await adminSupabase
+            .from('transport_routes')
+            .select('id, route_name')
+            .eq('id', feeConfigToApply.transport_route_id)
+            .eq('school_id', user.schoolId)
+            .single();
+
+          if (route) {
+            await adminSupabase
+              .from('student_fee_profile')
+              .insert({
+                student_id: studentId,
+                school_id: user.schoolId,
+                transport_enabled: true,
+                transport_route: route.route_name,
+                effective_from: today,
+                is_active: true
+              });
+
+            // Create student_transport record
+            await adminSupabase
+              .from('student_transport')
+              .insert({
+                student_id: studentId,
+                route_id: feeConfigToApply.transport_route_id,
+                school_id: user.schoolId,
+                is_active: true
+              });
+
+            // Apply transport fee discount (create new versioned override)
+            // If discount is 0, no override is created - student pays full transport fee
+            if (feeConfigToApply.transport_fee_discount > 0) {
+              const { data: transportCategory } = await adminSupabase
+                .from('fee_categories')
+                .select('id')
+                .eq('school_id', user.schoolId)
+                .eq('fee_type', 'transport')
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle();
+
+              if (transportCategory) {
+                const { error: transportDiscountError } = await adminSupabase
+                  .from('student_fee_overrides')
+                  .insert({
+                    student_id: studentId,
+                    school_id: user.schoolId,
+                    fee_category_id: transportCategory.id,
+                    discount_amount: feeConfigToApply.transport_fee_discount,
+                    effective_from: today, // New version starts today
+                    is_active: true,
+                    applied_by: user.id
+                  });
+
+                if (transportDiscountError) {
+                  console.error('[students-admin] Error creating transport fee discount:', transportDiscountError);
+                }
+              }
+            }
+          }
+        } else {
+          // Transport disabled - create new fee profile version with transport disabled
+          const { error: transportDisabledError } = await adminSupabase
+            .from('student_fee_profile')
+            .insert({
+              student_id: studentId,
+              school_id: user.schoolId,
+              transport_enabled: false,
+              effective_from: today, // New version starts today
+              is_active: true
+            });
+
+          if (transportDisabledError) {
+            console.error('[students-admin] Error creating transport disabled profile:', transportDisabledError);
+          }
+        }
+
+        // Set up other fees (Library, Admission, Lab, Sports, etc.)
+        // Create overrides for enabled fees with discounts
+        // Disabled fees won't have overrides, so they won't be charged
+        if (feeConfigToApply.other_fees && feeConfigToApply.other_fees.length > 0) {
+          for (const otherFee of feeConfigToApply.other_fees) {
+            if (otherFee.enabled) {
+              // Create override if there's a discount, or if we need to track it
+              // Note: If discount is 0 and enabled=true, no override is needed (uses default)
+              // But if we want to explicitly track enabled fees, we could create a record with discount=0
+              // For now, only create override if discount > 0
+              if (otherFee.discount > 0) {
+                const { error: otherFeeError } = await adminSupabase
+                  .from('student_fee_overrides')
+                  .insert({
+                    student_id: studentId,
+                    school_id: user.schoolId,
+                    fee_category_id: otherFee.fee_category_id,
+                    discount_amount: otherFee.discount,
+                    effective_from: today,
+                    is_active: true,
+                    applied_by: user.id
+                  });
+
+                if (otherFeeError) {
+                  console.error(`[students-admin] Error creating override for fee category ${otherFee.fee_category_id}:`, otherFeeError);
+                }
+              }
+              // If enabled but discount=0, no override needed - fee will use default amount
+            }
+            // If disabled, no override is created - fee won't be charged
+          }
+        }
+      }
     }
 
     console.log('[students-admin] Student updated successfully:', updatedStudent);
