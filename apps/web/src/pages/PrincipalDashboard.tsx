@@ -3146,7 +3146,21 @@ function StudentsManagement() {
       }
 
       const data = await response.json();
+      console.log('[Edit Student] Loaded default fees:', data);
+      console.log('[Edit Student] Class fees array:', data.class_fees);
+      console.log('[Edit Student] Class fees length:', data.class_fees?.length);
       setEditDefaultFees(data);
+
+      // Auto-select first class fee if available and not already set
+      if (data.class_fees && Array.isArray(data.class_fees) && data.class_fees.length > 0) {
+        const defaultClassFeeId = data.class_fees[0].id;
+        // Only update if class_fee_id is not already set
+        setEditFeeConfig(prev => ({
+          ...prev,
+          class_fee_id: prev.class_fee_id || defaultClassFeeId,
+          class_fee_discount: prev.class_fee_id ? prev.class_fee_discount : 0
+        }));
+      }
     } catch (error) {
       console.error('Error loading default fees:', error);
       setEditDefaultFees(null);
@@ -3683,11 +3697,11 @@ function StudentsManagement() {
                     const newClassId = e.target.value;
                     setEditForm({ ...editForm, class_group_id: newClassId, section_id: '' });
                     if (newClassId) {
-                      // Load default fees for the new class
+                      // Load default fees for the new class (will auto-select first fee)
                       loadEditDefaultFees(newClassId);
-                      // Reset fee config to defaults for new class
+                      // Reset fee config to defaults for new class (fee will be auto-selected after load)
                       setEditFeeConfig({
-                        class_fee_id: '',
+                        class_fee_id: '', // Will be set by loadEditDefaultFees if fees exist
                         class_fee_discount: 0,
                         transport_enabled: false,
                         transport_route_id: '',
@@ -4264,7 +4278,7 @@ function StudentsManagement() {
                     </div>
                   ) : defaultFees ? (
                     <div className="space-y-4">
-                      {/* Class Fee Section - Always show if class is selected */}
+                      {/* Class Fee Section - Always show if class is selected and fees are loaded */}
                       <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                         <h5 className="font-semibold text-gray-700 mb-2">Class Fee (Default for this class)</h5>
                         {defaultFees.class_fees && Array.isArray(defaultFees.class_fees) && defaultFees.class_fees.length > 0 ? (
