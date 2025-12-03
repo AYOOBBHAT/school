@@ -3052,6 +3052,9 @@ function StudentsManagement() {
 
       const data = await response.json();
       console.log('[Add Student] Loaded default fees:', data);
+      console.log('[Add Student] Class fees array:', data.class_fees);
+      console.log('[Add Student] Class fees length:', data.class_fees?.length);
+      console.log('[Add Student] Is array?', Array.isArray(data.class_fees));
       setDefaultFees(data);
 
       // Initialize other_fees array with all fee categories
