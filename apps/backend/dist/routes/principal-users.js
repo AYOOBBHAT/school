@@ -70,7 +70,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
         // Get general class fees (where fee_category_id IS NULL) - these are the main class fees
         // Note: Simplified query - get all active fees regardless of effective dates
         // This ensures fees set by principal are always visible
-        const { data: classFees, error: classFeesError } = await supabase
+        const { data: allClassFees, error: allClassFeesError } = await supabase
             .from('class_fee_defaults')
             .select(`
         *,
@@ -79,12 +79,22 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
             .eq('class_group_id', classId)
             .eq('school_id', user.schoolId)
             .eq('is_active', true)
-            .is('fee_category_id', null) // Only get general class fees (not category-specific fees)
             .order('created_at', { ascending: false });
-        if (classFeesError) {
-            console.error('[default-fees] Error fetching class fees:', classFeesError);
+        if (allClassFeesError) {
+            console.error('[default-fees] Error fetching class fees:', allClassFeesError);
         }
-        console.log(`[default-fees] Found ${classFees?.length || 0} class fees for class ${classId}`);
+        // Filter to only get general class fees (where fee_category_id is null)
+        // This handles both null and undefined cases
+        const classFees = (allClassFees || []).filter((cf) => cf.fee_category_id === null || cf.fee_category_id === undefined);
+        console.log(`[default-fees] Found ${allClassFees?.length || 0} total class fees for class ${classId}`);
+        console.log(`[default-fees] Found ${classFees?.length || 0} general class fees (fee_category_id is null)`);
+        if (allClassFees && allClassFees.length > 0) {
+            console.log('[default-fees] Sample fee:', {
+                id: allClassFees[0].id,
+                fee_category_id: allClassFees[0].fee_category_id,
+                amount: allClassFees[0].amount
+            });
+        }
         // 2. Get transport routes and their fees
         const { data: transportRoutes, error: transportRoutesError } = await supabase
             .from('transport_routes')
