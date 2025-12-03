@@ -3743,7 +3743,7 @@ function StudentsManagement() {
                       {/* Class Fee Section */}
                       <div className="bg-blue-50 p-4 rounded-lg">
                         <h5 className="font-semibold text-gray-700 mb-2">Class Fee (Default for this class)</h5>
-                        {editDefaultFees.class_fees && editDefaultFees.class_fees.length > 0 ? (
+                        {editDefaultFees.class_fees && Array.isArray(editDefaultFees.class_fees) && editDefaultFees.class_fees.length > 0 ? (
                           <div className="space-y-2">
                             <div>
                               <label className="block text-xs text-gray-600 mb-1">Select Class Fee</label>
