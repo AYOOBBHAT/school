@@ -67,7 +67,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
     try {
         const today = new Date().toISOString().split('T')[0];
         // 1. Get class fees (default fees for the class)
-        // Get all active fees for this class
+        // Get general class fees (where fee_category_id IS NULL) - these are the main class fees
         // Note: Simplified query - get all active fees regardless of effective dates
         // This ensures fees set by principal are always visible
         const { data: classFees, error: classFeesError } = await supabase
@@ -79,6 +79,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
             .eq('class_group_id', classId)
             .eq('school_id', user.schoolId)
             .eq('is_active', true)
+            .is('fee_category_id', null) // Only get general class fees (not category-specific fees)
             .order('created_at', { ascending: false });
         if (classFeesError) {
             console.error('[default-fees] Error fetching class fees:', classFeesError);
