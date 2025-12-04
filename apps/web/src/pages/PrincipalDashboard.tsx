@@ -2822,6 +2822,7 @@ function StudentsManagement() {
     transport_routes: any[];
     other_fee_categories: any[];
     optional_fees: any[];
+    custom_fees: any[];
   } | null>(null);
   const [loadingEditFees, setLoadingEditFees] = useState(false);
   const [promoteForm, setPromoteForm] = useState({
@@ -2860,6 +2861,7 @@ function StudentsManagement() {
     transport_routes: any[];
     other_fee_categories: any[];
     optional_fees: any[];
+    custom_fees: any[];
   } | null>(null);
   const [loadingFees, setLoadingFees] = useState(false);
   const [feeConfig, setFeeConfig] = useState({
@@ -3769,9 +3771,27 @@ function StudentsManagement() {
                         <h5 className="font-semibold text-gray-700 mb-2">Class Fee (Default for this class)</h5>
                         {(() => {
                           // Get the selected class fee (auto-selected first one or manually selected)
-                          const selectedClassFee = editDefaultFees.class_fees && Array.isArray(editDefaultFees.class_fees) && editDefaultFees.class_fees.length > 0
-                            ? editDefaultFees.class_fees.find((cf: any) => cf.id === editFeeConfig.class_fee_id) || editDefaultFees.class_fees[0]
-                            : null;
+                          const classFeesArray = editDefaultFees.class_fees && Array.isArray(editDefaultFees.class_fees) ? editDefaultFees.class_fees : [];
+                          let selectedClassFee: any = null;
+                          
+                          if (classFeesArray.length > 0) {
+                            // Try to find by editFeeConfig.class_fee_id, or use first one
+                            if (editFeeConfig.class_fee_id) {
+                              selectedClassFee = classFeesArray.find((cf: any) => cf.id === editFeeConfig.class_fee_id);
+                            }
+                            // If not found or no fee_id set, use first fee
+                            if (!selectedClassFee) {
+                              selectedClassFee = classFeesArray[0];
+                              // Auto-update editFeeConfig if it wasn't set
+                              if (!editFeeConfig.class_fee_id && selectedClassFee) {
+                                setEditFeeConfig(prev => ({ ...prev, class_fee_id: selectedClassFee.id }));
+                              }
+                            }
+                          }
+                          
+                          console.log('[Edit Student Display] Class fees available:', classFeesArray.length);
+                          console.log('[Edit Student Display] editFeeConfig.class_fee_id:', editFeeConfig.class_fee_id);
+                          console.log('[Edit Student Display] Selected fee:', selectedClassFee ? { id: selectedClassFee.id, amount: selectedClassFee.amount } : 'none');
                           
                           const categoryName = selectedClassFee?.fee_categories?.name || 'Class Fee';
                           const defaultAmount = selectedClassFee ? parseFloat(selectedClassFee.amount || 0) : 0;
@@ -3873,6 +3893,30 @@ function StudentsManagement() {
                           </div>
                         )}
                       </div>
+
+                      {/* Custom Fees Section - Always show if class is selected */}
+                      {editDefaultFees.custom_fees && Array.isArray(editDefaultFees.custom_fees) && editDefaultFees.custom_fees.length > 0 && (
+                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                          <h5 className="font-semibold text-gray-700 mb-3">Custom Fees</h5>
+                          <div className="space-y-3">
+                            {editDefaultFees.custom_fees.map((customFee: any) => {
+                              const feeAmount = parseFloat(customFee.amount || 0);
+                              return (
+                                <div key={customFee.id} className="bg-white p-3 rounded border">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <span className="font-medium text-sm">{customFee.name || 'Custom Fee'}</span>
+                                      <span className="text-sm text-gray-600 ml-2">
+                                        ₹{feeAmount.toFixed(2)}/{customFee.fee_cycle || 'monthly'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Other Fees Section */}
                       {editDefaultFees.other_fee_categories && editDefaultFees.other_fee_categories.length > 0 && (
@@ -4268,9 +4312,27 @@ function StudentsManagement() {
                         <h5 className="font-semibold text-gray-700 mb-2">Class Fee (Default for this class)</h5>
                         {(() => {
                           // Get the selected class fee (auto-selected first one or manually selected)
-                          const selectedClassFee = defaultFees.class_fees && Array.isArray(defaultFees.class_fees) && defaultFees.class_fees.length > 0
-                            ? defaultFees.class_fees.find((cf: any) => cf.id === feeConfig.class_fee_id) || defaultFees.class_fees[0]
-                            : null;
+                          const classFeesArray = defaultFees.class_fees && Array.isArray(defaultFees.class_fees) ? defaultFees.class_fees : [];
+                          let selectedClassFee: any = null;
+                          
+                          if (classFeesArray.length > 0) {
+                            // Try to find by feeConfig.class_fee_id, or use first one
+                            if (feeConfig.class_fee_id) {
+                              selectedClassFee = classFeesArray.find((cf: any) => cf.id === feeConfig.class_fee_id);
+                            }
+                            // If not found or no fee_id set, use first fee
+                            if (!selectedClassFee) {
+                              selectedClassFee = classFeesArray[0];
+                              // Auto-update feeConfig if it wasn't set
+                              if (!feeConfig.class_fee_id && selectedClassFee) {
+                                setFeeConfig(prev => ({ ...prev, class_fee_id: selectedClassFee.id }));
+                              }
+                            }
+                          }
+                          
+                          console.log('[Add Student Display] Class fees available:', classFeesArray.length);
+                          console.log('[Add Student Display] feeConfig.class_fee_id:', feeConfig.class_fee_id);
+                          console.log('[Add Student Display] Selected fee:', selectedClassFee ? { id: selectedClassFee.id, amount: selectedClassFee.amount } : 'none');
                           
                           const categoryName = selectedClassFee?.fee_categories?.name || 'Class Fee';
                           const defaultAmount = selectedClassFee ? parseFloat(selectedClassFee.amount || 0) : 0;
@@ -4372,6 +4434,30 @@ function StudentsManagement() {
                           </div>
                         )}
                       </div>
+
+                      {/* Custom Fees Section - Always show if class is selected */}
+                      {defaultFees.custom_fees && Array.isArray(defaultFees.custom_fees) && defaultFees.custom_fees.length > 0 && (
+                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                          <h5 className="font-semibold text-gray-700 mb-3">Custom Fees</h5>
+                          <div className="space-y-3">
+                            {defaultFees.custom_fees.map((customFee: any) => {
+                              const feeAmount = parseFloat(customFee.amount || 0);
+                              return (
+                                <div key={customFee.id} className="bg-white p-3 rounded border">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <span className="font-medium text-sm">{customFee.name || 'Custom Fee'}</span>
+                                      <span className="text-sm text-gray-600 ml-2">
+                                        ₹{feeAmount.toFixed(2)}/{customFee.fee_cycle || 'monthly'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Other Fees Section - Always show if class is selected */}
                       <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
@@ -6230,7 +6316,7 @@ function SalaryManagement() {
 }
 
 function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'clerk' }) {
-  const [activeTab, setActiveTab] = useState<'class-fees' | 'transport' | 'tracking' | 'hikes' | 'overrides'>('class-fees');
+  const [activeTab, setActiveTab] = useState<'class-fees' | 'custom-fees' | 'transport' | 'tracking' | 'hikes' | 'overrides'>('class-fees');
   const [loading, setLoading] = useState(false);
   const isClerk = userRole === 'clerk';
 
@@ -6247,6 +6333,16 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     fee_cycle: 'monthly' as 'one-time' | 'monthly' | 'quarterly' | 'yearly',
     due_day: 5,
     notes: ''
+  });
+
+  // Custom Fees
+  const [customFees, setCustomFees] = useState<any[]>([]);
+  const [showCustomFeeModal, setShowCustomFeeModal] = useState(false);
+  const [customFeeForm, setCustomFeeForm] = useState({
+    class_group_id: '',
+    name: '',
+    amount: '',
+    fee_cycle: 'monthly' as 'one-time' | 'monthly' | 'quarterly' | 'yearly'
   });
 
   // Transport
@@ -6319,6 +6415,9 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     if (activeTab === 'class-fees') {
       loadClassFees();
     }
+    else if (activeTab === 'custom-fees') {
+      loadCustomFees();
+    }
     else if (activeTab === 'transport') loadTransportData();
     else if (activeTab === 'tracking') loadFeeTracking();
   }, [activeTab]);
@@ -6370,6 +6469,27 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
   };
 
+  const loadCustomFees = async () => {
+    setLoading(true);
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/fees/custom-fees`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCustomFees(data.custom_fees || []);
+      }
+    } catch (error) {
+      console.error('Error loading custom fees:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadTransportData = async () => {
     setLoading(true);
     try {
@@ -6397,7 +6517,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
   };
 
-  // loadOptionalFees, loadCustomFees, loadBills, loadPayments - REMOVED
+  // loadOptionalFees, loadBills, loadPayments - REMOVED
 
   const handleSaveClassFee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -6437,6 +6557,43 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       loadClassFees();
     } catch (error: any) {
       alert(error.message || 'Failed to save class fee');
+    }
+  };
+
+  const handleSaveCustomFee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/fees/custom-fees`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...customFeeForm,
+          amount: parseFloat(customFeeForm.amount)
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save custom fee');
+      }
+
+      alert('Custom fee saved successfully!');
+      setShowCustomFeeModal(false);
+      setCustomFeeForm({
+        class_group_id: '',
+        name: '',
+        amount: '',
+        fee_cycle: 'monthly'
+      });
+      loadCustomFees();
+    } catch (error: any) {
+      alert(error.message || 'Failed to save custom fee');
     }
   };
 
@@ -6780,6 +6937,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
             {[
               ...(isClerk ? [] : [
                 { id: 'class-fees', label: 'Class Fees' },
+                { id: 'custom-fees', label: 'Custom Fees' },
                 { id: 'transport', label: 'Transport' },
                 { id: 'hikes', label: 'Fee Hikes' },
                 { id: 'overrides', label: 'Fee Overrides' }
@@ -6801,6 +6959,82 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
           </nav>
         </div>
       </div>
+
+      {/* Custom Fees Tab - Only for Principal */}
+      {activeTab === 'custom-fees' && !isClerk && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold">Custom Fees</h3>
+            {!isClerk && (
+              <button
+                onClick={() => setShowCustomFeeModal(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+              >
+                + Add Custom Fee
+              </button>
+            )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fee Name</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {customFees.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                      No custom fees found. Click "Add Custom Fee" to create one.
+                    </td>
+                  </tr>
+                ) : (
+                  customFees.map((fee) => (
+                    <tr key={fee.id}>
+                      <td className="px-6 py-4 font-medium">{fee.class_groups?.name || '-'}</td>
+                      <td className="px-6 py-4">{fee.name || '-'}</td>
+                      <td className="px-6 py-4">₹{parseFloat(fee.amount || 0).toFixed(2)}</td>
+                      <td className="px-6 py-4">{fee.fee_cycle || '-'}</td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Are you sure you want to delete this custom fee?')) return;
+                            try {
+                              const token = (await supabase.auth.getSession()).data.session?.access_token;
+                              if (!token) return;
+                              const response = await fetch(`${API_URL}/fees/custom-fees/${fee.id}`, {
+                                method: 'DELETE',
+                                headers: { Authorization: `Bearer ${token}` }
+                              });
+                              if (response.ok) {
+                                alert('Custom fee deleted successfully!');
+                                loadCustomFees();
+                              } else {
+                                const error = await response.json();
+                                throw new Error(error.error || 'Failed to delete custom fee');
+                              }
+                            } catch (error: any) {
+                              alert(error.message || 'Failed to delete custom fee');
+                            }
+                          }}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Class Fees Tab - Only for Principal */}
       {activeTab === 'class-fees' && !isClerk && (
@@ -7209,6 +7443,87 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                 <button
                   type="button"
                   onClick={() => setShowClassFeeModal(false)}
+                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Fee Modal */}
+      {showCustomFeeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Add Custom Fee</h3>
+            <form onSubmit={handleSaveCustomFee}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Class *</label>
+                  <select
+                    value={customFeeForm.class_group_id}
+                    onChange={(e) => setCustomFeeForm({ ...customFeeForm, class_group_id: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    required
+                  >
+                    <option value="">Select Class</option>
+                    {classGroups.map((classGroup) => (
+                      <option key={classGroup.id} value={classGroup.id}>
+                        {classGroup.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Custom Fee Name *</label>
+                  <input
+                    type="text"
+                    value={customFeeForm.name}
+                    onChange={(e) => setCustomFeeForm({ ...customFeeForm, name: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="e.g., Library Fee, Lab Fee, Sports Fee"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Amount (₹) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={customFeeForm.amount}
+                    onChange={(e) => setCustomFeeForm({ ...customFeeForm, amount: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Fee Cycle *</label>
+                  <select
+                    value={customFeeForm.fee_cycle}
+                    onChange={(e) => setCustomFeeForm({ ...customFeeForm, fee_cycle: e.target.value as any })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    required
+                  >
+                    <option value="one-time">One-time</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-4 mt-6">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomFeeModal(false)}
                   className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
                 >
                   Cancel
