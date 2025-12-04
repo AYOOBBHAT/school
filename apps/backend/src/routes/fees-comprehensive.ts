@@ -456,6 +456,23 @@ router.get('/custom-fees', requireRoles(['principal', 'clerk', 'student', 'paren
 
   const classGroupId = req.query.class_group_id as string | undefined;
 
+  // First, get all custom fee category IDs for this school
+  const { data: customCategories, error: catError } = await supabase
+    .from('fee_categories')
+    .select('id')
+    .eq('school_id', user.schoolId)
+    .eq('fee_type', 'custom')
+    .eq('is_active', true);
+
+  if (catError) return res.status(400).json({ error: catError.message });
+
+  const customCategoryIds = (customCategories || []).map((cat: any) => cat.id);
+
+  if (customCategoryIds.length === 0) {
+    return res.json({ custom_fees: [] });
+  }
+
+  // Now get optional_fee_definitions filtered by custom category IDs
   let query = supabase
     .from('optional_fee_definitions')
     .select(`
@@ -465,7 +482,7 @@ router.get('/custom-fees', requireRoles(['principal', 'clerk', 'student', 'paren
     `)
     .eq('school_id', user.schoolId)
     .eq('is_active', true)
-    .eq('fee_categories.fee_type', 'custom') // Custom fees have fee_type='custom'
+    .in('fee_category_id', customCategoryIds)
     .order('created_at', { ascending: false });
 
   if (classGroupId) {
