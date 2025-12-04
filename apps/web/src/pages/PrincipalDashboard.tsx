@@ -3061,18 +3061,10 @@ function StudentsManagement() {
       console.log('[Add Student] Is array?', Array.isArray(data.class_fees));
       setDefaultFees(data);
 
-      // Initialize other_fees array with all fee categories
-      const otherFeesConfig = (data.other_fee_categories || []).map((cat: any) => ({
-        fee_category_id: cat.id,
-        enabled: true,
-        discount: 0
-      }));
-
       // Set default class fee (first one if available)
       const defaultClassFeeId = data.class_fees && data.class_fees.length > 0 ? data.class_fees[0].id : '';
       console.log('[Add Student] Default class fee ID:', defaultClassFeeId);
       console.log('[Add Student] Class fees count:', data.class_fees?.length || 0);
-      console.log('[Add Student] Other fees count:', data.other_fee_categories?.length || 0);
       console.log('[Add Student] Custom fees count:', data.custom_fees?.length || 0);
       
       // Initialize custom_fees array with all custom fees
@@ -3088,7 +3080,7 @@ function StudentsManagement() {
         transport_enabled: true,
         transport_route_id: '',
         transport_fee_discount: 0,
-        other_fees: otherFeesConfig,
+        other_fees: [],
         custom_fees: customFeesConfig
       });
     } catch (error) {
@@ -4011,100 +4003,6 @@ function StudentsManagement() {
                         </div>
                       )}
 
-                      {/* Other Fees Section */}
-                      {editDefaultFees.other_fee_categories && editDefaultFees.other_fee_categories.length > 0 && (
-                        <div className="bg-yellow-50 p-4 rounded-lg">
-                          <h5 className="font-semibold text-gray-700 mb-3">Other Fees</h5>
-                          <div className="space-y-3">
-                            {editDefaultFees.other_fee_categories.map((category: any) => {
-                              const feeConfigItem = editFeeConfig.other_fees.find(f => f.fee_category_id === category.id) || {
-                                fee_category_id: category.id,
-                                enabled: true,
-                                discount: 0
-                              };
-                              const defaultAmount = parseFloat(category.amount || 0);
-                              const finalAmount = Math.max(0, defaultAmount - feeConfigItem.discount);
-                              
-                              return (
-                                <div key={category.id} className="bg-white p-3 rounded border">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex-1">
-                                      <div className="flex items-center justify-between">
-                                        <span className="font-medium text-sm">{category.name}</span>
-                                        <span className="text-sm font-medium text-gray-600">
-                                          ₹{defaultAmount.toFixed(2)}/{category.fee_cycle || 'monthly'}
-                                        </span>
-                                      </div>
-                                      {category.description && (
-                                        <p className="text-xs text-gray-500 mt-1">{category.description}</p>
-                                      )}
-                                    </div>
-                                    <label className="flex items-center gap-2 cursor-pointer ml-3">
-                                      <input
-                                        type="checkbox"
-                                        checked={feeConfigItem.enabled}
-                                        onChange={(e) => {
-                                          const updatedOtherFees = editFeeConfig.other_fees.map(f =>
-                                            f.fee_category_id === category.id
-                                              ? { ...f, enabled: e.target.checked, discount: e.target.checked ? f.discount : 0 }
-                                              : f
-                                          );
-                                          if (!editFeeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
-                                            updatedOtherFees.push({
-                                              fee_category_id: category.id,
-                                              enabled: e.target.checked,
-                                              discount: 0
-                                            });
-                                          }
-                                          setEditFeeConfig({ ...editFeeConfig, other_fees: updatedOtherFees });
-                                        }}
-                                        className="rounded"
-                                      />
-                                      <span className="text-xs text-gray-600">Enable</span>
-                                    </label>
-                                  </div>
-                                  {feeConfigItem.enabled && (
-                                    <div className="mt-2 space-y-2">
-                                      <div>
-                                        <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          step="0.01"
-                                          max={defaultAmount}
-                                          value={feeConfigItem.discount}
-                                          onChange={(e) => {
-                                            const discount = parseFloat(e.target.value) || 0;
-                                            const updatedOtherFees = editFeeConfig.other_fees.map(f =>
-                                              f.fee_category_id === category.id
-                                                ? { ...f, discount: Math.min(discount, defaultAmount) }
-                                                : f
-                                            );
-                                            if (!editFeeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
-                                              updatedOtherFees.push({
-                                                fee_category_id: category.id,
-                                                enabled: true,
-                                                discount: Math.min(discount, defaultAmount)
-                                              });
-                                            }
-                                            setEditFeeConfig({ ...editFeeConfig, other_fees: updatedOtherFees });
-                                          }}
-                                          className="w-full px-2 py-1 border rounded text-sm"
-                                          placeholder="0"
-                                        />
-                                      </div>
-                                      <div className="flex justify-between text-xs font-semibold pt-1 border-t">
-                                        <span>Final Amount:</span>
-                                        <span className="text-green-600">₹{finalAmount.toFixed(2)}/{category.fee_cycle || 'monthly'}</span>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   ) : (
                     <p className="text-sm text-gray-500">Select a class to configure fees</p>
@@ -4631,104 +4529,6 @@ function StudentsManagement() {
                         </div>
                       )}
 
-                      {/* Other Fees Section - Always show if class is selected */}
-                      <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                        <h5 className="font-semibold text-gray-700 mb-3">Other Fees</h5>
-                        {defaultFees.other_fee_categories && Array.isArray(defaultFees.other_fee_categories) && defaultFees.other_fee_categories.length > 0 ? (
-                          <div className="space-y-3">
-                            {defaultFees.other_fee_categories.map((category: any) => {
-                              const feeConfigItem = feeConfig.other_fees.find(f => f.fee_category_id === category.id) || {
-                                fee_category_id: category.id,
-                                enabled: true,
-                                discount: 0
-                              };
-                              const defaultAmount = parseFloat(category.amount || 0);
-                              const finalAmount = Math.max(0, defaultAmount - feeConfigItem.discount);
-                              
-                              return (
-                                <div key={category.id} className="bg-white p-3 rounded border">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex-1">
-                                      <div className="flex items-center justify-between">
-                                        <span className="font-medium text-sm">{category.name}</span>
-                                        <span className="text-sm font-medium text-gray-600">
-                                          ₹{defaultAmount.toFixed(2)}/{category.fee_cycle || 'monthly'}
-                                        </span>
-                                      </div>
-                                      {category.description && (
-                                        <p className="text-xs text-gray-500 mt-1">{category.description}</p>
-                                      )}
-                                    </div>
-                                    <label className="flex items-center gap-2 cursor-pointer ml-3">
-                                      <input
-                                        type="checkbox"
-                                        checked={feeConfigItem.enabled}
-                                        onChange={(e) => {
-                                          const updatedOtherFees = feeConfig.other_fees.map(f =>
-                                            f.fee_category_id === category.id
-                                              ? { ...f, enabled: e.target.checked, discount: e.target.checked ? f.discount : 0 }
-                                              : f
-                                          );
-                                          // If not found, add it
-                                          if (!feeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
-                                            updatedOtherFees.push({
-                                              fee_category_id: category.id,
-                                              enabled: e.target.checked,
-                                              discount: 0
-                                            });
-                                          }
-                                          setFeeConfig({ ...feeConfig, other_fees: updatedOtherFees });
-                                        }}
-                                        className="rounded"
-                                      />
-                                      <span className="text-xs text-gray-600">Enable</span>
-                                    </label>
-                                  </div>
-                                  {feeConfigItem.enabled && (
-                                    <div className="mt-2 space-y-2">
-                                      <div>
-                                        <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          step="0.01"
-                                          max={defaultAmount}
-                                          value={feeConfigItem.discount}
-                                          onChange={(e) => {
-                                            const discount = parseFloat(e.target.value) || 0;
-                                            const updatedOtherFees = feeConfig.other_fees.map(f =>
-                                              f.fee_category_id === category.id
-                                                ? { ...f, discount: Math.min(discount, defaultAmount) }
-                                                : f
-                                            );
-                                            // If not found, add it
-                                            if (!feeConfig.other_fees.find(f => f.fee_category_id === category.id)) {
-                                              updatedOtherFees.push({
-                                                fee_category_id: category.id,
-                                                enabled: true,
-                                                discount: Math.min(discount, defaultAmount)
-                                              });
-                                            }
-                                            setFeeConfig({ ...feeConfig, other_fees: updatedOtherFees });
-                                          }}
-                                          className="w-full px-2 py-1 border rounded text-sm"
-                                          placeholder="0"
-                                        />
-                                      </div>
-                                      <div className="flex justify-between text-xs font-semibold pt-1 border-t">
-                                        <span>Final Amount:</span>
-                                        <span className="text-green-600">₹{finalAmount.toFixed(2)}/{category.fee_cycle || 'monthly'}</span>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500">No other fees configured for this class yet.</p>
-                        )}
-                      </div>
                     </div>
                   ) : (
                     <p className="text-sm text-gray-500">Select a class to configure fees</p>

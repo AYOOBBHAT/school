@@ -37,6 +37,25 @@ comment on table student_fee_overrides is
   'Fee overrides for students including discounts and exemptions. fee_category_id can reference custom fee categories (fee_type=custom).';
 
 -- ============================================
+-- Ensure fee_type column exists (if migration 021 wasn't run)
+-- ============================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'fee_categories' 
+    AND column_name = 'fee_type'
+  ) THEN
+    ALTER TABLE fee_categories
+    ADD COLUMN fee_type text CHECK (fee_type IN ('tuition', 'transport', 'uniform', 'admission', 'annual', 'term', 'optional', 'custom')) NOT NULL DEFAULT 'optional';
+    
+    UPDATE fee_categories SET fee_type = 'optional' WHERE fee_type IS NULL;
+  END IF;
+END $$;
+
+-- ============================================
 -- Refresh schema cache
 -- ============================================
 NOTIFY pgrst, 'reload schema';
