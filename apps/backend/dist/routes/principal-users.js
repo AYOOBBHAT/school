@@ -145,6 +145,24 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
         if (optionalFeesError) {
             console.error('[default-fees] Error fetching optional fees:', optionalFeesError);
         }
+        // 5. Get custom fees (optional_fee_definitions where fee_category_id is null)
+        const { data: customFees, error: customFeesError } = await supabase
+            .from('optional_fee_definitions')
+            .select(`
+        *,
+        class_groups:class_group_id(id, name)
+      `)
+            .eq('class_group_id', classId)
+            .eq('school_id', user.schoolId)
+            .eq('is_active', true)
+            .is('fee_category_id', null) // Custom fees don't have fee_category_id
+            .lte('effective_from', today)
+            .or(`effective_to.is.null,effective_to.gte.${today}`)
+            .order('created_at', { ascending: false });
+        if (customFeesError) {
+            console.error('[default-fees] Error fetching custom fees:', customFeesError);
+        }
+        console.log(`[default-fees] Found ${customFees?.length || 0} custom fees for class ${classId}`);
         // Get fee amounts for other categories from class_fee_defaults (for this class)
         // This is for fees that have a specific category (Library, Lab, etc.) - excludes general tuition fees
         const { data: otherClassFees, error: otherClassFeesError } = await supabase
@@ -196,7 +214,8 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
                 } : null
             })),
             other_fee_categories: otherFeesWithAmounts || [],
-            optional_fees: optionalFees || []
+            optional_fees: optionalFees || [],
+            custom_fees: customFees || []
         });
     }
     catch (err) {

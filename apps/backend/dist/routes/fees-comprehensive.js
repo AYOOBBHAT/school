@@ -400,8 +400,106 @@ router.put('/transport/fees/:id', requireRoles(['principal']), async (req, res) 
     return res.json({ transport_fee: data });
 });
 // ============================================
-// OPTIONAL FEES - REMOVED
+// CUSTOM FEES (Class-specific custom fees)
 // ============================================
+const customFeeSchema = Joi.object({
+    class_group_id: Joi.string().uuid().required(),
+    name: Joi.string().required(),
+    amount: Joi.number().min(0).required(),
+    fee_cycle: Joi.string().valid('one-time', 'monthly', 'quarterly', 'yearly').default('monthly'),
+    is_active: Joi.boolean().default(true)
+});
+// Get custom fees
+router.get('/custom-fees', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+    const { supabase, user } = req;
+    if (!supabase || !user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    const classGroupId = req.query.class_group_id;
+    let query = supabase
+        .from('optional_fee_definitions')
+        .select(`
+      *,
+      class_groups:class_group_id(id, name)
+    `)
+        .eq('school_id', user.schoolId)
+        .eq('is_active', true)
+        .is('fee_category_id', null) // Custom fees don't have fee_category_id
+        .order('created_at', { ascending: false });
+    if (classGroupId) {
+        query = query.eq('class_group_id', classGroupId);
+    }
+    const { data, error } = await query;
+    if (error)
+        return res.status(400).json({ error: error.message });
+    return res.json({ custom_fees: data || [] });
+});
+// Create custom fee (Principal only)
+router.post('/custom-fees', requireRoles(['principal']), async (req, res) => {
+    const { error, value } = customFeeSchema.validate(req.body);
+    if (error)
+        return res.status(400).json({ error: error.message });
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        // Create custom fee in optional_fee_definitions (with fee_category_id as null to distinguish from category-based fees)
+        const payload = {
+            school_id: user.schoolId,
+            class_group_id: value.class_group_id,
+            fee_category_id: null, // Custom fees don't have a category
+            amount: value.amount,
+            fee_cycle: value.fee_cycle,
+            effective_from: today,
+            effective_to: null,
+            is_active: value.is_active
+        };
+        const { data: customFee, error: dbError } = await adminSupabase
+            .from('optional_fee_definitions')
+            .insert(payload)
+            .select(`
+        *,
+        class_groups:class_group_id(id, name)
+      `)
+            .single();
+        if (dbError)
+            return res.status(400).json({ error: dbError.message });
+        return res.status(201).json({ custom_fee: customFee });
+    }
+    catch (err) {
+        console.error('[create-custom-fee] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to create custom fee' });
+    }
+});
+// Delete custom fee (Principal only)
+router.delete('/custom-fees/:id', requireRoles(['principal']), async (req, res) => {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        const { error } = await adminSupabase
+            .from('optional_fee_definitions')
+            .update({ is_active: false })
+            .eq('id', req.params.id)
+            .eq('school_id', user.schoolId)
+            .is('fee_category_id', null); // Only custom fees
+        if (error)
+            return res.status(400).json({ error: error.message });
+        return res.json({ success: true });
+    }
+    catch (err) {
+        console.error('[delete-custom-fee] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to delete custom fee' });
+    }
+});
 // ============================================
 // STUDENT TRANSPORT ASSIGNMENT
 // ============================================
