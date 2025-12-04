@@ -178,27 +178,42 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
     }
 
     // 5. Get custom fees (optional_fee_definitions where fee_category has fee_type='custom')
-    // Include fees for this specific class AND fees for all classes (where class_group_id is null)
-    const { data: customFees, error: customFeesError } = await supabase
-      .from('optional_fee_definitions')
-      .select(`
-        *,
-        class_groups:class_group_id(id, name),
-        fee_categories:fee_category_id(id, name, description, fee_type)
-      `)
+    // First, get all custom fee category IDs for this school
+    const { data: customCategories, error: catError } = await supabase
+      .from('fee_categories')
+      .select('id')
       .eq('school_id', user.schoolId)
-      .eq('is_active', true)
-      .eq('fee_categories.fee_type', 'custom') // Custom fees have fee_type='custom'
-      .or(`class_group_id.eq.${classId},class_group_id.is.null`) // This class OR all classes
-      .lte('effective_from', today)
-      .or(`effective_to.is.null,effective_to.gte.${today}`)
-      .order('created_at', { ascending: false });
+      .eq('fee_type', 'custom')
+      .eq('is_active', true);
 
-    if (customFeesError) {
-      console.error('[default-fees] Error fetching custom fees:', customFeesError);
+    let customFees: any[] = [];
+    if (!catError && customCategories && customCategories.length > 0) {
+      const customCategoryIds = customCategories.map((cat: any) => cat.id);
+      
+      // Now get optional_fee_definitions filtered by custom category IDs
+      const { data: customFeesData, error: customFeesDataError } = await supabase
+        .from('optional_fee_definitions')
+        .select(`
+          *,
+          class_groups:class_group_id(id, name),
+          fee_categories:fee_category_id(id, name, description, fee_type)
+        `)
+        .eq('school_id', user.schoolId)
+        .eq('is_active', true)
+        .in('fee_category_id', customCategoryIds)
+        .or(`class_group_id.eq.${classId},class_group_id.is.null`) // This class OR all classes
+        .lte('effective_from', today)
+        .or(`effective_to.is.null,effective_to.gte.${today}`)
+        .order('created_at', { ascending: false });
+      
+      if (!customFeesDataError) {
+        customFees = customFeesData || [];
+      } else {
+        console.error('[default-fees] Error fetching custom fees:', customFeesDataError);
+      }
     }
 
-    console.log(`[default-fees] Found ${customFees?.length || 0} custom fees for class ${classId}`);
+    console.log(`[default-fees] Found ${customFees.length || 0} custom fees for class ${classId}`);
 
     // Get fee amounts for other categories from class_fee_defaults (for this class)
     // This is for fees that have a specific category (Library, Lab, etc.) - excludes general tuition fees
@@ -689,15 +704,27 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
         if (feeConfig.custom_fees && feeConfig.custom_fees.length > 0) {
           for (const customFee of feeConfig.custom_fees) {
               // Get the custom fee definition to verify it exists
+            // First verify it's a custom fee by checking the category
             const { data: customFeeDef, error: customFeeDefError } = await supabase
               .from('optional_fee_definitions')
-              .select('id, amount, fee_cycle, fee_category_id, fee_categories:fee_category_id(id, fee_type)')
+              .select('id, amount, fee_cycle, fee_category_id')
               .eq('id', customFee.custom_fee_id)
               .eq('school_id', user.schoolId)
-              .eq('fee_categories.fee_type', 'custom')
               .single();
 
             if (!customFeeDefError && customFeeDef) {
+              // Verify the category is a custom fee type
+              const { data: category } = await supabase
+                .from('fee_categories')
+                .select('fee_type')
+                .eq('id', customFeeDef.fee_category_id)
+                .eq('fee_type', 'custom')
+                .single();
+
+              if (!category) {
+                continue; // Skip if not a custom fee
+              }
+
               // If exempt, mark as full free
               if (customFee.is_exempt) {
                 const { error: exemptError } = await supabase

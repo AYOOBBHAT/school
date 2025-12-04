@@ -288,16 +288,28 @@ router.get('/:studentId/fee-config', requireRoles(['principal', 'clerk']), async
         let customFees = [];
         if (studentClassId) {
             const today = new Date().toISOString().split('T')[0];
-            const { data: customFeesData } = await adminSupabase
-                .from('optional_fee_definitions')
-                .select('id, amount, fee_cycle, class_group_id, fee_category_id, class_groups:class_group_id(id, name), fee_categories:fee_category_id(id, name, description, fee_type)')
+            // First, get all custom fee category IDs for this school
+            const { data: customCategories } = await adminSupabase
+                .from('fee_categories')
+                .select('id')
                 .eq('school_id', user.schoolId)
-                .eq('is_active', true)
-                .eq('fee_categories.fee_type', 'custom')
-                .or(`class_group_id.eq.${studentClassId},class_group_id.is.null`)
-                .lte('effective_from', today)
-                .or(`effective_to.is.null,effective_to.gte.${today}`)
-                .order('created_at', { ascending: false });
+                .eq('fee_type', 'custom')
+                .eq('is_active', true);
+            let customFeesData = [];
+            if (customCategories && customCategories.length > 0) {
+                const customCategoryIds = customCategories.map((cat) => cat.id);
+                const { data: feesData } = await adminSupabase
+                    .from('optional_fee_definitions')
+                    .select('id, amount, fee_cycle, class_group_id, fee_category_id, class_groups:class_group_id(id, name), fee_categories:fee_category_id(id, name, description, fee_type)')
+                    .eq('school_id', user.schoolId)
+                    .eq('is_active', true)
+                    .in('fee_category_id', customCategoryIds)
+                    .or(`class_group_id.eq.${studentClassId},class_group_id.is.null`)
+                    .lte('effective_from', today)
+                    .or(`effective_to.is.null,effective_to.gte.${today}`)
+                    .order('created_at', { ascending: false });
+                customFeesData = feesData || [];
+            }
             if (customFeesData) {
                 // Get custom fee overrides (discounts/exemptions) for this student
                 // Custom fee overrides are stored with fee_category_id pointing to the custom fee's category
@@ -638,12 +650,21 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
                         // Get the custom fee definition to verify it exists
                         const { data: customFeeDef, error: customFeeDefError } = await adminSupabase
                             .from('optional_fee_definitions')
-                            .select('id, amount, fee_cycle, fee_category_id, fee_categories:fee_category_id(id, fee_type)')
+                            .select('id, amount, fee_cycle, fee_category_id')
                             .eq('id', customFee.custom_fee_id)
                             .eq('school_id', user.schoolId)
-                            .eq('fee_categories.fee_type', 'custom')
                             .single();
                         if (!customFeeDefError && customFeeDef) {
+                            // Verify the category is a custom fee type
+                            const { data: category } = await adminSupabase
+                                .from('fee_categories')
+                                .select('fee_type')
+                                .eq('id', customFeeDef.fee_category_id)
+                                .eq('fee_type', 'custom')
+                                .single();
+                            if (!category) {
+                                continue; // Skip if not a custom fee
+                            }
                             // If exempt, mark as full free
                             if (customFee.is_exempt) {
                                 const { error: exemptError } = await adminSupabase
