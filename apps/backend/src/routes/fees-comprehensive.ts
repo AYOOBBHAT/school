@@ -442,7 +442,7 @@ router.put('/transport/fees/:id', requireRoles(['principal']), async (req, res) 
 // ============================================
 
 const customFeeSchema = Joi.object({
-  class_group_id: Joi.string().uuid().required(),
+  class_group_id: Joi.string().uuid().allow(null, '').optional(), // null or empty = all classes
   name: Joi.string().required(),
   amount: Joi.number().min(0).required(),
   fee_cycle: Joi.string().valid('one-time', 'monthly', 'quarterly', 'yearly').default('monthly'),
@@ -460,15 +460,17 @@ router.get('/custom-fees', requireRoles(['principal', 'clerk', 'student', 'paren
     .from('optional_fee_definitions')
     .select(`
       *,
-      class_groups:class_group_id(id, name)
+      class_groups:class_group_id(id, name),
+      fee_categories:fee_category_id(id, name, description, fee_type)
     `)
     .eq('school_id', user.schoolId)
     .eq('is_active', true)
-    .is('fee_category_id', null) // Custom fees don't have fee_category_id
+    .eq('fee_categories.fee_type', 'custom') // Custom fees have fee_type='custom'
     .order('created_at', { ascending: false });
 
   if (classGroupId) {
-    query = query.eq('class_group_id', classGroupId);
+    // Get custom fees for this class OR for all classes (where class_group_id is null)
+    query = query.or(`class_group_id.eq.${classGroupId},class_group_id.is.null`);
   }
 
   const { data, error } = await query;
@@ -493,11 +495,69 @@ router.post('/custom-fees', requireRoles(['principal']), async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
     
-    // Create custom fee in optional_fee_definitions (with fee_category_id as null to distinguish from category-based fees)
+    // Create a fee_category for this custom fee (to store the name)
+    // This allows us to store the custom fee name properly
+    const { data: feeCategory, error: categoryError } = await adminSupabase
+      .from('fee_categories')
+      .insert({
+        school_id: user.schoolId,
+        name: value.name,
+        fee_type: 'custom',
+        is_active: true
+      })
+      .select()
+      .single();
+
+    if (categoryError) {
+      // If category creation fails, try to find existing one with same name
+      const { data: existingCategory } = await adminSupabase
+        .from('fee_categories')
+        .select('id')
+        .eq('school_id', user.schoolId)
+        .eq('name', value.name)
+        .eq('fee_type', 'custom')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!existingCategory) {
+        return res.status(400).json({ error: categoryError.message || 'Failed to create fee category' });
+      }
+      
+      // Use existing category
+      const feeCategoryId = existingCategory.id;
+      
+      // Create custom fee in optional_fee_definitions
+      const payload = {
+        school_id: user.schoolId,
+        class_group_id: value.class_group_id || null, // null = applies to all classes
+        fee_category_id: feeCategoryId, // Link to the custom fee category
+        amount: value.amount,
+        fee_cycle: value.fee_cycle,
+        effective_from: today,
+        effective_to: null,
+        is_active: value.is_active
+      };
+
+      const { data: customFee, error: dbError } = await adminSupabase
+        .from('optional_fee_definitions')
+        .insert(payload)
+        .select(`
+          *,
+          class_groups:class_group_id(id, name),
+          fee_categories:fee_category_id(id, name, description, fee_type)
+        `)
+        .single();
+
+      if (dbError) return res.status(400).json({ error: dbError.message });
+
+      return res.status(201).json({ custom_fee: customFee });
+    }
+
+    // Create custom fee in optional_fee_definitions with the new category
     const payload = {
       school_id: user.schoolId,
-      class_group_id: value.class_group_id,
-      fee_category_id: null, // Custom fees don't have a category
+      class_group_id: value.class_group_id || null, // null = applies to all classes
+      fee_category_id: feeCategory.id, // Link to the custom fee category
       amount: value.amount,
       fee_cycle: value.fee_cycle,
       effective_from: today,
@@ -510,7 +570,8 @@ router.post('/custom-fees', requireRoles(['principal']), async (req, res) => {
       .insert(payload)
       .select(`
         *,
-        class_groups:class_group_id(id, name)
+        class_groups:class_group_id(id, name),
+        fee_categories:fee_category_id(id, name, description, fee_type)
       `)
       .single();
 
@@ -534,15 +595,36 @@ router.delete('/custom-fees/:id', requireRoles(['principal']), async (req, res) 
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
   try {
-    const { error } = await adminSupabase
+    // First get the custom fee to find its category
+    const { data: customFee } = await adminSupabase
       .from('optional_fee_definitions')
-      .update({ is_active: false })
+      .select('fee_category_id')
       .eq('id', req.params.id)
       .eq('school_id', user.schoolId)
-      .is('fee_category_id', null); // Only custom fees
+      .single();
 
-    if (error) return res.status(400).json({ error: error.message });
-    return res.json({ success: true });
+    if (customFee && customFee.fee_category_id) {
+      // Verify it's a custom fee category
+      const { data: category } = await adminSupabase
+        .from('fee_categories')
+        .select('fee_type')
+        .eq('id', customFee.fee_category_id)
+        .eq('fee_type', 'custom')
+        .single();
+
+      if (category) {
+        const { error } = await adminSupabase
+          .from('optional_fee_definitions')
+          .update({ is_active: false })
+          .eq('id', req.params.id)
+          .eq('school_id', user.schoolId);
+
+        if (error) return res.status(400).json({ error: error.message });
+        return res.json({ success: true });
+      }
+    }
+
+    return res.status(404).json({ error: 'Custom fee not found' });
   } catch (err: any) {
     console.error('[delete-custom-fee] Error:', err);
     return res.status(500).json({ error: err.message || 'Failed to delete custom fee' });

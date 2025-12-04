@@ -2815,7 +2815,8 @@ function StudentsManagement() {
     transport_enabled: false,
     transport_route_id: '',
     transport_fee_discount: 0,
-    other_fees: [] as Array<{ fee_category_id: string; enabled: boolean; discount: number }>
+    other_fees: [] as Array<{ fee_category_id: string; enabled: boolean; discount: number }>,
+    custom_fees: [] as Array<{ custom_fee_id: string; discount: number; is_exempt: boolean }>
   });
   const [editDefaultFees, setEditDefaultFees] = useState<{
     class_fees: any[];
@@ -2870,7 +2871,8 @@ function StudentsManagement() {
     transport_enabled: true,
     transport_route_id: '',
     transport_fee_discount: 0,
-    other_fees: [] as Array<{ fee_category_id: string; enabled: boolean; discount: number }>
+    other_fees: [] as Array<{ fee_category_id: string; enabled: boolean; discount: number }>,
+    custom_fees: [] as Array<{ custom_fee_id: string; discount: number; is_exempt: boolean }>
   });
   const [usernameStatus, setUsernameStatus] = useState<{
     checking: boolean;
@@ -3071,6 +3073,14 @@ function StudentsManagement() {
       console.log('[Add Student] Default class fee ID:', defaultClassFeeId);
       console.log('[Add Student] Class fees count:', data.class_fees?.length || 0);
       console.log('[Add Student] Other fees count:', data.other_fee_categories?.length || 0);
+      console.log('[Add Student] Custom fees count:', data.custom_fees?.length || 0);
+      
+      // Initialize custom_fees array with all custom fees
+      const customFeesConfig = (data.custom_fees || []).map((cf: any) => ({
+        custom_fee_id: cf.id,
+        discount: 0,
+        is_exempt: false
+      }));
       
       setFeeConfig({
         class_fee_id: defaultClassFeeId,
@@ -3078,7 +3088,8 @@ function StudentsManagement() {
         transport_enabled: true,
         transport_route_id: '',
         transport_fee_discount: 0,
-        other_fees: otherFeesConfig
+        other_fees: otherFeesConfig,
+        custom_fees: customFeesConfig
       });
     } catch (error) {
       console.error('Error loading default fees:', error);
@@ -3117,7 +3128,8 @@ function StudentsManagement() {
             transport_enabled: feeConfig.transport_enabled ?? false,
             transport_route_id: feeConfig.transport_route_id || '',
             transport_fee_discount: feeConfig.transport_fee_discount || 0,
-            other_fees: feeConfig.other_fees || []
+            other_fees: feeConfig.other_fees || [],
+            custom_fees: feeConfig.custom_fees || []
           });
         }
       } catch (error) {
@@ -3445,7 +3457,8 @@ function StudentsManagement() {
         transport_enabled: true,
         transport_route_id: '',
         transport_fee_discount: 0,
-        other_fees: []
+        other_fees: [],
+        custom_fees: []
       });
       window.location.reload();
     } catch (error: any) {
@@ -3715,7 +3728,8 @@ function StudentsManagement() {
                         transport_enabled: false,
                         transport_route_id: '',
                         transport_fee_discount: 0,
-                        other_fees: []
+                        other_fees: [],
+                        custom_fees: [] // Will be set by loadEditDefaultFees if fees exist
                       });
                     } else {
                       setEditDefaultFees(null);
@@ -3725,7 +3739,8 @@ function StudentsManagement() {
                         transport_enabled: false,
                         transport_route_id: '',
                         transport_fee_discount: 0,
-                        other_fees: []
+                        other_fees: [],
+                        custom_fees: []
                       });
                     }
                   }}
@@ -3900,17 +3915,95 @@ function StudentsManagement() {
                           <h5 className="font-semibold text-gray-700 mb-3">Custom Fees</h5>
                           <div className="space-y-3">
                             {editDefaultFees.custom_fees.map((customFee: any) => {
+                              const feeConfigItem = editFeeConfig.custom_fees.find(f => f.custom_fee_id === customFee.id) || {
+                                custom_fee_id: customFee.id,
+                                discount: 0,
+                                is_exempt: false
+                              };
                               const feeAmount = parseFloat(customFee.amount || 0);
+                              const finalAmount = feeConfigItem.is_exempt ? 0 : Math.max(0, feeAmount - feeConfigItem.discount);
+                              const classLabel = customFee.class_groups?.name || 'All Classes';
+                              const feeName = customFee.fee_categories?.name || customFee.name || 'Custom Fee';
+                              
                               return (
                                 <div key={customFee.id} className="bg-white p-3 rounded border">
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <span className="font-medium text-sm">{customFee.name || 'Custom Fee'}</span>
-                                      <span className="text-sm text-gray-600 ml-2">
-                                        ₹{feeAmount.toFixed(2)}/{customFee.fee_cycle || 'monthly'}
-                                      </span>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex-1">
+                                      <div className="flex items-center justify-between">
+                                        <div>
+                                          <span className="font-medium text-sm">{feeName}</span>
+                                          <span className="text-xs text-gray-500 ml-2">({classLabel})</span>
+                                        </div>
+                                        <span className="text-sm font-medium text-gray-600">
+                                          ₹{feeAmount.toFixed(2)}/{customFee.fee_cycle || 'monthly'}
+                                        </span>
+                                      </div>
                                     </div>
+                                    <label className="flex items-center gap-2 cursor-pointer ml-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={feeConfigItem.is_exempt}
+                                        onChange={(e) => {
+                                          const updatedCustomFees = editFeeConfig.custom_fees.map(f =>
+                                            f.custom_fee_id === customFee.id
+                                              ? { ...f, is_exempt: e.target.checked, discount: e.target.checked ? 0 : f.discount }
+                                              : f
+                                          );
+                                          if (!editFeeConfig.custom_fees.find(f => f.custom_fee_id === customFee.id)) {
+                                            updatedCustomFees.push({
+                                              custom_fee_id: customFee.id,
+                                              discount: 0,
+                                              is_exempt: e.target.checked
+                                            });
+                                          }
+                                          setEditFeeConfig({ ...editFeeConfig, custom_fees: updatedCustomFees });
+                                        }}
+                                        className="rounded"
+                                      />
+                                      <span className="text-xs text-gray-600">Exempt</span>
+                                    </label>
                                   </div>
+                                  {!feeConfigItem.is_exempt && (
+                                    <>
+                                      <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          max={feeAmount}
+                                          value={feeConfigItem.discount}
+                                          onChange={(e) => {
+                                            const discount = parseFloat(e.target.value) || 0;
+                                            const updatedCustomFees = editFeeConfig.custom_fees.map(f =>
+                                              f.custom_fee_id === customFee.id
+                                                ? { ...f, discount: Math.min(discount, feeAmount) }
+                                                : f
+                                            );
+                                            if (!editFeeConfig.custom_fees.find(f => f.custom_fee_id === customFee.id)) {
+                                              updatedCustomFees.push({
+                                                custom_fee_id: customFee.id,
+                                                discount: Math.min(discount, feeAmount),
+                                                is_exempt: false
+                                              });
+                                            }
+                                            setEditFeeConfig({ ...editFeeConfig, custom_fees: updatedCustomFees });
+                                          }}
+                                          className="w-full px-2 py-1 border rounded text-sm"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between text-xs font-semibold pt-1 border-t mt-1">
+                                        <span>Final Amount:</span>
+                                        <span className="text-green-600">₹{finalAmount.toFixed(2)}/{customFee.fee_cycle || 'monthly'}</span>
+                                      </div>
+                                    </>
+                                  )}
+                                  {feeConfigItem.is_exempt && (
+                                    <div className="text-xs text-red-600 font-semibold pt-1">
+                                      Student is exempt from this fee
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -4230,7 +4323,8 @@ function StudentsManagement() {
                         transport_enabled: true,
                         transport_route_id: '',
                         transport_fee_discount: 0,
-                        other_fees: []
+                        other_fees: [],
+                        custom_fees: []
                       });
                     }
                   }}
@@ -4441,17 +4535,95 @@ function StudentsManagement() {
                           <h5 className="font-semibold text-gray-700 mb-3">Custom Fees</h5>
                           <div className="space-y-3">
                             {defaultFees.custom_fees.map((customFee: any) => {
+                              const feeConfigItem = feeConfig.custom_fees.find(f => f.custom_fee_id === customFee.id) || {
+                                custom_fee_id: customFee.id,
+                                discount: 0,
+                                is_exempt: false
+                              };
                               const feeAmount = parseFloat(customFee.amount || 0);
+                              const finalAmount = feeConfigItem.is_exempt ? 0 : Math.max(0, feeAmount - feeConfigItem.discount);
+                              const classLabel = customFee.class_groups?.name || 'All Classes';
+                              const feeName = customFee.fee_categories?.name || customFee.name || 'Custom Fee';
+                              
                               return (
                                 <div key={customFee.id} className="bg-white p-3 rounded border">
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <span className="font-medium text-sm">{customFee.name || 'Custom Fee'}</span>
-                                      <span className="text-sm text-gray-600 ml-2">
-                                        ₹{feeAmount.toFixed(2)}/{customFee.fee_cycle || 'monthly'}
-                                      </span>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex-1">
+                                      <div className="flex items-center justify-between">
+                                        <div>
+                                          <span className="font-medium text-sm">{feeName}</span>
+                                          <span className="text-xs text-gray-500 ml-2">({classLabel})</span>
+                                        </div>
+                                        <span className="text-sm font-medium text-gray-600">
+                                          ₹{feeAmount.toFixed(2)}/{customFee.fee_cycle || 'monthly'}
+                                        </span>
+                                      </div>
                                     </div>
+                                    <label className="flex items-center gap-2 cursor-pointer ml-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={feeConfigItem.is_exempt}
+                                        onChange={(e) => {
+                                          const updatedCustomFees = feeConfig.custom_fees.map(f =>
+                                            f.custom_fee_id === customFee.id
+                                              ? { ...f, is_exempt: e.target.checked, discount: e.target.checked ? 0 : f.discount }
+                                              : f
+                                          );
+                                          if (!feeConfig.custom_fees.find(f => f.custom_fee_id === customFee.id)) {
+                                            updatedCustomFees.push({
+                                              custom_fee_id: customFee.id,
+                                              discount: 0,
+                                              is_exempt: e.target.checked
+                                            });
+                                          }
+                                          setFeeConfig({ ...feeConfig, custom_fees: updatedCustomFees });
+                                        }}
+                                        className="rounded"
+                                      />
+                                      <span className="text-xs text-gray-600">Exempt</span>
+                                    </label>
                                   </div>
+                                  {!feeConfigItem.is_exempt && (
+                                    <>
+                                      <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          max={feeAmount}
+                                          value={feeConfigItem.discount}
+                                          onChange={(e) => {
+                                            const discount = parseFloat(e.target.value) || 0;
+                                            const updatedCustomFees = feeConfig.custom_fees.map(f =>
+                                              f.custom_fee_id === customFee.id
+                                                ? { ...f, discount: Math.min(discount, feeAmount) }
+                                                : f
+                                            );
+                                            if (!feeConfig.custom_fees.find(f => f.custom_fee_id === customFee.id)) {
+                                              updatedCustomFees.push({
+                                                custom_fee_id: customFee.id,
+                                                discount: Math.min(discount, feeAmount),
+                                                is_exempt: false
+                                              });
+                                            }
+                                            setFeeConfig({ ...feeConfig, custom_fees: updatedCustomFees });
+                                          }}
+                                          className="w-full px-2 py-1 border rounded text-sm"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between text-xs font-semibold pt-1 border-t mt-1">
+                                        <span>Final Amount:</span>
+                                        <span className="text-green-600">₹{finalAmount.toFixed(2)}/{customFee.fee_cycle || 'monthly'}</span>
+                                      </div>
+                                    </>
+                                  )}
+                                  {feeConfigItem.is_exempt && (
+                                    <div className="text-xs text-red-600 font-semibold pt-1">
+                                      Student is exempt from this fee
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -4656,7 +4828,8 @@ function StudentsManagement() {
                       transport_enabled: true,
                       transport_route_id: '',
                       transport_fee_discount: 0,
-                      other_fees: []
+                      other_fees: [],
+                      custom_fees: []
                     });
                   }}
                   className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
@@ -6339,7 +6512,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   const [customFees, setCustomFees] = useState<any[]>([]);
   const [showCustomFeeModal, setShowCustomFeeModal] = useState(false);
   const [customFeeForm, setCustomFeeForm] = useState({
-    class_group_id: '',
+    class_group_id: '', // Empty string = all classes, or specific class ID
     name: '',
     amount: '',
     fee_cycle: 'monthly' as 'one-time' | 'monthly' | 'quarterly' | 'yearly'
@@ -6977,29 +7150,31 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
 
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+                <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fee Name</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Effective From</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {customFees.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
                       No custom fees found. Click "Add Custom Fee" to create one.
                     </td>
                   </tr>
                 ) : (
                   customFees.map((fee) => (
                     <tr key={fee.id}>
-                      <td className="px-6 py-4 font-medium">{fee.class_groups?.name || '-'}</td>
-                      <td className="px-6 py-4">{fee.name || '-'}</td>
+                      <td className="px-6 py-4 font-medium">{fee.class_groups?.name || 'All Classes'}</td>
+                      <td className="px-6 py-4">{fee.fee_categories?.name || fee.name || '-'}</td>
                       <td className="px-6 py-4">₹{parseFloat(fee.amount || 0).toFixed(2)}</td>
                       <td className="px-6 py-4">{fee.fee_cycle || '-'}</td>
+                      <td className="px-6 py-4 text-xs text-gray-500">{fee.effective_from ? new Date(fee.effective_from).toLocaleDateString() : '-'}</td>
                       <td className="px-6 py-4">
                         <button
                           onClick={async () => {
@@ -7461,20 +7636,20 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
             <form onSubmit={handleSaveCustomFee}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Class *</label>
+                  <label className="block text-sm font-medium mb-2">Class</label>
                   <select
                     value={customFeeForm.class_group_id}
                     onChange={(e) => setCustomFeeForm({ ...customFeeForm, class_group_id: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
                   >
-                    <option value="">Select Class</option>
+                    <option value="">All Classes</option>
                     {classGroups.map((classGroup) => (
                       <option key={classGroup.id} value={classGroup.id}>
                         {classGroup.name}
                       </option>
                     ))}
                   </select>
+                  <p className="text-xs text-gray-500 mt-1">Select "All Classes" to apply this fee to all classes, or select a specific class</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Custom Fee Name *</label>
