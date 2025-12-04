@@ -324,13 +324,65 @@ router.get('/:studentId/fee-config', requireRoles(['principal', 'clerk']), async
       discount: feeOverridesMap.get(cat.id) || 0
     }));
 
+    // Get custom fees for this student's class (or all classes)
+    const studentClassId = student?.class_group_id;
+    let customFees: any[] = [];
+    if (studentClassId) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: customFeesData } = await adminSupabase
+        .from('optional_fee_definitions')
+        .select('id, amount, fee_cycle, class_group_id, fee_category_id, class_groups:class_group_id(id, name), fee_categories:fee_category_id(id, name, description, fee_type)')
+        .eq('school_id', user.schoolId)
+        .eq('is_active', true)
+        .eq('fee_categories.fee_type', 'custom')
+        .or(`class_group_id.eq.${studentClassId},class_group_id.is.null`)
+        .lte('effective_from', today)
+        .or(`effective_to.is.null,effective_to.gte.${today}`)
+        .order('created_at', { ascending: false });
+
+      if (customFeesData) {
+        // Get custom fee overrides (discounts/exemptions) for this student
+        // Custom fee overrides are stored with fee_category_id pointing to the custom fee's category
+        const customFeeCategoryIds = (customFeesData || []).map((cf: any) => cf.fee_category_id).filter(Boolean);
+        
+        let customFeeOverrides: any[] = [];
+        if (customFeeCategoryIds.length > 0) {
+          const { data: overrides } = await adminSupabase
+            .from('student_fee_overrides')
+            .select('fee_category_id, discount_amount, is_full_free')
+            .eq('student_id', studentId)
+            .eq('school_id', user.schoolId)
+            .in('fee_category_id', customFeeCategoryIds)
+            .eq('is_active', true)
+            .lte('effective_from', today)
+            .or(`effective_to.is.null,effective_to.gte.${today}`);
+          
+          customFeeOverrides = overrides || [];
+        }
+
+        // Map custom fees with their overrides
+        customFees = (customFeesData || []).map((cf: any) => {
+          // Find override by matching fee_category_id
+          const override = customFeeOverrides.find((o: any) => 
+            o.fee_category_id === cf.fee_category_id
+          );
+          return {
+            custom_fee_id: cf.id,
+            discount: override ? parseFloat(override.discount_amount || 0) : 0,
+            is_exempt: override?.is_full_free || false
+          };
+        });
+      }
+    }
+
     return res.json({
       class_fee_id: selectedClassFeeId,
       class_fee_discount: classFeeDiscount,
       transport_enabled: feeProfile?.transport_enabled ?? true,
       transport_route_id: studentTransport?.route_id || null,
       transport_fee_discount: transportFeeDiscount,
-      other_fees: otherFees
+      other_fees: otherFees,
+      custom_fees: customFees
     });
   } catch (err: any) {
     console.error('[students-admin] Error fetching fee config:', err);
@@ -504,7 +556,8 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
           transport_enabled: false,
           transport_route_id: null,
           transport_fee_discount: 0,
-          other_fees: []
+          other_fees: [],
+          custom_fees: []
         };
       }
 
@@ -658,6 +711,60 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
               // If enabled but discount=0, no override needed - fee will use default amount
             }
             // If disabled, no override is created - fee won't be charged
+          }
+        }
+
+        // Set up custom fees (discounts and exemptions)
+        if (feeConfigToApply.custom_fees && feeConfigToApply.custom_fees.length > 0) {
+          for (const customFee of feeConfigToApply.custom_fees) {
+            // Get the custom fee definition to verify it exists
+            const { data: customFeeDef, error: customFeeDefError } = await adminSupabase
+              .from('optional_fee_definitions')
+              .select('id, amount, fee_cycle, fee_category_id, fee_categories:fee_category_id(id, fee_type)')
+              .eq('id', customFee.custom_fee_id)
+              .eq('school_id', user.schoolId)
+              .eq('fee_categories.fee_type', 'custom')
+              .single();
+
+            if (!customFeeDefError && customFeeDef) {
+              // If exempt, mark as full free
+              if (customFee.is_exempt) {
+                const { error: exemptError } = await adminSupabase
+                  .from('student_fee_overrides')
+                  .insert({
+                    student_id: studentId,
+                    school_id: user.schoolId,
+                    fee_category_id: customFeeDef.fee_category_id, // Use the custom fee's category ID
+                    is_full_free: true,
+                    effective_from: today,
+                    is_active: true,
+                    applied_by: user.id,
+                    notes: `Custom fee exemption: ${customFee.custom_fee_id}`
+                  });
+
+                if (exemptError) {
+                  console.error('[students-admin] Error creating custom fee exemption:', exemptError);
+                }
+              } else if (customFee.discount > 0) {
+                // Apply discount if provided
+                const { error: customFeeDiscountError } = await adminSupabase
+                  .from('student_fee_overrides')
+                  .insert({
+                    student_id: studentId,
+                    school_id: user.schoolId,
+                    fee_category_id: customFeeDef.fee_category_id, // Use the custom fee's category ID
+                    discount_amount: customFee.discount,
+                    effective_from: today,
+                    is_active: true,
+                    applied_by: user.id,
+                    notes: `Custom fee discount: ${customFee.custom_fee_id}`
+                  });
+
+                if (customFeeDiscountError) {
+                  console.error('[students-admin] Error creating custom fee discount:', customFeeDiscountError);
+                }
+              }
+            }
           }
         }
       }

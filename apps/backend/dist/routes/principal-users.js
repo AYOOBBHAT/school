@@ -20,6 +20,12 @@ const feeConfigSchema = Joi.object({
         fee_category_id: Joi.string().uuid().required(),
         enabled: Joi.boolean().default(true),
         discount: Joi.number().min(0).default(0)
+    })).default([]),
+    // Custom fees configuration (array of custom fee configurations)
+    custom_fees: Joi.array().items(Joi.object({
+        custom_fee_id: Joi.string().uuid().required(),
+        discount: Joi.number().min(0).default(0),
+        is_exempt: Joi.boolean().default(false)
     })).default([])
 });
 // Schema for adding student
@@ -145,17 +151,19 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
         if (optionalFeesError) {
             console.error('[default-fees] Error fetching optional fees:', optionalFeesError);
         }
-        // 5. Get custom fees (optional_fee_definitions where fee_category_id is null)
+        // 5. Get custom fees (optional_fee_definitions where fee_category has fee_type='custom')
+        // Include fees for this specific class AND fees for all classes (where class_group_id is null)
         const { data: customFees, error: customFeesError } = await supabase
             .from('optional_fee_definitions')
             .select(`
         *,
-        class_groups:class_group_id(id, name)
+        class_groups:class_group_id(id, name),
+        fee_categories:fee_category_id(id, name, description, fee_type)
       `)
-            .eq('class_group_id', classId)
             .eq('school_id', user.schoolId)
             .eq('is_active', true)
-            .is('fee_category_id', null) // Custom fees don't have fee_category_id
+            .eq('fee_categories.fee_type', 'custom') // Custom fees have fee_type='custom'
+            .or(`class_group_id.eq.${classId},class_group_id.is.null`) // This class OR all classes
             .lte('effective_from', today)
             .or(`effective_to.is.null,effective_to.gte.${today}`)
             .order('created_at', { ascending: false });
@@ -590,6 +598,57 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                             });
                             if (disableFeeError) {
                                 console.error('[principal-users] Error disabling fee:', disableFeeError);
+                            }
+                        }
+                    }
+                }
+                // 4. Set up custom fees (discounts and exemptions)
+                if (feeConfig.custom_fees && feeConfig.custom_fees.length > 0) {
+                    for (const customFee of feeConfig.custom_fees) {
+                        // Get the custom fee definition to verify it exists
+                        const { data: customFeeDef, error: customFeeDefError } = await supabase
+                            .from('optional_fee_definitions')
+                            .select('id, amount, fee_cycle, fee_category_id, fee_categories:fee_category_id(id, fee_type)')
+                            .eq('id', customFee.custom_fee_id)
+                            .eq('school_id', user.schoolId)
+                            .eq('fee_categories.fee_type', 'custom')
+                            .single();
+                        if (!customFeeDefError && customFeeDef) {
+                            // If exempt, mark as full free
+                            if (customFee.is_exempt) {
+                                const { error: exemptError } = await supabase
+                                    .from('student_fee_overrides')
+                                    .insert({
+                                    student_id: studentRecord.id,
+                                    school_id: user.schoolId,
+                                    fee_category_id: customFeeDef.fee_category_id, // Use the custom fee's category ID
+                                    is_full_free: true,
+                                    effective_from: today,
+                                    is_active: true,
+                                    applied_by: user.id,
+                                    notes: `Custom fee exemption: ${customFee.custom_fee_id}`
+                                });
+                                if (exemptError) {
+                                    console.error('[principal-users] Error creating custom fee exemption:', exemptError);
+                                }
+                            }
+                            else if (customFee.discount > 0) {
+                                // Apply discount if provided
+                                const { error: customFeeDiscountError } = await supabase
+                                    .from('student_fee_overrides')
+                                    .insert({
+                                    student_id: studentRecord.id,
+                                    school_id: user.schoolId,
+                                    fee_category_id: customFeeDef.fee_category_id, // Use the custom fee's category ID
+                                    discount_amount: customFee.discount,
+                                    effective_from: today,
+                                    is_active: true,
+                                    applied_by: user.id,
+                                    notes: `Custom fee discount: ${customFee.custom_fee_id}`
+                                });
+                                if (customFeeDiscountError) {
+                                    console.error('[principal-users] Error creating custom fee discount:', customFeeDiscountError);
+                                }
                             }
                         }
                     }
