@@ -153,6 +153,133 @@ const hydrateBreakdown = (incoming?: Partial<GenderBreakdown>): GenderBreakdown 
   unknown: incoming?.unknown ?? 0,
 });
 
+interface DoughnutChartProps {
+  title: string;
+  breakdown: GenderBreakdown;
+  colors?: {
+    male: string;
+    female: string;
+    other: string;
+    unknown: string;
+  };
+}
+
+function DoughnutChart({ title, breakdown, colors = {
+  male: '#3B82F6', // blue
+  female: '#EC4899', // pink
+  other: '#10B981', // green
+  unknown: '#9CA3AF', // gray
+} }: DoughnutChartProps) {
+  const size = 200;
+  const strokeWidth = 40;
+  const radius = (size - strokeWidth) / 2;
+  const center = size / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  const data = [
+    { label: 'Male', value: breakdown.male, color: colors.male },
+    { label: 'Female', value: breakdown.female, color: colors.female },
+    { label: 'Other', value: breakdown.other, color: colors.other },
+    { label: 'Not Specified', value: breakdown.unknown, color: colors.unknown },
+  ].filter(item => item.value > 0);
+
+  // Calculate angles and paths for each segment
+  let currentAngle = -90; // Start at top (12 o'clock)
+
+  const segments = data.map((item) => {
+    const percentage = breakdown.total > 0 ? (item.value / breakdown.total) : 0;
+    const angle = percentage * 360;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + angle;
+    currentAngle = endAngle;
+
+    // Calculate arc path
+    const startAngleRad = (startAngle * Math.PI) / 180;
+    const endAngleRad = (endAngle * Math.PI) / 180;
+    
+    const x1 = center + radius * Math.cos(startAngleRad);
+    const y1 = center + radius * Math.sin(startAngleRad);
+    const x2 = center + radius * Math.cos(endAngleRad);
+    const y2 = center + radius * Math.sin(endAngleRad);
+    
+    const largeArcFlag = angle > 180 ? 1 : 0;
+    
+    const pathData = [
+      `M ${center} ${center}`,
+      `L ${x1} ${y1}`,
+      `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+      'Z',
+    ].join(' ');
+
+    return {
+      ...item,
+      percentage,
+      pathData,
+    };
+  });
+
+  return (
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <h3 className="text-lg font-semibold text-gray-700 mb-4">{title}</h3>
+      <div className="flex flex-col items-center">
+        <div className="relative" style={{ width: size, height: size }}>
+          <svg width={size} height={size}>
+            {segments.map((segment, index) => (
+              <path
+                key={index}
+                d={segment.pathData}
+                fill={segment.color}
+                className="transition-all duration-500"
+              />
+            ))}
+            {breakdown.total === 0 && (
+              <circle
+                cx={center}
+                cy={center}
+                r={radius}
+                fill="none"
+                stroke="#E5E7EB"
+                strokeWidth={strokeWidth}
+              />
+            )}
+            {/* Inner circle to create doughnut effect */}
+            <circle
+              cx={center}
+              cy={center}
+              r={radius - strokeWidth}
+              fill="white"
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-gray-900">{breakdown.total}</div>
+              <div className="text-xs text-gray-500 mt-1">Total</div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-6 w-full max-w-xs">
+          <div className="grid grid-cols-2 gap-3">
+            {data.map((item, index) => (
+              <div key={index} className="flex items-center space-x-2">
+                <div
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: item.color }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-700 truncate">{item.label}</div>
+                  <div className="text-xs text-gray-500">
+                    {item.value} ({breakdown.total > 0 ? ((item.value / breakdown.total) * 100).toFixed(1) : 0}%)
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DashboardOverview() {
   const [stats, setStats] = useState<DashboardStats>({
     totalStudents: 0,
@@ -164,7 +291,6 @@ function DashboardOverview() {
   const [loading, setLoading] = useState(true);
   const [schoolInfo, setSchoolInfo] = useState<any>(null);
   const [joinCodeCopied, setJoinCodeCopied] = useState(false);
-  const [activeBreakdown, setActiveBreakdown] = useState<'students' | 'staff' | null>(null);
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -344,26 +470,6 @@ function DashboardOverview() {
     return <div className="p-6">Loading...</div>;
   }
 
-  const statCards = [
-    {
-      label: 'Total Students',
-      value: stats.totalStudents,
-      icon: '🎓',
-      color: 'bg-blue-500',
-      description: 'Click to view gender-wise totals',
-      onClick: stats.totalStudents > 0 ? () => setActiveBreakdown('students') : undefined,
-    },
-    {
-      label: 'Staff Members',
-      value: stats.totalStaff,
-      icon: '👥',
-      color: 'bg-green-500',
-      description: 'Click to view gender-wise totals',
-      onClick: stats.totalStaff > 0 ? () => setActiveBreakdown('staff') : undefined,
-    },
-    { label: 'Classes', value: stats.totalClasses, icon: '🏫', color: 'bg-purple-500' },
-  ];
-
   const copyJoinCode = async () => {
     if (schoolInfo?.join_code) {
       try {
@@ -385,64 +491,6 @@ function DashboardOverview() {
     }
   };
 
-  const renderBreakdownModal = () => {
-    if (!activeBreakdown) return null;
-    const breakdown = activeBreakdown === 'students' ? stats.studentsByGender : stats.staffByGender;
-    const title = activeBreakdown === 'students' ? 'Student Gender Breakdown' : 'Staff Gender Breakdown';
-    const rows = [
-      { label: 'Male', value: breakdown.male },
-      { label: 'Female', value: breakdown.female },
-      { label: 'Other', value: breakdown.other },
-      { label: 'Not Specified', value: breakdown.unknown },
-    ];
-
-    const formatPercent = (value: number, total: number) => {
-      if (!total) return '0%';
-      return `${((value / total) * 100).toFixed(1)}%`;
-    };
-
-    return (
-      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-        <div className="bg-white rounded-lg shadow-2xl w-full max-w-md p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="text-xl font-bold text-gray-900">{title}</h3>
-              <p className="text-sm text-gray-500">Total: {breakdown.total}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setActiveBreakdown(null)}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {rows.map((row) => (
-              <div key={row.label} className="flex items-center justify-between py-3 text-sm">
-                <span className="text-gray-700">{row.label}</span>
-                <span className="font-semibold text-gray-900">
-                  {row.value}
-                  {breakdown.total > 0 && (
-                    <span className="text-gray-500 text-xs ml-2">
-                      {formatPercent(row.value, breakdown.total)}
-                    </span>
-                  )}
-                </span>
-              </div>
-            ))}
-            <div className="flex items-center justify-between py-3 text-sm font-semibold">
-              <span className="text-gray-900">Total</span>
-              <span className="text-gray-900">{breakdown.total}</span>
-            </div>
-          </div>
-          <p className="text-xs text-gray-500 mt-4">
-            Tip: Update staff and student profiles with gender information to keep these insights accurate.
-          </p>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="p-6">
@@ -529,68 +577,27 @@ function DashboardOverview() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {statCards.map((stat) => {
-          const isInteractive = Boolean(stat.onClick);
-          const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-            if (!isInteractive) return;
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              stat.onClick?.();
-            }
-          };
-
-          return (
-            <div
-              key={stat.label}
-              className={`bg-white rounded-lg shadow-md p-6 transition ${
-                isInteractive ? 'cursor-pointer hover:-translate-y-1 hover:shadow-lg focus-within:ring-2 focus-within:ring-blue-500' : ''
-              }`}
-              onClick={stat.onClick}
-              role={isInteractive ? 'button' : undefined}
-              tabIndex={isInteractive ? 0 : undefined}
-              onKeyDown={handleKeyDown}
-              title={isInteractive ? 'Click to view detailed breakdown' : undefined}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 text-sm">{stat.label}</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-2">{stat.value}</p>
-                </div>
-                <div className={`${stat.color} text-white p-4 rounded-full text-2xl`}>
-                  {stat.icon}
-                </div>
-              </div>
-              {isInteractive && (
-                <p className="text-xs text-gray-500 mt-3">
-                  {stat.description || 'Click to view more details'}
-                </p>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {renderBreakdownModal()}
-
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-xl font-bold mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link
-            to="/principal/classes"
-            className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center"
-          >
-            <div className="text-2xl mb-2">🏫</div>
-            <div className="font-semibold">Manage Classes</div>
-          </Link>
-          <Link
-            to="/principal/staff"
-            className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center"
-          >
-            <div className="text-2xl mb-2">👥</div>
-            <div className="font-semibold">Manage Staff</div>
-          </Link>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <DoughnutChart
+          title="Student Gender Breakdown"
+          breakdown={stats.studentsByGender}
+          colors={{
+            male: '#3B82F6', // blue
+            female: '#EC4899', // pink
+            other: '#10B981', // green
+            unknown: '#9CA3AF', // gray
+          }}
+        />
+        <DoughnutChart
+          title="Staff Gender Breakdown"
+          breakdown={stats.staffByGender}
+          colors={{
+            male: '#3B82F6', // blue
+            female: '#EC4899', // pink
+            other: '#10B981', // green
+            unknown: '#9CA3AF', // gray
+          }}
+        />
       </div>
     </div>
   );
@@ -6393,6 +6400,12 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
     else if (activeTab === 'transport') loadTransportData();
     else if (activeTab === 'tracking') loadFeeTracking();
+    else if (activeTab === 'hikes') {
+      // Load all fee types for hikes tab
+      loadClassFees();
+      loadTransportData();
+      loadCustomFees();
+    }
   }, [activeTab]);
 
   const loadInitialData = async () => {
@@ -6680,7 +6693,7 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
   };
 
-  const handleHikeFee = async (fee: any, feeType: 'class' | 'transport') => {
+  const handleHikeFee = async (fee: any, feeType: 'class' | 'transport' | 'custom') => {
     setSelectedFeeForHike({ ...fee, feeType });
     setHikeForm({
       new_amount: fee.amount?.toString() || '',
@@ -6699,8 +6712,9 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
         url = `${API_URL}/fees/class-fees/${fee.id}/versions`;
       } else if (feeType === 'transport') {
         url = `${API_URL}/fees/transport/fees/${fee.id}/versions`;
+      } else if (feeType === 'custom') {
+        url = `${API_URL}/fees/custom-fees/${fee.id}/versions`;
       }
-      // Optional fees removed
 
       if (url) {
         const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -6762,7 +6776,13 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       // Reload fees
       if (activeTab === 'class-fees') loadClassFees();
       else if (activeTab === 'transport') loadTransportData();
-      // Optional fees removed
+      else if (activeTab === 'custom-fees') loadCustomFees();
+      else if (activeTab === 'hikes') {
+        // Reload all fee types for hikes tab
+        loadClassFees();
+        loadTransportData();
+        loadCustomFees();
+      }
     } catch (error: any) {
       alert(error.message || 'Failed to hike fee');
     }
@@ -7811,7 +7831,49 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
             </div>
           </div>
 
-          {/* Optional Fees Section - REMOVED */}
+          {/* Custom Fees Section */}
+          <div className="mb-8">
+            <h4 className="text-lg font-semibold mb-4">Custom Fees</h4>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fee Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cycle</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {customFees.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                        No custom fees found.
+                      </td>
+                    </tr>
+                  ) : (
+                    customFees.map((fee) => (
+                      <tr key={fee.id}>
+                        <td className="px-6 py-4">{fee.class_groups?.name || 'All Classes'}</td>
+                        <td className="px-6 py-4">{fee.fee_categories?.name || fee.name || '-'}</td>
+                        <td className="px-6 py-4">₹{parseFloat(fee.amount || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4">{fee.fee_cycle || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                            onClick={() => handleHikeFee(fee, 'custom')}
+                            className="text-blue-600 hover:text-blue-800 mr-4"
+                          >
+                            Hike Fee
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 

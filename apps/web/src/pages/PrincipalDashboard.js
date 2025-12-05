@@ -61,6 +61,53 @@ const hydrateBreakdown = (incoming) => ({
     other: incoming?.other ?? 0,
     unknown: incoming?.unknown ?? 0,
 });
+function DoughnutChart({ title, breakdown, colors = {
+    male: '#3B82F6', // blue
+    female: '#EC4899', // pink
+    other: '#10B981', // green
+    unknown: '#9CA3AF', // gray
+} }) {
+    const size = 200;
+    const strokeWidth = 40;
+    const radius = (size - strokeWidth) / 2;
+    const center = size / 2;
+    const circumference = 2 * Math.PI * radius;
+    const data = [
+        { label: 'Male', value: breakdown.male, color: colors.male },
+        { label: 'Female', value: breakdown.female, color: colors.female },
+        { label: 'Other', value: breakdown.other, color: colors.other },
+        { label: 'Not Specified', value: breakdown.unknown, color: colors.unknown },
+    ].filter(item => item.value > 0);
+    // Calculate angles and paths for each segment
+    let currentAngle = -90; // Start at top (12 o'clock)
+    const segments = data.map((item) => {
+        const percentage = breakdown.total > 0 ? (item.value / breakdown.total) : 0;
+        const angle = percentage * 360;
+        const startAngle = currentAngle;
+        const endAngle = currentAngle + angle;
+        currentAngle = endAngle;
+        // Calculate arc path
+        const startAngleRad = (startAngle * Math.PI) / 180;
+        const endAngleRad = (endAngle * Math.PI) / 180;
+        const x1 = center + radius * Math.cos(startAngleRad);
+        const y1 = center + radius * Math.sin(startAngleRad);
+        const x2 = center + radius * Math.cos(endAngleRad);
+        const y2 = center + radius * Math.sin(endAngleRad);
+        const largeArcFlag = angle > 180 ? 1 : 0;
+        const pathData = [
+            `M ${center} ${center}`,
+            `L ${x1} ${y1}`,
+            `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+            'Z',
+        ].join(' ');
+        return {
+            ...item,
+            percentage,
+            pathData,
+        };
+    });
+    return (_jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h3", { className: "text-lg font-semibold text-gray-700 mb-4", children: title }), _jsxs("div", { className: "flex flex-col items-center", children: [_jsxs("div", { className: "relative", style: { width: size, height: size }, children: [_jsxs("svg", { width: size, height: size, children: [segments.map((segment, index) => (_jsx("path", { d: segment.pathData, fill: segment.color, className: "transition-all duration-500" }, index))), breakdown.total === 0 && (_jsx("circle", { cx: center, cy: center, r: radius, fill: "none", stroke: "#E5E7EB", strokeWidth: strokeWidth })), _jsx("circle", { cx: center, cy: center, r: radius - strokeWidth, fill: "white" })] }), _jsx("div", { className: "absolute inset-0 flex items-center justify-center", children: _jsxs("div", { className: "text-center", children: [_jsx("div", { className: "text-3xl font-bold text-gray-900", children: breakdown.total }), _jsx("div", { className: "text-xs text-gray-500 mt-1", children: "Total" })] }) })] }), _jsx("div", { className: "mt-6 w-full max-w-xs", children: _jsx("div", { className: "grid grid-cols-2 gap-3", children: data.map((item, index) => (_jsxs("div", { className: "flex items-center space-x-2", children: [_jsx("div", { className: "w-3 h-3 rounded-full flex-shrink-0", style: { backgroundColor: item.color } }), _jsxs("div", { className: "flex-1 min-w-0", children: [_jsx("div", { className: "text-sm font-medium text-gray-700 truncate", children: item.label }), _jsxs("div", { className: "text-xs text-gray-500", children: [item.value, " (", breakdown.total > 0 ? ((item.value / breakdown.total) * 100).toFixed(1) : 0, "%)"] })] })] }, index))) }) })] })] }));
+}
 function DashboardOverview() {
     const [stats, setStats] = useState({
         totalStudents: 0,
@@ -72,7 +119,6 @@ function DashboardOverview() {
     const [loading, setLoading] = useState(true);
     const [schoolInfo, setSchoolInfo] = useState(null);
     const [joinCodeCopied, setJoinCodeCopied] = useState(false);
-    const [activeBreakdown, setActiveBreakdown] = useState(null);
     useEffect(() => {
         const loadDashboardData = async () => {
             try {
@@ -231,25 +277,6 @@ function DashboardOverview() {
     if (loading) {
         return _jsx("div", { className: "p-6", children: "Loading..." });
     }
-    const statCards = [
-        {
-            label: 'Total Students',
-            value: stats.totalStudents,
-            icon: '🎓',
-            color: 'bg-blue-500',
-            description: 'Click to view gender-wise totals',
-            onClick: stats.totalStudents > 0 ? () => setActiveBreakdown('students') : undefined,
-        },
-        {
-            label: 'Staff Members',
-            value: stats.totalStaff,
-            icon: '👥',
-            color: 'bg-green-500',
-            description: 'Click to view gender-wise totals',
-            onClick: stats.totalStaff > 0 ? () => setActiveBreakdown('staff') : undefined,
-        },
-        { label: 'Classes', value: stats.totalClasses, icon: '🏫', color: 'bg-purple-500' },
-    ];
     const copyJoinCode = async () => {
         if (schoolInfo?.join_code) {
             try {
@@ -271,36 +298,17 @@ function DashboardOverview() {
             }
         }
     };
-    const renderBreakdownModal = () => {
-        if (!activeBreakdown)
-            return null;
-        const breakdown = activeBreakdown === 'students' ? stats.studentsByGender : stats.staffByGender;
-        const title = activeBreakdown === 'students' ? 'Student Gender Breakdown' : 'Staff Gender Breakdown';
-        const rows = [
-            { label: 'Male', value: breakdown.male },
-            { label: 'Female', value: breakdown.female },
-            { label: 'Other', value: breakdown.other },
-            { label: 'Not Specified', value: breakdown.unknown },
-        ];
-        const formatPercent = (value, total) => {
-            if (!total)
-                return '0%';
-            return `${((value / total) * 100).toFixed(1)}%`;
-        };
-        return (_jsx("div", { className: "fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4", children: _jsxs("div", { className: "bg-white rounded-lg shadow-2xl w-full max-w-md p-6", children: [_jsxs("div", { className: "flex items-start justify-between mb-4", children: [_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-bold text-gray-900", children: title }), _jsxs("p", { className: "text-sm text-gray-500", children: ["Total: ", breakdown.total] })] }), _jsx("button", { type: "button", onClick: () => setActiveBreakdown(null), className: "text-gray-500 hover:text-gray-700", children: "\u2715" })] }), _jsxs("div", { className: "divide-y divide-gray-100", children: [rows.map((row) => (_jsxs("div", { className: "flex items-center justify-between py-3 text-sm", children: [_jsx("span", { className: "text-gray-700", children: row.label }), _jsxs("span", { className: "font-semibold text-gray-900", children: [row.value, breakdown.total > 0 && (_jsx("span", { className: "text-gray-500 text-xs ml-2", children: formatPercent(row.value, breakdown.total) }))] })] }, row.label))), _jsxs("div", { className: "flex items-center justify-between py-3 text-sm font-semibold", children: [_jsx("span", { className: "text-gray-900", children: "Total" }), _jsx("span", { className: "text-gray-900", children: breakdown.total })] })] }), _jsx("p", { className: "text-xs text-gray-500 mt-4", children: "Tip: Update staff and student profiles with gender information to keep these insights accurate." })] }) }));
-    };
-    return (_jsxs("div", { className: "p-6", children: [_jsxs("div", { className: "mb-6", children: [_jsx("h2", { className: "text-3xl font-bold text-gray-900", children: "Dashboard" }), schoolInfo && (_jsxs("div", { className: "mt-4 space-y-2", children: [_jsxs("p", { className: "text-gray-600", children: ["Welcome to ", _jsx("span", { className: "font-semibold text-gray-900", children: schoolInfo.name })] }), _jsxs("div", { className: "flex flex-wrap gap-4 text-sm text-gray-600", children: [schoolInfo.join_code && (_jsxs("div", { className: "flex items-center gap-2", children: [_jsx("span", { className: "font-medium", children: "School Code:" }), _jsx("span", { className: "font-mono font-semibold text-gray-900", children: schoolInfo.join_code })] })), schoolInfo.registration_number && (_jsxs("div", { className: "flex items-center gap-2", children: [_jsx("span", { className: "font-medium", children: "Registration No:" }), _jsx("span", { className: "font-semibold text-gray-900", children: schoolInfo.registration_number })] }))] })] }))] }), schoolInfo && (_jsx("div", { className: "bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 mb-6 text-white", children: _jsxs("div", { className: "flex items-center justify-between", children: [_jsxs("div", { className: "flex-1", children: [_jsx("h3", { className: "text-lg font-semibold mb-2", children: "School Join Code" }), _jsx("p", { className: "text-sm opacity-90 mb-3", children: "Share this code with teachers, students, and parents so they can join your school" }), schoolInfo.join_code ? (_jsxs("div", { className: "flex items-center gap-3 flex-wrap", children: [_jsx("code", { className: "text-2xl font-bold bg-white/20 px-4 py-2 rounded-lg font-mono", children: schoolInfo.join_code }), _jsx("button", { onClick: copyJoinCode, className: "bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-50 transition flex items-center gap-2", children: joinCodeCopied ? (_jsxs(_Fragment, { children: [_jsx("span", { children: "\u2713" }), _jsx("span", { children: "Copied!" })] })) : (_jsxs(_Fragment, { children: [_jsx("span", { children: "\uD83D\uDCCB" }), _jsx("span", { children: "Copy Code" })] })) })] })) : (_jsxs("div", { className: "bg-white/20 rounded-lg p-4", children: [_jsx("p", { className: "text-white font-semibold mb-2", children: "\u26A0\uFE0F Join Code Not Found" }), _jsx("p", { className: "text-sm opacity-90", children: "Your school join code is missing. Please contact support or check your school settings." }), _jsxs("p", { className: "text-xs opacity-75 mt-2", children: ["School ID: ", schoolInfo.id] })] }))] }), _jsx("div", { className: "text-6xl opacity-20 ml-4", children: "\uD83D\uDD11" })] }) })), process.env.NODE_ENV === 'development' && schoolInfo && (_jsxs("div", { className: "bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-sm", children: [_jsx("p", { className: "font-semibold text-yellow-800 mb-2", children: "Debug Info:" }), _jsx("pre", { className: "text-xs text-yellow-700 overflow-auto", children: JSON.stringify({ schoolInfo, hasJoinCode: !!schoolInfo?.join_code }, null, 2) })] })), _jsx("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8", children: statCards.map((stat) => {
-                    const isInteractive = Boolean(stat.onClick);
-                    const handleKeyDown = (event) => {
-                        if (!isInteractive)
-                            return;
-                        if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            stat.onClick?.();
-                        }
-                    };
-                    return (_jsxs("div", { className: `bg-white rounded-lg shadow-md p-6 transition ${isInteractive ? 'cursor-pointer hover:-translate-y-1 hover:shadow-lg focus-within:ring-2 focus-within:ring-blue-500' : ''}`, onClick: stat.onClick, role: isInteractive ? 'button' : undefined, tabIndex: isInteractive ? 0 : undefined, onKeyDown: handleKeyDown, title: isInteractive ? 'Click to view detailed breakdown' : undefined, children: [_jsxs("div", { className: "flex items-center justify-between", children: [_jsxs("div", { children: [_jsx("p", { className: "text-gray-600 text-sm", children: stat.label }), _jsx("p", { className: "text-3xl font-bold text-gray-900 mt-2", children: stat.value })] }), _jsx("div", { className: `${stat.color} text-white p-4 rounded-full text-2xl`, children: stat.icon })] }), isInteractive && (_jsx("p", { className: "text-xs text-gray-500 mt-3", children: stat.description || 'Click to view more details' }))] }, stat.label));
-                }) }), renderBreakdownModal(), _jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Quick Actions" }), _jsxs("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4", children: [_jsxs(Link, { to: "/principal/classes", className: "p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center", children: [_jsx("div", { className: "text-2xl mb-2", children: "\uD83C\uDFEB" }), _jsx("div", { className: "font-semibold", children: "Manage Classes" })] }), _jsxs(Link, { to: "/principal/staff", className: "p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center", children: [_jsx("div", { className: "text-2xl mb-2", children: "\uD83D\uDC65" }), _jsx("div", { className: "font-semibold", children: "Manage Staff" })] })] })] })] }));
+    return (_jsxs("div", { className: "p-6", children: [_jsxs("div", { className: "mb-6", children: [_jsx("h2", { className: "text-3xl font-bold text-gray-900", children: "Dashboard" }), schoolInfo && (_jsxs("div", { className: "mt-4 space-y-2", children: [_jsxs("p", { className: "text-gray-600", children: ["Welcome to ", _jsx("span", { className: "font-semibold text-gray-900", children: schoolInfo.name })] }), _jsxs("div", { className: "flex flex-wrap gap-4 text-sm text-gray-600", children: [schoolInfo.join_code && (_jsxs("div", { className: "flex items-center gap-2", children: [_jsx("span", { className: "font-medium", children: "School Code:" }), _jsx("span", { className: "font-mono font-semibold text-gray-900", children: schoolInfo.join_code })] })), schoolInfo.registration_number && (_jsxs("div", { className: "flex items-center gap-2", children: [_jsx("span", { className: "font-medium", children: "Registration No:" }), _jsx("span", { className: "font-semibold text-gray-900", children: schoolInfo.registration_number })] }))] })] }))] }), schoolInfo && (_jsx("div", { className: "bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 mb-6 text-white", children: _jsxs("div", { className: "flex items-center justify-between", children: [_jsxs("div", { className: "flex-1", children: [_jsx("h3", { className: "text-lg font-semibold mb-2", children: "School Join Code" }), _jsx("p", { className: "text-sm opacity-90 mb-3", children: "Share this code with teachers, students, and parents so they can join your school" }), schoolInfo.join_code ? (_jsxs("div", { className: "flex items-center gap-3 flex-wrap", children: [_jsx("code", { className: "text-2xl font-bold bg-white/20 px-4 py-2 rounded-lg font-mono", children: schoolInfo.join_code }), _jsx("button", { onClick: copyJoinCode, className: "bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-50 transition flex items-center gap-2", children: joinCodeCopied ? (_jsxs(_Fragment, { children: [_jsx("span", { children: "\u2713" }), _jsx("span", { children: "Copied!" })] })) : (_jsxs(_Fragment, { children: [_jsx("span", { children: "\uD83D\uDCCB" }), _jsx("span", { children: "Copy Code" })] })) })] })) : (_jsxs("div", { className: "bg-white/20 rounded-lg p-4", children: [_jsx("p", { className: "text-white font-semibold mb-2", children: "\u26A0\uFE0F Join Code Not Found" }), _jsx("p", { className: "text-sm opacity-90", children: "Your school join code is missing. Please contact support or check your school settings." }), _jsxs("p", { className: "text-xs opacity-75 mt-2", children: ["School ID: ", schoolInfo.id] })] }))] }), _jsx("div", { className: "text-6xl opacity-20 ml-4", children: "\uD83D\uDD11" })] }) })), process.env.NODE_ENV === 'development' && schoolInfo && (_jsxs("div", { className: "bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-sm", children: [_jsx("p", { className: "font-semibold text-yellow-800 mb-2", children: "Debug Info:" }), _jsx("pre", { className: "text-xs text-yellow-700 overflow-auto", children: JSON.stringify({ schoolInfo, hasJoinCode: !!schoolInfo?.join_code }, null, 2) })] })), _jsxs("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6 mb-8", children: [_jsx(DoughnutChart, { title: "Student Gender Breakdown", breakdown: stats.studentsByGender, colors: {
+                            male: '#3B82F6', // blue
+                            female: '#EC4899', // pink
+                            other: '#10B981', // green
+                            unknown: '#9CA3AF', // gray
+                        } }), _jsx(DoughnutChart, { title: "Staff Gender Breakdown", breakdown: stats.staffByGender, colors: {
+                            male: '#3B82F6', // blue
+                            female: '#EC4899', // pink
+                            other: '#10B981', // green
+                            unknown: '#9CA3AF', // gray
+                        } })] })] }));
 }
 function StaffManagement() {
     const [staff, setStaff] = useState([]);
@@ -2793,6 +2801,12 @@ function FeeManagement({ userRole = 'principal' }) {
             loadTransportData();
         else if (activeTab === 'tracking')
             loadFeeTracking();
+        else if (activeTab === 'hikes') {
+            // Load all fee types for hikes tab
+            loadClassFees();
+            loadTransportData();
+            loadCustomFees();
+        }
     }, [activeTab]);
     const loadInitialData = async () => {
         try {
@@ -3083,7 +3097,9 @@ function FeeManagement({ userRole = 'principal' }) {
             else if (feeType === 'transport') {
                 url = `${API_URL}/fees/transport/fees/${fee.id}/versions`;
             }
-            // Optional fees removed
+            else if (feeType === 'custom') {
+                url = `${API_URL}/fees/custom-fees/${fee.id}/versions`;
+            }
             if (url) {
                 const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
                 if (response.ok) {
@@ -3143,7 +3159,14 @@ function FeeManagement({ userRole = 'principal' }) {
                 loadClassFees();
             else if (activeTab === 'transport')
                 loadTransportData();
-            // Optional fees removed
+            else if (activeTab === 'custom-fees')
+                loadCustomFees();
+            else if (activeTab === 'hikes') {
+                // Reload all fee types for hikes tab
+                loadClassFees();
+                loadTransportData();
+                loadCustomFees();
+            }
         }
         catch (error) {
             alert(error.message || 'Failed to hike fee');
@@ -3333,7 +3356,7 @@ function FeeManagement({ userRole = 'principal' }) {
                                                     parseFloat(fee.escort_fee || 0) +
                                                     parseFloat(fee.fuel_surcharge || 0);
                                                 return (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: fee.transport_routes?.route_name || '-' }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", totalAmount.toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: fee.fee_cycle }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("button", { onClick: () => handleHikeFee({ ...fee, amount: totalAmount }, 'transport'), className: "text-blue-600 hover:text-blue-800 mr-4", children: "Hike Fee" }) })] }, fee.id));
-                                            })) })] }) })] })] })), showHikeModal && selectedFeeForHike && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Hike Fee" }), _jsxs("form", { onSubmit: handleSubmitHike, children: [_jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Current Amount" }), _jsx("input", { type: "text", value: selectedFeeForHike.amount || '', disabled: true, className: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100" })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "New Amount *" }), _jsx("input", { type: "number", step: "0.01", required: true, value: hikeForm.new_amount, onChange: (e) => setHikeForm({ ...hikeForm, new_amount: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-lg" })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Effective From Date *" }), _jsx("input", { type: "date", required: true, value: hikeForm.effective_from_date, onChange: (e) => setHikeForm({ ...hikeForm, effective_from_date: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-lg" }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Bills generated after this date will use the new amount. Past bills remain unchanged." })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Notes (Optional)" }), _jsx("textarea", { value: hikeForm.notes, onChange: (e) => setHikeForm({ ...hikeForm, notes: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-lg", rows: 3 })] }), feeVersions.length > 0 && (_jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Version History" }), _jsx("div", { className: "max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2", children: feeVersions.map((version, idx) => (_jsxs("div", { className: "text-xs mb-2 pb-2 border-b last:border-0", children: [_jsxs("div", { className: "flex justify-between", children: [_jsxs("span", { className: "font-medium", children: ["Version ", version.version_number] }), _jsxs("span", { children: ["\u20B9", parseFloat(version.amount || 0).toLocaleString()] })] }), _jsxs("div", { className: "text-gray-500", children: [new Date(version.effective_from_date).toLocaleDateString(), " -", ' ', version.effective_to_date
+                                            })) })] }) })] }), _jsxs("div", { className: "mb-8", children: [_jsx("h4", { className: "text-lg font-semibold mb-4", children: "Custom Fees" }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Class" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Fee Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Current Amount" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Cycle" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: customFees.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 5, className: "px-6 py-4 text-center text-gray-500", children: "No custom fees found." }) })) : (customFees.map((fee) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: fee.class_groups?.name || 'All Classes' }), _jsx("td", { className: "px-6 py-4", children: fee.fee_categories?.name || fee.name || '-' }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(fee.amount || 0).toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: fee.fee_cycle || '-' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("button", { onClick: () => handleHikeFee(fee, 'custom'), className: "text-blue-600 hover:text-blue-800 mr-4", children: "Hike Fee" }) })] }, fee.id)))) })] }) })] })] })), showHikeModal && selectedFeeForHike && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Hike Fee" }), _jsxs("form", { onSubmit: handleSubmitHike, children: [_jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Current Amount" }), _jsx("input", { type: "text", value: selectedFeeForHike.amount || '', disabled: true, className: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100" })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "New Amount *" }), _jsx("input", { type: "number", step: "0.01", required: true, value: hikeForm.new_amount, onChange: (e) => setHikeForm({ ...hikeForm, new_amount: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-lg" })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Effective From Date *" }), _jsx("input", { type: "date", required: true, value: hikeForm.effective_from_date, onChange: (e) => setHikeForm({ ...hikeForm, effective_from_date: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-lg" }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Bills generated after this date will use the new amount. Past bills remain unchanged." })] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Notes (Optional)" }), _jsx("textarea", { value: hikeForm.notes, onChange: (e) => setHikeForm({ ...hikeForm, notes: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-lg", rows: 3 })] }), feeVersions.length > 0 && (_jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Version History" }), _jsx("div", { className: "max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2", children: feeVersions.map((version, idx) => (_jsxs("div", { className: "text-xs mb-2 pb-2 border-b last:border-0", children: [_jsxs("div", { className: "flex justify-between", children: [_jsxs("span", { className: "font-medium", children: ["Version ", version.version_number] }), _jsxs("span", { children: ["\u20B9", parseFloat(version.amount || 0).toLocaleString()] })] }), _jsxs("div", { className: "text-gray-500", children: [new Date(version.effective_from_date).toLocaleDateString(), " -", ' ', version.effective_to_date
                                                                 ? new Date(version.effective_to_date).toLocaleDateString()
                                                                 : 'Active'] })] }, version.id))) })] })), _jsxs("div", { className: "flex justify-end space-x-3", children: [_jsx("button", { type: "button", onClick: () => {
                                                 setShowHikeModal(false);

@@ -876,7 +876,7 @@ router.post('/class-fees/:id/hike', requireRoles(['principal']), async (req, res
         // Import fee versioning utilities
         const { hikeClassFee } = await import('../utils/feeVersioning.js');
         const effectiveFromDate = new Date(value.effective_from_date);
-        const versionId = await hikeClassFee(user.schoolId, classFee.class_group_id, classFee.fee_category_id, classFee.fee_cycle, value.new_amount, effectiveFromDate, user.id, adminSupabase);
+        const versionId = await hikeClassFee(user.schoolId, classFee.class_group_id || null, classFee.fee_category_id || null, classFee.fee_cycle, value.new_amount, effectiveFromDate, user.id, adminSupabase);
         // Update the class_fee_defaults amount to reflect current version
         await adminSupabase
             .from('class_fee_defaults')
@@ -924,7 +924,7 @@ router.post('/transport/fees/:id/hike', requireRoles(['principal']), async (req,
             .select('class_group_id')
             .eq('id', transportFee.route_id)
             .single();
-        const classGroupId = route?.class_group_id || transportFee.class_group_id;
+        const classGroupId = route?.class_group_id || transportFee.class_group_id || null;
         const routeName = transportFee.transport_routes?.route_name || null;
         const totalAmount = parseFloat(transportFee.base_fee || 0) +
             parseFloat(transportFee.escort_fee || 0) +
@@ -952,6 +952,125 @@ router.post('/transport/fees/:id/hike', requireRoles(['principal']), async (req,
     catch (err) {
         console.error('[transport-fee-hike] Error:', err);
         return res.status(500).json({ error: err.message || 'Failed to hike transport fee' });
+    }
+});
+// Hike Custom Fee (Create New Version)
+router.post('/custom-fees/:id/hike', requireRoles(['principal']), async (req, res) => {
+    const { error, value } = feeHikeSchema.validate(req.body);
+    if (error)
+        return res.status(400).json({ error: error.message });
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        // First, get all custom fee category IDs
+        const { data: customCategories, error: catError } = await adminSupabase
+            .from('fee_categories')
+            .select('id')
+            .eq('fee_type', 'custom')
+            .eq('school_id', user.schoolId);
+        if (catError) {
+            return res.status(500).json({ error: `Failed to fetch custom fee categories: ${catError.message}` });
+        }
+        const customCategoryIds = (customCategories || []).map((cat) => cat.id);
+        if (customCategoryIds.length === 0) {
+            return res.status(404).json({ error: 'No custom fee categories found' });
+        }
+        // Get the custom fee definition to get class_group_id, fee_category_id, fee_cycle
+        const { data: customFee, error: feeError } = await adminSupabase
+            .from('optional_fee_definitions')
+            .select('*')
+            .eq('id', req.params.id)
+            .eq('school_id', user.schoolId)
+            .in('fee_category_id', customCategoryIds)
+            .single();
+        if (feeError || !customFee) {
+            return res.status(404).json({ error: 'Custom fee not found' });
+        }
+        // Import fee versioning utilities
+        const { hikeOptionalFee } = await import('../utils/feeVersioning.js');
+        const effectiveFromDate = new Date(value.effective_from_date);
+        const versionId = await hikeOptionalFee(user.schoolId, customFee.class_group_id || null, customFee.fee_category_id, customFee.fee_cycle, value.new_amount, effectiveFromDate, user.id, adminSupabase);
+        // Update the optional_fee_definitions amount to reflect current version
+        await adminSupabase
+            .from('optional_fee_definitions')
+            .update({ amount: value.new_amount, updated_at: new Date().toISOString() })
+            .eq('id', req.params.id);
+        return res.json({
+            success: true,
+            message: 'Custom fee hike applied successfully',
+            version_id: versionId,
+            new_amount: value.new_amount,
+            effective_from_date: effectiveFromDate.toISOString().split('T')[0]
+        });
+    }
+    catch (err) {
+        console.error('[custom-fee-hike] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to hike custom fee' });
+    }
+});
+// Get custom fee versions
+router.get('/custom-fees/:id/versions', requireRoles(['principal', 'clerk']), async (req, res) => {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        // First, get all custom fee category IDs
+        const { data: customCategories, error: catError } = await adminSupabase
+            .from('fee_categories')
+            .select('id')
+            .eq('fee_type', 'custom')
+            .eq('school_id', user.schoolId);
+        if (catError) {
+            return res.status(500).json({ error: `Failed to fetch custom fee categories: ${catError.message}` });
+        }
+        const customCategoryIds = (customCategories || []).map((cat) => cat.id);
+        if (customCategoryIds.length === 0) {
+            return res.status(404).json({ error: 'No custom fee categories found' });
+        }
+        // Get the custom fee definition
+        const { data: customFee, error: feeError } = await adminSupabase
+            .from('optional_fee_definitions')
+            .select('class_group_id, fee_category_id, fee_cycle')
+            .eq('id', req.params.id)
+            .eq('school_id', user.schoolId)
+            .in('fee_category_id', customCategoryIds)
+            .single();
+        if (feeError || !customFee) {
+            return res.status(404).json({ error: 'Custom fee not found' });
+        }
+        // Get all versions for this custom fee
+        let versionsQuery = adminSupabase
+            .from('optional_fee_versions')
+            .select('*')
+            .eq('fee_category_id', customFee.fee_category_id)
+            .eq('fee_cycle', customFee.fee_cycle)
+            .eq('school_id', user.schoolId)
+            .order('version_number', { ascending: false });
+        // Handle class_group_id (can be null)
+        if (customFee.class_group_id) {
+            versionsQuery = versionsQuery.eq('class_group_id', customFee.class_group_id);
+        }
+        else {
+            versionsQuery = versionsQuery.is('class_group_id', null);
+        }
+        const { data: versions, error: versionsError } = await versionsQuery;
+        if (versionsError) {
+            return res.status(400).json({ error: versionsError.message });
+        }
+        return res.json({ versions: versions || [] });
+    }
+    catch (err) {
+        console.error('[custom-fee-versions] Error:', err);
+        return res.status(500).json({ error: err.message || 'Failed to get custom fee versions' });
     }
 });
 // Hike Optional Fee - REMOVED (optional fees removed)
