@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import FeeCollection from '../components/FeeCollection.js';
 
@@ -12,9 +12,20 @@ import { API_URL } from '../utils/api.js';
 
 export default function ClerkDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [profile, setProfile] = useState<any>(null);
   const [checkingRole, setCheckingRole] = useState(true);
   const [activeTab, setActiveTab] = useState<'fee-collection'>('fee-collection');
+
+  // Sync activeTab with URL path
+  useEffect(() => {
+    const path = location.pathname;
+    if (path.includes('/clerk/fees') || path.includes('/clerk/payments')) {
+      setActiveTab('fee-collection');
+    } else if (path === '/clerk') {
+      setActiveTab('fee-collection');
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     const verifyRole = async () => {
@@ -92,7 +103,10 @@ export default function ClerkDashboard() {
           </div>
           <nav className="space-y-2">
             <button
-              onClick={() => setActiveTab('fee-collection')}
+              onClick={() => {
+                setActiveTab('fee-collection');
+                navigate('/clerk/fees');
+              }}
               className={`w-full text-left px-4 py-2 rounded-lg transition ${
                 activeTab === 'fee-collection'
                   ? 'bg-blue-600 text-white'

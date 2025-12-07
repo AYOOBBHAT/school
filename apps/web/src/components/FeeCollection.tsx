@@ -53,6 +53,9 @@ export default function FeeCollection() {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [showPaymentHistory, setShowPaymentHistory] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     loadStudents();
@@ -94,10 +97,21 @@ export default function FeeCollection() {
 
       if (response.ok) {
         const data = await response.json();
-        setFeeStructure(data.fee_structure);
-        setMonthlyLedger(data.monthly_ledger || []);
+        if (data.message && data.message === 'No fee configured for this student') {
+          setFeeStructure(null);
+          setMonthlyLedger([]);
+        } else {
+          setFeeStructure(data.fee_structure);
+          setMonthlyLedger(data.monthly_ledger || []);
+        }
       } else {
-        alert('Failed to load fee data');
+        const errorData = await response.json().catch(() => ({}));
+        if (errorData.error && errorData.error.includes('No fee configured')) {
+          setFeeStructure(null);
+          setMonthlyLedger([]);
+        } else {
+          alert(errorData.error || 'Failed to load fee data');
+        }
       }
     } catch (error) {
       console.error('Error loading fee data:', error);
@@ -111,6 +125,30 @@ export default function FeeCollection() {
     setSelectedStudent(student);
     loadStudentFeeData(student.id);
     setSelectedComponents([]);
+    setShowPaymentHistory(false);
+  };
+
+  const loadPaymentHistory = async () => {
+    if (!selectedStudent) return;
+    setLoadingHistory(true);
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/clerk-fees/student/${selectedStudent.id}/payments`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPaymentHistory(data.payments || []);
+        setShowPaymentHistory(true);
+      }
+    } catch (error) {
+      console.error('Error loading payment history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
   };
 
   const handleComponentToggle = (componentId: string) => {
@@ -155,7 +193,23 @@ export default function FeeCollection() {
 
       if (response.ok) {
         const data = await response.json();
-        setReceiptData(data);
+        // Store full payment data for receipt
+        const receiptPayload = {
+          ...data,
+          payment: {
+            ...data.payment,
+            amount_paid: data.payment?.amount_paid || data.payment?.payment_amount || parseFloat(paymentForm.payment_amount),
+            payment_amount: data.payment?.payment_amount || parseFloat(paymentForm.payment_amount),
+            payment_date: data.payment?.payment_date || paymentForm.payment_date,
+            payment_mode: data.payment?.payment_mode || paymentForm.payment_mode,
+            transaction_id: data.payment?.transaction_id || paymentForm.transaction_id,
+            cheque_number: data.payment?.cheque_number || paymentForm.cheque_number,
+            bank_name: data.payment?.bank_name || paymentForm.bank_name,
+            notes: data.payment?.notes || paymentForm.notes
+          },
+          selectedComponents: selectedComponentsData
+        };
+        setReceiptData(receiptPayload);
         setShowReceipt(true);
         setShowPaymentModal(false);
         // Reload student data
@@ -254,80 +308,183 @@ export default function FeeCollection() {
               <h3 className="text-xl font-semibold">{selectedStudent.name}</h3>
               <p className="text-gray-600">Roll: {selectedStudent.roll_number} | Class: {selectedStudent.class}</p>
             </div>
-            <button
-              onClick={() => setShowPaymentModal(true)}
-              disabled={selectedComponents.length === 0}
-              className={`px-4 py-2 rounded-lg font-semibold ${
-                selectedComponents.length === 0
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
-              Collect Payment ({selectedComponents.length})
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={loadPaymentHistory}
+                className="px-4 py-2 rounded-lg font-semibold bg-green-600 text-white hover:bg-green-700"
+              >
+                View Payment History
+              </button>
+              <button
+                onClick={() => setShowPaymentModal(true)}
+                disabled={selectedComponents.length === 0}
+                className={`px-4 py-2 rounded-lg font-semibold ${
+                  selectedComponents.length === 0
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                Collect Payment ({selectedComponents.length})
+              </button>
+            </div>
           </div>
 
           {loading ? (
             <div className="text-center py-8">Loading fee data...</div>
+          ) : feeStructure === null ? (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+              <p className="text-yellow-800 font-semibold text-lg">⚠️ No fee configured for this student</p>
+              <p className="text-yellow-700 mt-2">Please contact Principal to assign fee structure.</p>
+            </div>
           ) : (
-            <div className="space-y-4">
-              {/* Monthly Ledger */}
-              <div>
-                <h4 className="font-semibold mb-3">Monthly Fee Ledger</h4>
-                <div className="space-y-3">
-                  {monthlyLedger.map((monthEntry, idx) => (
-                    <div key={idx} className="border border-gray-200 rounded-lg p-4">
-                      <div className="font-semibold text-lg mb-3">{monthEntry.month}</div>
-                      <div className="space-y-2">
-                        {monthEntry.components.map(comp => (
-                          <div
-                            key={comp.id}
-                            className={`flex items-center justify-between p-3 rounded-lg border ${
-                              comp.status === 'paid'
-                                ? 'bg-green-50 border-green-200'
-                                : comp.status === 'overdue'
-                                ? 'bg-red-50 border-red-200'
-                                : 'bg-gray-50 border-gray-200'
-                            }`}
-                          >
-                            <div className="flex items-center space-x-4 flex-1">
-                              <input
-                                type="checkbox"
-                                checked={selectedComponents.includes(comp.id)}
-                                onChange={() => handleComponentToggle(comp.id)}
-                                disabled={comp.status === 'paid' || comp.pending_amount === 0}
-                                className="w-5 h-5"
-                              />
-                              <div className="flex-1">
-                                <div className="font-medium">{comp.fee_name}</div>
-                                <div className="text-sm text-gray-600">
-                                  Amount: ₹{comp.fee_amount.toFixed(2)} | 
-                                  Paid: ₹{comp.paid_amount.toFixed(2)} | 
-                                  Pending: ₹{comp.pending_amount.toFixed(2)}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-4">
-                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(comp.status)}`}>
-                                {comp.status.replace('-', ' ').toUpperCase()}
-                              </span>
-                              {comp.due_date && (
-                                <span className="text-sm text-gray-600">
-                                  Due: {new Date(comp.due_date).toLocaleDateString()}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      {monthEntry.components.length === 0 && (
-                        <div className="text-gray-500 text-center py-2">No fees for this month</div>
-                      )}
+            <div className="space-y-6">
+              {/* Fee Structure Overview */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-semibold mb-3">Assigned Fee Structure</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  {feeStructure?.class_fee && (
+                    <div className="bg-white rounded p-3">
+                      <div className="font-semibold text-blue-700">Class Fee</div>
+                      <div>₹{feeStructure.class_fee.amount.toFixed(2)}</div>
+                      <div className="text-xs text-gray-600">{feeStructure.class_fee.billing_frequency}</div>
                     </div>
-                  ))}
-                  {monthlyLedger.length === 0 && (
-                    <div className="text-gray-500 text-center py-8">No fee data available</div>
                   )}
+                  {feeStructure?.transport_fee && (
+                    <div className="bg-white rounded p-3">
+                      <div className="font-semibold text-blue-700">Transport Fee</div>
+                      <div>₹{feeStructure.transport_fee.amount.toFixed(2)}</div>
+                      <div className="text-xs text-gray-600">{feeStructure.transport_fee.route_name} | {feeStructure.transport_fee.billing_frequency}</div>
+                    </div>
+                  )}
+                  {feeStructure?.custom_fees && feeStructure.custom_fees.length > 0 && (
+                    <div className="bg-white rounded p-3">
+                      <div className="font-semibold text-blue-700">Custom Fees ({feeStructure.custom_fees.length})</div>
+                      {feeStructure.custom_fees.map((cf: any, idx: number) => (
+                        <div key={idx} className="text-xs">
+                          {cf.category_name}: ₹{cf.amount.toFixed(2)} ({cf.billing_frequency})
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Monthly Fee Ledger - Table Format */}
+              <div>
+                <h4 className="font-semibold mb-3">Monthly Fee Status Ledger</h4>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white border border-gray-200 rounded-lg">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Month</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Fee Type</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Fee Amount</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Paid Amount</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Pending Amount</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Due Date</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-b">Select</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {monthlyLedger.map((monthEntry, monthIdx) => 
+                        monthEntry.components.map((comp, compIdx) => {
+                          const isOverdue = comp.status === 'overdue' || 
+                            (comp.due_date && new Date(comp.due_date) < new Date() && comp.status !== 'paid');
+                          const rowBgColor = comp.status === 'paid' 
+                            ? 'bg-green-50' 
+                            : isOverdue 
+                            ? 'bg-red-50' 
+                            : comp.status === 'partially-paid'
+                            ? 'bg-yellow-50'
+                            : 'bg-white';
+                          
+                          return (
+                            <tr 
+                              key={`${monthIdx}-${compIdx}`}
+                              className={`${rowBgColor} ${isOverdue ? 'border-l-4 border-red-500' : ''}`}
+                            >
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                {compIdx === 0 ? monthEntry.month : ''}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700">
+                                <div className="font-medium">{comp.fee_name}</div>
+                                <div className="text-xs text-gray-500 capitalize">{comp.fee_type.replace('-', ' ')}</div>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700">
+                                ₹{comp.fee_amount.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700">
+                                <span className={comp.paid_amount > 0 ? 'text-green-600 font-semibold' : ''}>
+                                  ₹{comp.paid_amount.toFixed(2)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700">
+                                <span className={comp.pending_amount > 0 ? 'text-red-600 font-semibold' : 'text-gray-500'}>
+                                  ₹{comp.pending_amount.toFixed(2)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(comp.status)}`}>
+                                  {comp.status === 'paid' ? '🟢 PAID' : 
+                                   isOverdue ? '🔴 OVERDUE' : 
+                                   comp.status === 'partially-paid' ? '🟡 PARTIALLY PAID' : 
+                                   '⚪ PENDING'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600">
+                                {comp.due_date ? new Date(comp.due_date).toLocaleDateString() : 'N/A'}
+                                {isOverdue && comp.due_date && (
+                                  <div className="text-xs text-red-600 mt-1">
+                                    {Math.floor((new Date().getTime() - new Date(comp.due_date).getTime()) / (1000 * 60 * 60 * 24))} days overdue
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedComponents.includes(comp.id)}
+                                  onChange={() => handleComponentToggle(comp.id)}
+                                  disabled={comp.status === 'paid' || comp.pending_amount === 0}
+                                  className="w-5 h-5 cursor-pointer disabled:cursor-not-allowed"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                      {monthlyLedger.length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                            No fee data available for this student
+                          </td>
+                        </tr>
+                      )}
+                      {monthlyLedger.length > 0 && monthlyLedger.every(m => m.components.length === 0) && (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                            No fee components found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {/* Legend */}
+                <div className="mt-4 flex flex-wrap gap-4 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-green-100 border border-green-300 rounded"></div>
+                    <span>Paid</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-yellow-100 border border-yellow-300 rounded"></div>
+                    <span>Partially Paid</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-red-100 border border-red-300 rounded"></div>
+                    <span>Pending/Overdue</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -506,42 +663,189 @@ export default function FeeCollection() {
               </button>
             </div>
             
-            <div className="border-2 border-gray-300 rounded-lg p-6 space-y-4">
-              <div className="text-center border-b pb-4">
-                <h4 className="text-2xl font-bold">FEE PAYMENT RECEIPT</h4>
-                <p className="text-gray-600">Receipt No: {receiptData.receipt_number}</p>
-                <p className="text-gray-600">Date: {receiptData.payment.payment_date}</p>
+            <div className="border-2 border-gray-300 rounded-lg p-8 space-y-6 print:border-0">
+              {/* Header */}
+              <div className="text-center border-b-2 border-gray-400 pb-4">
+                <h4 className="text-3xl font-bold mb-2">FEE PAYMENT RECEIPT</h4>
+                <div className="space-y-1 text-gray-700">
+                  <p className="font-semibold">Receipt No: {receiptData.receipt_number || receiptData.payment?.receipt_number}</p>
+                  <p>Date: {new Date(receiptData.payment?.payment_date || receiptData.payment_date || new Date()).toLocaleDateString('en-IN', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  })}</p>
+                </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
+              {/* Student Details */}
+              <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <div className="font-semibold">Student:</div>
-                  <div>{selectedStudent?.name}</div>
+                  <div className="font-semibold text-gray-700 mb-1">Student Name:</div>
+                  <div className="text-lg">{selectedStudent?.name}</div>
                 </div>
                 <div>
-                  <div className="font-semibold">Roll Number:</div>
-                  <div>{selectedStudent?.roll_number}</div>
+                  <div className="font-semibold text-gray-700 mb-1">Roll Number:</div>
+                  <div className="text-lg">{selectedStudent?.roll_number}</div>
                 </div>
                 <div>
-                  <div className="font-semibold">Class:</div>
-                  <div>{selectedStudent?.class}</div>
+                  <div className="font-semibold text-gray-700 mb-1">Class:</div>
+                  <div className="text-lg">{selectedStudent?.class}</div>
                 </div>
                 <div>
-                  <div className="font-semibold">Payment Mode:</div>
-                  <div>{receiptData.payment.payment_mode.toUpperCase()}</div>
+                  <div className="font-semibold text-gray-700 mb-1">Payment Mode:</div>
+                  <div className="text-lg uppercase">{receiptData.payment?.payment_mode || 'CASH'}</div>
                 </div>
               </div>
 
-              <div className="border-t pt-4">
-                <div className="font-semibold text-lg">Amount Paid: ₹{receiptData.payment.amount_paid.toFixed(2)}</div>
+              {/* Fee Breakdown */}
+              <div className="border-t border-b border-gray-300 py-4">
+                <h5 className="font-semibold mb-3 text-gray-700">Payment Details:</h5>
+                <div className="space-y-2">
+                  {(receiptData.selectedComponents || selectedComponentsData).map((comp: FeeComponent, idx: number) => (
+                    <div key={idx} className="flex justify-between text-sm">
+                      <span className="text-gray-600">{comp.fee_name}</span>
+                      <span className="font-semibold">₹{comp.pending_amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
+              {/* Transaction Details */}
+              {((receiptData.payment?.transaction_id) || (receiptData.payment?.cheque_number) || (receiptData.payment?.bank_name)) && (
+                <div className="border-b border-gray-300 pb-4">
+                  <h5 className="font-semibold mb-2 text-gray-700">Transaction Details:</h5>
+                  {receiptData.payment?.transaction_id && (
+                    <div className="text-sm">Transaction ID: {receiptData.payment.transaction_id}</div>
+                  )}
+                  {receiptData.payment?.cheque_number && (
+                    <div className="text-sm">Cheque Number: {receiptData.payment.cheque_number}</div>
+                  )}
+                  {receiptData.payment?.bank_name && (
+                    <div className="text-sm">Bank: {receiptData.payment.bank_name}</div>
+                  )}
+                </div>
+              )}
+
+              {/* Total Amount */}
+              <div className="border-t-2 border-gray-400 pt-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-xl font-semibold">Total Amount Paid:</span>
+                  <span className="text-2xl font-bold text-blue-600">
+                    ₹{receiptData.payment?.amount_paid?.toFixed(2) || 
+                       receiptData.payment?.payment_amount?.toFixed(2) || 
+                       (typeof receiptData.payment_amount === 'number' ? receiptData.payment_amount.toFixed(2) : '0.00')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {receiptData.payment?.notes && (
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <div className="font-semibold text-sm text-gray-700 mb-1">Notes:</div>
+                  <div className="text-sm text-gray-600">{receiptData.payment.notes}</div>
+                </div>
+              )}
+
+              {/* Message */}
               {receiptData.message && (
-                <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
+                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-sm text-blue-800">
+                  <div className="font-semibold mb-1">Note:</div>
                   {receiptData.message}
                 </div>
               )}
+
+              {/* Footer */}
+              <div className="border-t border-gray-300 pt-4 mt-8 text-center text-xs text-gray-500">
+                <p>This is a computer-generated receipt.</p>
+                <p className="mt-2">Collected by: Clerk</p>
+              </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment History Modal */}
+      {showPaymentHistory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-2xl font-bold">Payment History - {selectedStudent?.name}</h3>
+              <button
+                onClick={() => {
+                  setShowPaymentHistory(false);
+                  setPaymentHistory([]);
+                }}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+
+            {loadingHistory ? (
+              <div className="text-center py-8">Loading payment history...</div>
+            ) : paymentHistory.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">No payment records found</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white border border-gray-200 rounded-lg">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Fee Component</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Period</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Amount</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Mode</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Receipt No</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b">Collected By</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {paymentHistory.map((payment: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm">
+                          {new Date(payment.payment_date).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <div className="font-medium">{payment.monthly_fee_components?.fee_name || 'N/A'}</div>
+                          <div className="text-xs text-gray-500 capitalize">
+                            {payment.monthly_fee_components?.fee_type?.replace('-', ' ') || ''}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {payment.monthly_fee_components?.period_month && payment.monthly_fee_components?.period_year
+                            ? `${new Date(2000, payment.monthly_fee_components.period_month - 1).toLocaleString('default', { month: 'short' })} ${payment.monthly_fee_components.period_year}`
+                            : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-green-600">
+                          ₹{parseFloat(payment.payment_amount || 0).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-sm uppercase text-gray-600">
+                          {payment.payment_mode}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {payment.receipt_number || 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {payment.received_by_profile?.full_name || 'Clerk'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-right">
+                        Total Payments:
+                      </td>
+                      <td className="px-4 py-3 text-sm font-bold text-green-600">
+                        ₹{paymentHistory.reduce((sum: number, p: any) => sum + parseFloat(p.payment_amount || 0), 0).toFixed(2)}
+                      </td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
