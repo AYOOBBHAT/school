@@ -9,7 +9,7 @@ const feeSchema = Joi.object({
     due_date: Joi.string().optional(),
     description: Joi.string().allow('', null)
 });
-router.get('/', requireRoles(['clerk', 'principal']), async (req, res) => {
+router.get('/', requireRoles(['principal']), async (req, res) => {
     const { supabase, user } = req;
     if (!supabase || !user)
         return res.status(500).json({ error: 'Server misconfigured' });
@@ -34,7 +34,7 @@ router.get('/', requireRoles(['clerk', 'principal']), async (req, res) => {
         return res.status(400).json({ error: error.message });
     return res.json({ fees: data || [] });
 });
-router.post('/', requireRoles(['clerk', 'principal']), async (req, res) => {
+router.post('/', requireRoles(['principal']), async (req, res) => {
     const { error, value } = feeSchema.validate(req.body);
     if (error)
         return res.status(400).json({ error: error.message });
