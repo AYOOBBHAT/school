@@ -10,6 +10,7 @@ import PrincipalDashboard from './pages/PrincipalDashboard';
 import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
 import ClerkDashboard from './pages/ClerkDashboard';
+import ClerkFeeCollection from './pages/ClerkFeeCollection';
 import AdminDashboard from './pages/AdminDashboard';
 
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
@@ -430,7 +431,9 @@ export default function App() {
       <Route path="/principal/exams" element={<PrincipalDashboard />} />
       <Route path="/principal/salary" element={<PrincipalDashboard />} />
       <Route path="/principal/fees" element={<PrincipalDashboard />} />
+      <Route path="/clerk/dashboard" element={<ClerkDashboard />} />
       <Route path="/clerk" element={<ClerkDashboard />} />
+      <Route path="/clerk/fee-collection" element={<ClerkFeeCollection />} />
       <Route path="/clerk/fees" element={<ClerkDashboard />} />
       <Route path="/clerk/payments" element={<ClerkDashboard />} />
       <Route path="/clerk/marks" element={<ClerkDashboard />} />
