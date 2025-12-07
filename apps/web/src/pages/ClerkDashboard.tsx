@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
+import FeeCollection from '../components/FeeCollection.js';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
@@ -13,7 +14,7 @@ export default function ClerkDashboard() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<any>(null);
   const [checkingRole, setCheckingRole] = useState(true);
-  const [loadingData, setLoadingData] = useState(true);
+  const [activeTab, setActiveTab] = useState<'fee-collection'>('fee-collection');
 
   useEffect(() => {
     const verifyRole = async () => {
@@ -52,7 +53,6 @@ export default function ClerkDashboard() {
         }
 
         setProfile(data.profile);
-        await loadInitialData();
       } catch (error) {
         console.error('[ClerkDashboard] Error verifying role:', error);
         navigate('/login');
@@ -64,22 +64,10 @@ export default function ClerkDashboard() {
     verifyRole();
   }, [navigate]);
 
-  const loadInitialData = async () => {
-    try {
-      setLoadingData(true);
-      // Initial data loading will be added here later
-    } catch (error) {
-      console.error('[ClerkDashboard] Failed to load initial data:', error);
-    } finally {
-      setLoadingData(false);
-    }
-  };
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate('/login');
   };
-
 
   if (checkingRole) {
     return (
@@ -103,7 +91,16 @@ export default function ClerkDashboard() {
             <div className="text-sm text-gray-400">{profile?.email}</div>
           </div>
           <nav className="space-y-2">
-            {/* Navigation items will be added here later */}
+            <button
+              onClick={() => setActiveTab('fee-collection')}
+              className={`w-full text-left px-4 py-2 rounded-lg transition ${
+                activeTab === 'fee-collection'
+                  ? 'bg-blue-600 text-white'
+                  : 'hover:bg-gray-800 text-gray-300'
+              }`}
+            >
+              💰 Fee Collection
+            </button>
           </nav>
           <button
             onClick={handleLogout}
@@ -117,18 +114,9 @@ export default function ClerkDashboard() {
       {/* Main content */}
       <div className="ml-64 flex-1">
         <div className="p-6">
-          {loadingData ? (
-            <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-500">
-              Loading dashboard data...
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-500">
-              <p>New routes will be added here.</p>
-            </div>
-          )}
+          {activeTab === 'fee-collection' && <FeeCollection />}
         </div>
       </div>
-
     </div>
   );
 }
