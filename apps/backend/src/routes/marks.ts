@@ -26,7 +26,7 @@ const bulkMarksSchema = Joi.object({
 });
 
 // Get exams for the school
-router.get('/exams', requireRoles(['teacher', 'principal', 'clerk']), async (req, res) => {
+router.get('/exams', requireRoles(['teacher', 'principal']), async (req, res) => {
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -56,7 +56,7 @@ router.get('/exams', requireRoles(['teacher', 'principal', 'clerk']), async (req
 });
 
 // Bulk save marks (for teachers)
-router.post('/bulk', requireRoles(['teacher', 'principal', 'clerk']), async (req, res) => {
+router.post('/bulk', requireRoles(['teacher', 'principal']), async (req, res) => {
   const { error, value } = bulkMarksSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -148,7 +148,7 @@ router.post('/bulk', requireRoles(['teacher', 'principal', 'clerk']), async (req
   }
 });
 
-router.post('/verify', requireRoles(['clerk', 'principal']), async (req, res) => {
+router.post('/verify', requireRoles(['principal']), async (req, res) => {
   const { error, value } = verifySchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
   const { supabase, user } = req;
@@ -165,7 +165,7 @@ router.post('/verify', requireRoles(['clerk', 'principal']), async (req, res) =>
   return res.json({ marks: data });
 });
 
-router.get('/pending', requireRoles(['clerk', 'principal']), async (req, res) => {
+router.get('/pending', requireRoles(['principal']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -208,7 +208,7 @@ router.get('/pending', requireRoles(['clerk', 'principal']), async (req, res) =>
   return res.json({ marks: data || [] });
 });
 
-router.get('/marksheet/:student_id', requireRoles(['clerk', 'principal']), async (req, res) => {
+router.get('/marksheet/:student_id', requireRoles(['principal']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -233,11 +233,11 @@ router.get('/marksheet/:student_id', requireRoles(['clerk', 'principal']), async
 });
 
 // ============================================
-// CLERK ENDPOINTS - View All Results
+// PRINCIPAL ENDPOINTS - View All Results
 // ============================================
 
-// Get all results with filters (Clerk can view all)
-router.get('/results', requireRoles(['clerk', 'principal']), async (req, res) => {
+// Get all results with filters
+router.get('/results', requireRoles(['principal']), async (req, res) => {
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -407,7 +407,7 @@ router.get('/results', requireRoles(['clerk', 'principal']), async (req, res) =>
 });
 
 // Get exam results (all students for an exam)
-router.get('/exam/:examId', requireRoles(['clerk', 'principal']), async (req, res) => {
+router.get('/exam/:examId', requireRoles(['principal']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -508,7 +508,7 @@ router.get('/exam/:examId', requireRoles(['clerk', 'principal']), async (req, re
 });
 
 // Get class results (all exams for a class)
-router.get('/class/:classGroupId', requireRoles(['clerk', 'principal']), async (req, res) => {
+router.get('/class/:classGroupId', requireRoles(['principal']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 

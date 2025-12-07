@@ -12,7 +12,7 @@ const paymentSchema = Joi.object({
   transaction_id: Joi.string().allow('', null)
 });
 
-router.post('/', requireRoles(['clerk', 'principal']), async (req, res) => {
+router.post('/', requireRoles(['principal']), async (req, res) => {
   const { error, value } = paymentSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
   const { supabase, user } = req;
@@ -39,7 +39,7 @@ router.post('/', requireRoles(['clerk', 'principal']), async (req, res) => {
   return res.status(201).json({ payment: data });
 });
 
-router.get('/report', requireRoles(['clerk', 'principal']), async (req, res) => {
+router.get('/report', requireRoles(['principal']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
