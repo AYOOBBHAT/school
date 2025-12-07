@@ -20,7 +20,7 @@ const feeCategorySchema = Joi.object({
 });
 
 // Get all fee categories
-router.get('/categories', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/categories', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -107,7 +107,7 @@ const classFeeSchema = Joi.object({
 });
 
 // Get class fees
-router.get('/class-fees', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/class-fees', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -258,7 +258,7 @@ const transportRouteSchema = Joi.object({
 });
 
 // Get transport routes
-router.get('/transport/routes', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/transport/routes', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   if (!supabaseUrl || !supabaseServiceKey) {
     return res.status(500).json({ error: 'Server configuration error' });
   }
@@ -344,7 +344,7 @@ const transportFeeSchema = Joi.object({
 });
 
 // Get transport fees
-router.get('/transport/fees', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/transport/fees', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   if (!supabaseUrl || !supabaseServiceKey) {
     return res.status(500).json({ error: 'Server configuration error' });
   }
@@ -450,7 +450,7 @@ const customFeeSchema = Joi.object({
 });
 
 // Get custom fees
-router.get('/custom-fees', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/custom-fees', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -723,7 +723,7 @@ router.post('/transport/assign', requireRoles(['principal']), async (req, res) =
 });
 
 // Get student transport assignments
-router.get('/transport/assignments', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/transport/assignments', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -774,7 +774,7 @@ const studentFeeCycleSchema = Joi.object({
 });
 
 // Set student fee cycle
-router.post('/student-cycles', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.post('/student-cycles', requireRoles(['principal']), async (req, res) => {
   const { error, value } = studentFeeCycleSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -824,7 +824,7 @@ router.post('/student-cycles', requireRoles(['principal', 'clerk']), async (req,
 });
 
 // Get student fee cycles
-router.get('/student-cycles/:studentId', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/student-cycles/:studentId', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   const { supabase, user } = req;
   if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -845,7 +845,7 @@ router.get('/student-cycles/:studentId', requireRoles(['principal', 'clerk', 'st
 // ============================================
 
 // Generate fee schedule for student
-router.post('/generate-schedule', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.post('/generate-schedule', requireRoles(['principal']), async (req, res) => {
   const { student_id, academic_year } = req.body;
 
   if (!student_id || !academic_year) {
@@ -883,7 +883,7 @@ router.post('/generate-schedule', requireRoles(['principal', 'clerk']), async (r
 });
 
 // Get pending periods for student
-router.get('/periods/pending/:studentId', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/periods/pending/:studentId', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   if (!supabaseUrl || !supabaseServiceKey) {
     return res.status(500).json({ error: 'Server configuration error' });
   }
@@ -903,7 +903,7 @@ router.get('/periods/pending/:studentId', requireRoles(['principal', 'clerk', 's
 });
 
 // Get overdue periods for student
-router.get('/periods/overdue/:studentId', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/periods/overdue/:studentId', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   if (!supabaseUrl || !supabaseServiceKey) {
     return res.status(500).json({ error: 'Server configuration error' });
   }
@@ -923,7 +923,7 @@ router.get('/periods/overdue/:studentId', requireRoles(['principal', 'clerk', 's
 });
 
 // Get total dues for student
-router.get('/dues/:studentId', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/dues/:studentId', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   if (!supabaseUrl || !supabaseServiceKey) {
     return res.status(500).json({ error: 'Server configuration error' });
   }
@@ -1166,7 +1166,7 @@ router.post('/custom-fees/:id/hike', requireRoles(['principal']), async (req, re
 });
 
 // Get custom fee versions
-router.get('/custom-fees/:id/versions', requireRoles(['principal', 'clerk']), async (req, res) => {
+router.get('/custom-fees/:id/versions', requireRoles(['principal']), async (req, res) => {
   if (!supabaseUrl || !supabaseServiceKey) {
     return res.status(500).json({ error: 'Server configuration error' });
   }
@@ -1237,7 +1237,7 @@ router.get('/custom-fees/:id/versions', requireRoles(['principal', 'clerk']), as
 // Hike Optional Fee - REMOVED (optional fees removed)
 
 // Get Class Fee Version History
-router.get('/class-fees/:id/versions', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/class-fees/:id/versions', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   if (!supabaseUrl || !supabaseServiceKey) {
     return res.status(500).json({ error: 'Server configuration error' });
   }
@@ -1281,7 +1281,7 @@ router.get('/class-fees/:id/versions', requireRoles(['principal', 'clerk', 'stud
 });
 
 // Get Transport Fee Version History
-router.get('/transport/fees/:id/versions', requireRoles(['principal', 'clerk', 'student', 'parent']), async (req, res) => {
+router.get('/transport/fees/:id/versions', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
   if (!supabaseUrl || !supabaseServiceKey) {
     return res.status(500).json({ error: 'Server configuration error' });
   }
