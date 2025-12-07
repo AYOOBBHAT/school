@@ -40,6 +40,10 @@ router.get('/student/:studentId/fee-structure', requireRoles(['clerk', 'principa
       return res.status(404).json({ error: 'Student not found or access denied' });
     }
 
+    // Handle Supabase join result (can be object or array)
+    const profileData = Array.isArray(student.profile) ? student.profile[0] : student.profile;
+    const classGroupData = Array.isArray(student.class_groups) ? student.class_groups[0] : student.class_groups;
+
     // Load assigned fee structure
     const feeStructure = await loadAssignedFeeStructure(studentId, user.schoolId, adminSupabase);
 
@@ -48,9 +52,9 @@ router.get('/student/:studentId/fee-structure', requireRoles(['clerk', 'principa
       return res.json({
         student: {
           id: student.id,
-          name: student.profile?.full_name,
-          roll_number: student.roll_number,
-          class: student.class_groups?.name
+          name: profileData?.full_name || null,
+          roll_number: student.roll_number || null,
+          class: classGroupData?.name || null
         },
         fee_structure: null,
         message: 'No fee configured for this student'
@@ -66,9 +70,9 @@ router.get('/student/:studentId/fee-structure', requireRoles(['clerk', 'principa
     return res.json({
       student: {
         id: student.id,
-        name: student.profile?.full_name,
-        roll_number: student.roll_number,
-        class: student.class_groups?.name
+        name: profileData?.full_name || null,
+        roll_number: student.roll_number || null,
+        class: classGroupData?.name || null
       },
       fee_structure: feeStructure,
       monthly_ledger: monthlyLedger
@@ -343,22 +347,28 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
       .in('id', monthly_fee_component_ids)
       .eq('school_id', user.schoolId);
 
+    const successMessage = overpayment > 0 
+      ? `₹${overpayment.toFixed(2)} applied as advance payment to future pending months`
+      : 'Payment recorded successfully';
+
     return res.status(201).json({
       success: true,
-      message: 'Payment recorded successfully',
       receipt_number: receiptNumber,
       payment: {
         id: payments[0]?.id,
         amount_paid: payment_amount,
+        payment_amount: payment_amount,
         payment_date: payment_date.toISOString().split('T')[0],
         payment_mode: payment_mode,
+        transaction_id: transaction_id || null,
+        cheque_number: cheque_number || null,
+        bank_name: bank_name || null,
+        notes: notes || null,
         receipt_number: receiptNumber
       },
       components: updatedComponents,
       overpayment: overpayment > 0 ? overpayment : 0,
-      message: overpayment > 0 
-        ? `₹${overpayment.toFixed(2)} applied as advance payment to future pending months`
-        : 'Payment recorded successfully'
+      message: successMessage
     });
   } catch (err: any) {
     console.error('[clerk-fees/collect] Error:', err);
