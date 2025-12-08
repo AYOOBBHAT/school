@@ -12,6 +12,12 @@ interface Student {
   name: string;
   roll_number: string;
   class: string;
+  class_group_id?: string;
+}
+
+interface ClassGroup {
+  id: string;
+  name: string;
 }
 
 interface FeeComponent {
@@ -34,13 +40,18 @@ interface MonthlyLedgerEntry {
 
 export default function FeeCollection() {
   const [students, setStudents] = useState<Student[]>([]);
+  const [allStudents, setAllStudents] = useState<Student[]>([]); // Store all students for filtering
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedClass, setSelectedClass] = useState<string>(''); // Empty = all classes
+  const [classes, setClasses] = useState<ClassGroup[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [feeStructure, setFeeStructure] = useState<any>(null);
   const [monthlyLedger, setMonthlyLedger] = useState<MonthlyLedgerEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingClasses, setLoadingClasses] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
+  const [activeFeeTab, setActiveFeeTab] = useState<'class-fee' | 'transport-fee' | 'custom-fee'>('class-fee');
   const [paymentForm, setPaymentForm] = useState({
     payment_amount: '',
     payment_date: new Date().toISOString().split('T')[0],
@@ -58,15 +69,73 @@ export default function FeeCollection() {
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
+    loadClasses();
     loadStudents();
   }, []);
+
+  // Reload students when class filter changes
+  useEffect(() => {
+    loadStudents();
+  }, [selectedClass]);
+
+  // Auto-update payment amount when selection changes (if modal is open)
+  useEffect(() => {
+    if (showPaymentModal && selectedComponents.length > 0) {
+      const newTotal = monthlyLedger
+        .flatMap(month => month.components)
+        .filter(comp => selectedComponents.includes(comp.id))
+        .reduce((sum, comp) => {
+          const baseAmount = comp.fee_amount;
+          // TODO: Add previous balance and late fee calculation
+          return sum + baseAmount;
+        }, 0);
+      
+      setPaymentForm(prevForm => ({
+        ...prevForm,
+        payment_amount: newTotal > 0 ? newTotal.toFixed(2) : prevForm.payment_amount
+      }));
+    } else if (showPaymentModal && selectedComponents.length === 0) {
+      // Clear payment amount when no components selected
+      setPaymentForm(prevForm => ({
+        ...prevForm,
+        payment_amount: ''
+      }));
+    }
+  }, [selectedComponents, showPaymentModal, monthlyLedger]);
+
+  const loadClasses = async () => {
+    setLoadingClasses(true);
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/classes`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setClasses(data.classes || []);
+      }
+    } catch (error) {
+      console.error('Error loading classes:', error);
+    } finally {
+      setLoadingClasses(false);
+    }
+  };
 
   const loadStudents = async () => {
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/students`, {
+      // Build URL with class filter if selected
+      let url = `${API_URL}/students`;
+      if (selectedClass) {
+        url += `?class_group_id=${selectedClass}`;
+      }
+
+      const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -76,14 +145,43 @@ export default function FeeCollection() {
           id: s.id,
           name: s.profile?.full_name || 'Unknown',
           roll_number: s.roll_number || 'N/A',
-          class: s.class_groups?.name || 'N/A'
+          class: s.class_groups?.name || 'N/A',
+          class_group_id: s.class_group_id
         }));
-        setStudents(studentsList);
+        setAllStudents(studentsList);
+        // Apply search filter immediately
+        applySearchFilter(studentsList, searchQuery);
       }
     } catch (error) {
       console.error('Error loading students:', error);
     }
   };
+
+  // Apply search filter (predictive - starts with)
+  const applySearchFilter = (studentList: Student[], query: string) => {
+    if (!query.trim()) {
+      setStudents(studentList);
+      return;
+    }
+
+    const queryLower = query.toLowerCase().trim();
+    const filtered = studentList.filter(s => {
+      const nameLower = s.name.toLowerCase();
+      // Predictive search: name starts with query
+      return nameLower.startsWith(queryLower) || 
+             s.roll_number.toLowerCase().includes(queryLower);
+    });
+    setStudents(filtered);
+  };
+
+  // Debounced search handler
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      applySearchFilter(allStudents, searchQuery);
+    }, 150); // 150ms debounce for better performance
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, allStudents]);
 
   const loadStudentFeeData = async (studentId: string) => {
     setLoading(true);
@@ -164,11 +262,33 @@ export default function FeeCollection() {
       alert('Cannot select future months for payment. Advance payments require Principal approval.');
       return;
     }
-    setSelectedComponents(prev => 
-      prev.includes(componentId)
+    setSelectedComponents(prev => {
+      const newSelection = prev.includes(componentId)
         ? prev.filter(id => id !== componentId)
-        : [...prev, componentId]
-    );
+        : [...prev, componentId];
+      
+      // Auto-update payment amount when selection changes (if modal is open)
+      if (showPaymentModal) {
+        const newTotal = monthlyLedger
+          .flatMap(month => month.components)
+          .filter(comp => newSelection.includes(comp.id))
+          .reduce((sum, comp) => {
+            const monthEntry = monthlyLedger.find(m => 
+              m.components.some(c => c.id === comp.id)
+            );
+            const baseAmount = comp.fee_amount;
+            // TODO: Add previous balance and late fee calculation
+            return sum + baseAmount;
+          }, 0);
+        
+        setPaymentForm(prevForm => ({
+          ...prevForm,
+          payment_amount: newSelection.length > 0 ? newTotal.toFixed(2) : ''
+        }));
+      }
+      
+      return newSelection;
+    });
   };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
@@ -282,16 +402,79 @@ export default function FeeCollection() {
     }
   };
 
-  const filteredStudents = students.filter(s =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.roll_number.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Students are already filtered by applySearchFilter, no need for additional filtering
+
+  // Group components by fee type for tabs
+  const componentsByType = {
+    'class-fee': monthlyLedger.flatMap(month => 
+      month.components.filter(c => c.fee_type === 'class-fee')
+    ),
+    'transport-fee': monthlyLedger.flatMap(month => 
+      month.components.filter(c => c.fee_type === 'transport-fee')
+    ),
+    'custom-fee': monthlyLedger.flatMap(month => 
+      month.components.filter(c => c.fee_type === 'custom-fee')
+    )
+  };
+
+  // Get components for active tab, grouped by month
+  const activeTabByMonth = monthlyLedger.map(monthEntry => ({
+    ...monthEntry,
+    components: monthEntry.components.filter(c => c.fee_type === activeFeeTab)
+  })).filter(month => month.components.length > 0);
+
+  // Get fee component name and amount for active tab
+  const getActiveTabInfo = () => {
+    if (activeTabByMonth.length === 0) return null;
+    const firstComp = activeTabByMonth[0].components[0];
+    return {
+      name: firstComp.fee_name,
+      amount: firstComp.fee_amount,
+      cycle: feeStructure?.class_fee?.billing_frequency || 
+             feeStructure?.transport_fee?.billing_frequency || 
+             feeStructure?.custom_fees?.[0]?.billing_frequency || 'monthly'
+    };
+  };
+
+  const activeTabInfo = getActiveTabInfo();
 
   const selectedComponentsData = monthlyLedger
     .flatMap(month => month.components)
     .filter(comp => selectedComponents.includes(comp.id));
 
   const totalPending = selectedComponentsData.reduce((sum, comp) => sum + comp.pending_amount, 0);
+  
+  // Calculate summary for selected components
+  const selectedMonthsSet = new Set<string>();
+  selectedComponentsData.forEach(comp => {
+    const monthEntry = monthlyLedger.find(m => 
+      m.components.some(c => c.id === comp.id)
+    );
+    if (monthEntry) selectedMonthsSet.add(monthEntry.month);
+  });
+  const selectedMonths = Array.from(selectedMonthsSet);
+
+  const baseFeeTotal = selectedComponentsData.reduce((sum, comp) => sum + comp.fee_amount, 0);
+  const previousBalance = selectedComponentsData.reduce((sum, comp) => {
+    // Previous balance would be from earlier unpaid months - simplified for now
+    return sum;
+  }, 0);
+  const lateFee = selectedComponentsData.reduce((sum, comp) => {
+    // Calculate late fee for overdue components
+    if (comp.status === 'overdue' && comp.due_date) {
+      const daysOverdue = Math.floor((new Date().getTime() - new Date(comp.due_date).getTime()) / (1000 * 60 * 60 * 24));
+      // TODO: Apply fine rules from fine_rules table
+      return sum; // Placeholder
+    }
+    return sum;
+  }, 0);
+  const discount = 0; // TODO: Get from principal-approved discounts
+  const finalAmount = baseFeeTotal + previousBalance + lateFee - discount;
+  
+  // Check if all months are paid for active tab
+  const allPaidForActiveTab = activeTabByMonth.every(month => 
+    month.components.every(c => c.status === 'paid' || c.pending_amount === 0)
+  );
 
   return (
     <div className="space-y-6">
@@ -302,34 +485,97 @@ export default function FeeCollection() {
       {/* Student Search */}
       <div className="bg-white rounded-lg shadow-md p-6">
         <h3 className="text-xl font-semibold mb-4">Search Student</h3>
-        <input
-          type="text"
-          placeholder="Search by name or roll number..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4"
-        />
         
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          {/* Class Filter */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Filter by Class (Optional)</label>
+            <select
+              value={selectedClass}
+              onChange={(e) => {
+                setSelectedClass(e.target.value);
+                setSearchQuery(''); // Clear search when class changes
+              }}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2"
+            >
+              <option value="">All Classes</option>
+              {classes.map(cls => (
+                <option key={cls.id} value={cls.id}>{cls.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Search Input */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Search by Name</label>
+            <input
+              type="text"
+              placeholder="Type student name (predictive search)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2"
+            />
+            <p className="text-xs text-gray-500 mt-1">Search shows students whose names start with your input</p>
+          </div>
+        </div>
+        
+        {/* Search Results */}
         {searchQuery && (
           <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto">
-            {filteredStudents.length === 0 ? (
-              <div className="p-4 text-gray-500 text-center">No students found</div>
+            {students.length === 0 ? (
+              <div className="p-4 text-gray-500 text-center">
+                {searchQuery ? 'No students found matching your search' : 'Start typing to search for students'}
+              </div>
             ) : (
-              filteredStudents.map(student => (
-                <div
-                  key={student.id}
-                  onClick={() => handleStudentSelect(student)}
-                  className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 ${
-                    selectedStudent?.id === student.id ? 'bg-blue-50' : ''
-                  }`}
-                >
-                  <div className="font-semibold">{student.name}</div>
-                  <div className="text-sm text-gray-600">
-                    Roll: {student.roll_number} | Class: {student.class}
-                  </div>
+              <>
+                <div className="p-2 bg-gray-50 text-xs text-gray-600 border-b">
+                  Found {students.length} student{students.length !== 1 ? 's' : ''}
+                  {selectedClass && ` in ${classes.find(c => c.id === selectedClass)?.name || 'selected class'}`}
                 </div>
-              ))
+                {students.slice(0, 50).map(student => (
+                  <div
+                    key={student.id}
+                    onClick={() => handleStudentSelect(student)}
+                    className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${
+                      selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''
+                    }`}
+                  >
+                    <div className="font-semibold text-gray-900">{student.name}</div>
+                    <div className="text-sm text-gray-600">
+                      Roll: {student.roll_number} | Class: {student.class}
+                    </div>
+                  </div>
+                ))}
+                {students.length > 50 && (
+                  <div className="p-4 text-center text-sm text-gray-500 bg-gray-50">
+                    Showing first 50 results. Refine your search for more specific results.
+                  </div>
+                )}
+              </>
             )}
+          </div>
+        )}
+        
+        {/* Show all students when no search query but class is selected */}
+        {!searchQuery && selectedClass && (
+          <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto">
+            <div className="p-2 bg-gray-50 text-xs text-gray-600 border-b">
+              All students in {classes.find(c => c.id === selectedClass)?.name || 'selected class'} ({students.length})
+            </div>
+            {students.slice(0, 50).map(student => (
+              <div
+                key={student.id}
+                onClick={() => handleStudentSelect(student)}
+                className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${
+                  selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''
+                }`}
+              >
+                <div className="font-semibold text-gray-900">{student.name}</div>
+                <div className="text-sm text-gray-600">
+                  Roll: {student.roll_number} | Class: {student.class}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -350,7 +596,19 @@ export default function FeeCollection() {
                 View Payment History
               </button>
               <button
-                onClick={() => setShowPaymentModal(true)}
+                onClick={() => {
+                  setShowPaymentModal(true);
+                  setActiveFeeTab('class-fee');
+                  // Pre-fill payment amount with total pending
+                  const total = monthlyLedger
+                    .flatMap(month => month.components)
+                    .filter(comp => selectedComponents.includes(comp.id))
+                    .reduce((sum, comp) => sum + comp.pending_amount, 0);
+                  setPaymentForm(prev => ({
+                    ...prev,
+                    payment_amount: total > 0 ? total.toFixed(2) : ''
+                  }));
+                }}
                 disabled={selectedComponents.length === 0}
                 className={`px-4 py-2 rounded-lg font-semibold ${
                   selectedComponents.length === 0
@@ -533,148 +791,407 @@ export default function FeeCollection() {
         </div>
       )}
 
-      {/* Payment Modal */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold mb-4">Collect Payment</h3>
-            
-            <div className="mb-4 p-4 bg-blue-50 rounded-lg">
-              <div className="font-semibold">Selected Components:</div>
-              {selectedComponentsData.map(comp => (
-                <div key={comp.id} className="text-sm text-gray-700 mt-1">
-                  {comp.fee_name}: ₹{comp.pending_amount.toFixed(2)} pending
+      {/* Enhanced Payment Modal */}
+      {showPaymentModal && selectedStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
+            {/* 1. Header */}
+            <div className="flex justify-between items-center p-6 border-b bg-gray-50">
+              <div>
+                <h3 className="text-2xl font-bold">Collect Fee</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {selectedStudent.name} · {selectedStudent.class}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setSelectedComponents([]);
+                  setActiveFeeTab('class-fee');
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* 2. Student Summary Section */}
+            <div className="p-4 border-b bg-white">
+              <div className="flex justify-between items-center flex-wrap gap-4">
+                <div className="flex gap-6 text-sm">
+                  <div>
+                    <span className="text-gray-600">Student:</span>
+                    <span className="font-semibold ml-2">{selectedStudent.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Class:</span>
+                    <span className="font-semibold ml-2">{selectedStudent.class}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Roll No:</span>
+                    <span className="font-semibold ml-2">{selectedStudent.roll_number}</span>
+                  </div>
                 </div>
-              ))}
-              <div className="font-bold text-lg mt-2">
-                Total Pending: ₹{totalPending.toFixed(2)}
+                <div className="flex gap-6 text-sm">
+                  <div>
+                    <span className="text-gray-600">Total Pending:</span>
+                    <span className={`font-bold ml-2 ${totalPending > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      ₹{totalPending.toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Transport:</span>
+                    <span className="font-semibold ml-2">
+                      {feeStructure?.transport_fee ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Status:</span>
+                    <span className="font-semibold ml-2 text-green-600">Active</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <form onSubmit={handlePaymentSubmit}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Payment Amount *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={paymentForm.payment_amount}
-                    onChange={(e) => setPaymentForm({...paymentForm, payment_amount: e.target.value})}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                    required
-                    placeholder={`Max: ₹${totalPending.toFixed(2)}`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Payment Date *</label>
-                  <input
-                    type="date"
-                    value={paymentForm.payment_date}
-                    onChange={(e) => setPaymentForm({...paymentForm, payment_date: e.target.value})}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Payment Mode *</label>
-                  <select
-                    value={paymentForm.payment_mode}
-                    onChange={(e) => setPaymentForm({...paymentForm, payment_mode: e.target.value as any})}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                    required
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* 3. Fee Components Tabs */}
+              <div className="flex gap-2 mb-6 border-b">
+                {feeStructure?.class_fee && (
+                  <button
+                    onClick={() => {
+                      setActiveFeeTab('class-fee');
+                      setSelectedComponents([]);
+                    }}
+                    className={`px-4 py-2 font-semibold border-b-2 transition ${
+                      activeFeeTab === 'class-fee'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-600 hover:text-gray-800'
+                    }`}
                   >
-                    <option value="cash">Cash</option>
-                    <option value="upi">UPI</option>
-                    <option value="online">Online</option>
-                    <option value="card">Card</option>
-                    <option value="cheque">Cheque</option>
-                    <option value="bank_transfer">Bank Transfer</option>
-                  </select>
+                    Class Fee
+                  </button>
+                )}
+                {feeStructure?.transport_fee && (
+                  <button
+                    onClick={() => {
+                      setActiveFeeTab('transport-fee');
+                      setSelectedComponents([]);
+                    }}
+                    className={`px-4 py-2 font-semibold border-b-2 transition ${
+                      activeFeeTab === 'transport-fee'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    Transport Fee
+                  </button>
+                )}
+                {feeStructure?.custom_fees && feeStructure.custom_fees.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setActiveFeeTab('custom-fee');
+                      setSelectedComponents([]);
+                    }}
+                    className={`px-4 py-2 font-semibold border-b-2 transition ${
+                      activeFeeTab === 'custom-fee'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    Custom Fees ({feeStructure.custom_fees.length})
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* 4. Month-wise Fee Grid (Left - 2 columns) */}
+                <div className="lg:col-span-2">
+                  {activeTabInfo && (
+                    <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                      <div className="font-semibold text-blue-900">{activeTabInfo.name} – {activeTabInfo.cycle}</div>
+                      <div className="text-sm text-blue-700">Per Month: ₹{activeTabInfo.amount.toFixed(2)}</div>
+                    </div>
+                  )}
+
+                  {allPaidForActiveTab ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-8 text-center">
+                      <p className="text-green-800 font-semibold text-lg">✅ All months paid for this category</p>
+                      <p className="text-green-700 mt-2">No pending fees available.</p>
+                    </div>
+                  ) : activeTabByMonth.length === 0 ? (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+                      <p className="text-gray-600">No fee data available for this category</p>
+                    </div>
+                  ) : (
+                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                      <table className="min-w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Select</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {activeTabByMonth.map((monthEntry) => 
+                            monthEntry.components.map((comp, compIdx) => {
+                              const isOverdue = comp.status === 'overdue' || 
+                                (comp.due_date && new Date(comp.due_date) < new Date() && comp.status !== 'paid');
+                              const isFuture = isFutureMonth(monthEntry.year, monthEntry.monthNumber);
+                              const isDisabled = comp.status === 'paid' || comp.pending_amount === 0 || isFuture;
+                              const statusColor = comp.status === 'paid' 
+                                ? 'text-green-600' 
+                                : isOverdue 
+                                ? 'text-red-600' 
+                                : comp.status === 'partially-paid'
+                                ? 'text-yellow-600'
+                                : 'text-gray-600';
+                              const statusIcon = comp.status === 'paid' 
+                                ? '🟢' 
+                                : isOverdue 
+                                ? '🔴' 
+                                : comp.status === 'partially-paid'
+                                ? '🟡'
+                                : '⚪';
+                              
+                              return (
+                                <tr 
+                                  key={`${monthEntry.year}-${monthEntry.monthNumber}-${compIdx}`}
+                                  className={`hover:bg-gray-50 ${comp.status === 'paid' ? 'bg-green-50' : isOverdue ? 'bg-red-50' : ''}`}
+                                >
+                                  <td className="px-4 py-3 text-sm font-medium">
+                                    {compIdx === 0 ? monthEntry.month : ''}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm">
+                                    <span className={statusColor}>
+                                      {statusIcon} {comp.status === 'paid' ? 'Paid' : 
+                                       isOverdue ? 'Overdue' : 
+                                       comp.status === 'partially-paid' ? 'Partially Paid' : 
+                                       'Pending'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-sm font-semibold">
+                                    ₹{comp.fee_amount.toFixed(2)}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedComponents.includes(comp.id)}
+                                      onChange={() => handleComponentToggle(comp.id, monthEntry.year, monthEntry.monthNumber)}
+                                      disabled={isDisabled}
+                                      className="w-5 h-5 cursor-pointer disabled:cursor-not-allowed"
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
-                {(paymentForm.payment_mode === 'upi' || paymentForm.payment_mode === 'online' || paymentForm.payment_mode === 'card') && (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Transaction ID</label>
-                    <input
-                      type="text"
-                      value={paymentForm.transaction_id}
-                      onChange={(e) => setPaymentForm({...paymentForm, transaction_id: e.target.value})}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                      placeholder="Enter transaction ID"
-                    />
+                {/* 5. Selected Summary Panel (Right - 1 column) */}
+                <div className="lg:col-span-1">
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 sticky top-4">
+                    <h4 className="font-semibold mb-4">Payment Summary</h4>
+                    
+                    {selectedComponents.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        Select months to collect payment
+                      </p>
+                    ) : (
+                      <div className="space-y-3 text-sm">
+                        <div>
+                          <span className="text-gray-600">Selected Months:</span>
+                          <div className="mt-1 font-medium">
+                            {selectedMonths.length > 0 ? selectedMonths.join(', ') : 'None'}
+                          </div>
+                        </div>
+                        <div className="border-t pt-3">
+                          <div className="flex justify-between mb-2">
+                            <span className="text-gray-600">Base Fee Total:</span>
+                            <span className="font-semibold">₹{baseFeeTotal.toFixed(2)}</span>
+                          </div>
+                          {previousBalance > 0 && (
+                            <div className="flex justify-between mb-2 text-orange-600">
+                              <span>Previous Balance:</span>
+                              <span>₹{previousBalance.toFixed(2)}</span>
+                            </div>
+                          )}
+                          {lateFee > 0 && (
+                            <div className="flex justify-between mb-2 text-red-600">
+                              <span>Late Fee / Fine:</span>
+                              <span>₹{lateFee.toFixed(2)}</span>
+                            </div>
+                          )}
+                          {discount > 0 && (
+                            <div className="flex justify-between mb-2 text-green-600">
+                              <span>Discount:</span>
+                              <span>-₹{discount.toFixed(2)}</span>
+                            </div>
+                          )}
+                          <div className="border-t pt-2 mt-2">
+                            <div className="flex justify-between">
+                              <span className="font-semibold">Final Amount:</span>
+                              <span className="font-bold text-lg text-blue-600">₹{finalAmount.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                        {parseFloat(paymentForm.payment_amount || '0') < finalAmount && parseFloat(paymentForm.payment_amount || '0') > 0 && (
+                          <div className="bg-yellow-50 border border-yellow-200 rounded p-2 text-xs text-yellow-800">
+                            ⚠️ This will mark selected months as Partially Paid
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-
-                {paymentForm.payment_mode === 'cheque' && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Cheque Number</label>
-                      <input
-                        type="text"
-                        value={paymentForm.cheque_number}
-                        onChange={(e) => setPaymentForm({...paymentForm, cheque_number: e.target.value})}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                        placeholder="Enter cheque number"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Bank Name</label>
-                      <input
-                        type="text"
-                        value={paymentForm.bank_name}
-                        onChange={(e) => setPaymentForm({...paymentForm, bank_name: e.target.value})}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                        placeholder="Enter bank name"
-                      />
-                    </div>
-                  </>
-                )}
-
-                {paymentForm.payment_mode === 'bank_transfer' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Bank Name</label>
-                    <input
-                      type="text"
-                      value={paymentForm.bank_name}
-                      onChange={(e) => setPaymentForm({...paymentForm, bank_name: e.target.value})}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                      placeholder="Enter bank name"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Notes (Optional)</label>
-                  <textarea
-                    value={paymentForm.notes}
-                    onChange={(e) => setPaymentForm({...paymentForm, notes: e.target.value})}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                    rows={3}
-                    placeholder="Additional notes..."
-                  />
                 </div>
               </div>
 
-              <div className="flex gap-4 mt-6">
-                <button
-                  type="submit"
-                  disabled={processingPayment}
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
-                >
-                  {processingPayment ? 'Processing...' : 'Record Payment'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPaymentModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+              {/* 6. Payment Details Section */}
+              {selectedComponents.length > 0 && (
+                <div className="mt-6 border-t pt-6">
+                  <h4 className="font-semibold mb-4">Payment Details</h4>
+                  <form onSubmit={handlePaymentSubmit}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Payment Mode *</label>
+                        <select
+                          value={paymentForm.payment_mode}
+                          onChange={(e) => setPaymentForm({...paymentForm, payment_mode: e.target.value as any})}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                          required
+                        >
+                          <option value="cash">Cash</option>
+                          <option value="upi">UPI</option>
+                          <option value="online">Online</option>
+                          <option value="card">Card</option>
+                          <option value="cheque">Cheque</option>
+                          <option value="bank_transfer">Bank Transfer</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Payment Amount *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max={finalAmount}
+                          value={paymentForm.payment_amount || (selectedComponents.length > 0 ? finalAmount.toFixed(2) : '')}
+                          onChange={(e) => setPaymentForm({...paymentForm, payment_amount: e.target.value})}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                          required
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Max: ₹{finalAmount.toFixed(2)} {selectedComponents.length === 0 && '(Select months first)'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Payment Date *</label>
+                        <input
+                          type="date"
+                          value={paymentForm.payment_date}
+                          onChange={(e) => setPaymentForm({...paymentForm, payment_date: e.target.value})}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                          required
+                        />
+                      </div>
+
+                      {(paymentForm.payment_mode === 'upi' || paymentForm.payment_mode === 'online' || paymentForm.payment_mode === 'card') && (
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Transaction ID</label>
+                          <input
+                            type="text"
+                            value={paymentForm.transaction_id}
+                            onChange={(e) => setPaymentForm({...paymentForm, transaction_id: e.target.value})}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                            placeholder="Enter transaction ID"
+                          />
+                        </div>
+                      )}
+
+                      {paymentForm.payment_mode === 'cheque' && (
+                        <>
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Cheque Number</label>
+                            <input
+                              type="text"
+                              value={paymentForm.cheque_number}
+                              onChange={(e) => setPaymentForm({...paymentForm, cheque_number: e.target.value})}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                              placeholder="Enter cheque number"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Bank Name</label>
+                            <input
+                              type="text"
+                              value={paymentForm.bank_name}
+                              onChange={(e) => setPaymentForm({...paymentForm, bank_name: e.target.value})}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                              placeholder="Enter bank name"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {paymentForm.payment_mode === 'bank_transfer' && (
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Bank Name</label>
+                          <input
+                            type="text"
+                            value={paymentForm.bank_name}
+                            onChange={(e) => setPaymentForm({...paymentForm, bank_name: e.target.value})}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                            placeholder="Enter bank name"
+                          />
+                        </div>
+                      )}
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium mb-2">Notes (Optional)</label>
+                        <textarea
+                          value={paymentForm.notes}
+                          onChange={(e) => setPaymentForm({...paymentForm, notes: e.target.value})}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                          rows={2}
+                          placeholder="Additional notes..."
+                        />
+                      </div>
+                    </div>
+
+                    {/* 7. Footer Actions */}
+                    <div className="flex justify-between items-center mt-6 pt-6 border-t">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPaymentModal(false);
+                          setSelectedComponents([]);
+                          setActiveFeeTab('class-fee');
+                        }}
+                        className="px-6 py-2 text-gray-700 hover:text-gray-900 font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <div className="flex gap-3">
+                        <button
+                          type="submit"
+                          disabled={processingPayment || selectedComponents.length === 0}
+                          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold"
+                        >
+                          {processingPayment ? 'Processing...' : 'Save & Print Receipt'}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
