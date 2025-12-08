@@ -197,6 +197,28 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
 
     const studentId = studentIds[0];
 
+    // Validate: Prevent payment for future months (unless principal enables advance payments)
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+
+    const futureComponents = components.filter((c: any) => {
+      return c.period_year > currentYear || 
+             (c.period_year === currentYear && c.period_month > currentMonth);
+    });
+
+    if (futureComponents.length > 0) {
+      // Check if school allows advance payments (for now, reject by default)
+      // TODO: Add school settings table to check allow_advance_payments flag
+      const futureMonths = futureComponents.map((c: any) => 
+        `${c.period_month}/${c.period_year}`
+      ).join(', ');
+      
+      return res.status(400).json({ 
+        error: `Cannot record payment for future months (${futureMonths}). Advance payments require Principal approval. Please contact Principal to enable advance payments.` 
+      });
+    }
+
     // Verify student belongs to school
     const { data: student } = await adminSupabase
       .from('students')
@@ -294,10 +316,12 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
     }
 
     // If there's remaining payment (overpayment), apply to next pending months
+    // BUT: Only apply to current or past months, not future months (unless advance payments enabled)
     let overpayment = remainingPayment;
     if (overpayment > 0) {
-      // Get next pending components for this student (future months)
-      const { data: nextPendingComponents } = await adminSupabase
+      // Get next pending components for this student (only current/past months)
+      // Filter: period_year < currentYear OR (period_year = currentYear AND period_month <= currentMonth)
+      const { data: allPendingComponents } = await adminSupabase
         .from('monthly_fee_components')
         .select('*')
         .eq('student_id', studentId)
@@ -306,7 +330,13 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
         .gt('pending_amount', 0)
         .order('period_year', { ascending: true })
         .order('period_month', { ascending: true })
-        .limit(10); // Limit to next 10 pending months
+        .limit(20); // Get more to filter
+
+      // Filter to only current/past months (not future)
+      const nextPendingComponents = (allPendingComponents || []).filter((comp: any) => {
+        return comp.period_year < currentYear || 
+               (comp.period_year === currentYear && comp.period_month <= currentMonth);
+      }).slice(0, 10); // Limit to 10
 
       if (nextPendingComponents && nextPendingComponents.length > 0) {
         for (const nextComponent of nextPendingComponents) {
@@ -317,7 +347,7 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
 
           const amountToApply = Math.min(overpayment, nextPending);
 
-          // Create advance payment record
+          // Create advance payment record (only for current/past months)
           await adminSupabase
             .from('monthly_fee_payments')
             .insert({
@@ -337,6 +367,15 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
 
           overpayment -= amountToApply;
         }
+      }
+      
+      // If there's still overpayment after applying to current/past months,
+      // return it to the user with a message (don't apply to future months)
+      if (overpayment > 0) {
+        return res.status(400).json({
+          error: `Payment amount exceeds pending fees. Excess amount: ₹${overpayment.toFixed(2)}. Cannot apply to future months without Principal approval.`,
+          overpayment: overpayment
+        });
       }
     }
 
