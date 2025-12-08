@@ -151,7 +151,19 @@ export default function FeeCollection() {
     }
   };
 
-  const handleComponentToggle = (componentId: string) => {
+  const isFutureMonth = (year: number, month: number): boolean => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    return year > currentYear || (year === currentYear && month > currentMonth);
+  };
+
+  const handleComponentToggle = (componentId: string, monthYear: number, monthNumber: number) => {
+    // Prevent selecting future months
+    if (isFutureMonth(monthYear, monthNumber)) {
+      alert('Cannot select future months for payment. Advance payments require Principal approval.');
+      return;
+    }
     setSelectedComponents(prev => 
       prev.includes(componentId)
         ? prev.filter(id => id !== componentId)
@@ -167,6 +179,21 @@ export default function FeeCollection() {
     }
 
     if (!selectedStudent) return;
+
+    // Client-side validation: Check for future months
+    const futureComponents = selectedComponentsData.filter(comp => {
+      // Find the month entry for this component
+      const monthEntry = monthlyLedger.find(month => 
+        month.components.some(c => c.id === comp.id)
+      );
+      if (!monthEntry) return false;
+      return isFutureMonth(monthEntry.year, monthEntry.monthNumber);
+    });
+
+    if (futureComponents.length > 0) {
+      alert('Cannot record payment for future months. Advance payments require Principal approval. Please contact Principal to enable advance payments.');
+      return;
+    }
 
     setProcessingPayment(true);
     try {
@@ -229,7 +256,14 @@ export default function FeeCollection() {
         setSelectedComponents([]);
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to process payment');
+        // Show better error message
+        const errorMessage = error.error || 'Failed to process payment';
+        alert(errorMessage);
+        
+        // If it's a future month error, clear selection
+        if (errorMessage.includes('future months') || errorMessage.includes('Advance payments')) {
+          setSelectedComponents([]);
+        }
       }
     } catch (error) {
       console.error('Error processing payment:', error);
@@ -391,6 +425,8 @@ export default function FeeCollection() {
                         monthEntry.components.map((comp, compIdx) => {
                           const isOverdue = comp.status === 'overdue' || 
                             (comp.due_date && new Date(comp.due_date) < new Date() && comp.status !== 'paid');
+                          const isFuture = isFutureMonth(monthEntry.year, monthEntry.monthNumber);
+                          const isDisabled = comp.status === 'paid' || comp.pending_amount === 0 || isFuture;
                           const rowBgColor = comp.status === 'paid' 
                             ? 'bg-green-50' 
                             : isOverdue 
@@ -402,7 +438,7 @@ export default function FeeCollection() {
                           return (
                             <tr 
                               key={`${monthIdx}-${compIdx}`}
-                              className={`${rowBgColor} ${isOverdue ? 'border-l-4 border-red-500' : ''}`}
+                              className={`${rowBgColor} ${isOverdue ? 'border-l-4 border-red-500' : ''} ${isFuture ? 'opacity-60' : ''}`}
                             >
                               <td className="px-4 py-3 text-sm font-medium text-gray-900">
                                 {compIdx === 0 ? monthEntry.month : ''}
@@ -429,6 +465,7 @@ export default function FeeCollection() {
                                   {comp.status === 'paid' ? '🟢 PAID' : 
                                    isOverdue ? '🔴 OVERDUE' : 
                                    comp.status === 'partially-paid' ? '🟡 PARTIALLY PAID' : 
+                                   isFuture ? '🔵 FUTURE' :
                                    '⚪ PENDING'}
                                 </span>
                               </td>
@@ -439,13 +476,17 @@ export default function FeeCollection() {
                                     {Math.floor((new Date().getTime() - new Date(comp.due_date).getTime()) / (1000 * 60 * 60 * 24))} days overdue
                                   </div>
                                 )}
+                                {isFuture && (
+                                  <div className="text-xs text-blue-600 mt-1">Future month</div>
+                                )}
                               </td>
                               <td className="px-4 py-3 text-center">
                                 <input
                                   type="checkbox"
                                   checked={selectedComponents.includes(comp.id)}
-                                  onChange={() => handleComponentToggle(comp.id)}
-                                  disabled={comp.status === 'paid' || comp.pending_amount === 0}
+                                  onChange={() => handleComponentToggle(comp.id, monthEntry.year, monthEntry.monthNumber)}
+                                  disabled={isDisabled}
+                                  title={isFuture ? 'Future months require Principal approval' : (comp.status === 'paid' ? 'Already paid' : comp.pending_amount === 0 ? 'No pending amount' : '')}
                                   className="w-5 h-5 cursor-pointer disabled:cursor-not-allowed"
                                 />
                               </td>
