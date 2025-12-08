@@ -38,9 +38,9 @@ create table if not exists monthly_fee_components (
   -- Due date for this month
   due_date date,
   
-  -- Link to bill if generated
-  bill_id uuid references fee_bills(id) on delete set null,
-  bill_item_id uuid references fee_bill_items(id) on delete set null,
+  -- Link to bill if generated (tables removed in migration 012, keeping as UUID for future use)
+  bill_id uuid,
+  bill_item_id uuid,
   
   -- Metadata
   effective_from date, -- When this fee component started for student
@@ -84,8 +84,8 @@ create table if not exists monthly_fee_payments (
   -- Who collected
   received_by uuid references profiles(id) not null,
   
-  -- Link to main fee_payments table if bill-based payment
-  fee_payment_id uuid references fee_payments(id) on delete set null,
+  -- Link to main fee_payments table if bill-based payment (table removed in migration 012, keeping as UUID for future use)
+  fee_payment_id uuid,
   
   -- Receipt
   receipt_number text,
