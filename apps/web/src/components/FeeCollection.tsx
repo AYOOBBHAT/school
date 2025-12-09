@@ -339,8 +339,28 @@ export default function FeeCollection() {
 
     if (!selectedStudent) return;
 
+    // Calculate total pending for selected components
+    const selectedComponentsDataForValidation = monthlyLedger
+      .flatMap(month => month.components)
+      .filter(comp => selectedComponents.includes(comp.id));
+    const totalPendingForValidation = selectedComponentsDataForValidation.reduce(
+      (sum, comp) => sum + comp.pending_amount, 
+      0
+    );
+
+    // Validate payment amount
+    const paymentAmount = parseFloat(paymentForm.payment_amount || '0');
+    if (paymentAmount <= 0) {
+      alert('Payment amount must be greater than 0');
+      return;
+    }
+    if (paymentAmount > totalPendingForValidation) {
+      alert(`Payment amount (₹${paymentAmount.toFixed(2)}) cannot exceed total pending amount (₹${totalPendingForValidation.toFixed(2)})`);
+      return;
+    }
+
     // Client-side validation: Check for future months
-    const futureComponents = selectedComponentsData.filter(comp => {
+    const futureComponents = selectedComponentsDataForValidation.filter(comp => {
       // Find the month entry for this component
       const monthEntry = monthlyLedger.find(month => 
         month.components.some(c => c.id === comp.id)
@@ -1135,15 +1155,26 @@ export default function FeeCollection() {
                           type="number"
                           step="0.01"
                           min="0"
-                          max={finalAmount}
-                          value={paymentForm.payment_amount || (selectedComponents.length > 0 ? finalAmount.toFixed(2) : '')}
-                          onChange={(e) => setPaymentForm({...paymentForm, payment_amount: e.target.value})}
+                          max={totalPending}
+                          value={paymentForm.payment_amount || (selectedComponents.length > 0 ? totalPending.toFixed(2) : '')}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            const numValue = parseFloat(value);
+                            if (value === '' || (numValue >= 0 && numValue <= totalPending)) {
+                              setPaymentForm({...paymentForm, payment_amount: value});
+                            }
+                          }}
                           className="w-full border border-gray-300 rounded-lg px-3 py-2"
                           required
                         />
-                        <p className="text-xs text-gray-500 mt-1">
-                          Max: ₹{finalAmount.toFixed(2)} {selectedComponents.length === 0 && '(Select months first)'}
+                        <p className={`text-xs mt-1 ${parseFloat(paymentForm.payment_amount || '0') > totalPending ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
+                          Max: ₹{totalPending.toFixed(2)} (Total Pending) {selectedComponents.length === 0 && '- Select months first'}
                         </p>
+                        {parseFloat(paymentForm.payment_amount || '0') > totalPending && (
+                          <p className="text-xs text-red-600 mt-1">
+                            ⚠️ Payment amount cannot exceed total pending amount
+                          </p>
+                        )}
                       </div>
 
                       <div>

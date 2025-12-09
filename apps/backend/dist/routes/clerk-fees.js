@@ -165,6 +165,22 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
             return res.status(400).json({ error: 'All fee components must belong to the same student' });
         }
         const studentId = studentIds[0];
+        // Validate: Prevent payment for future months (unless principal enables advance payments)
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth() + 1;
+        const futureComponents = components.filter((c) => {
+            return c.period_year > currentYear ||
+                (c.period_year === currentYear && c.period_month > currentMonth);
+        });
+        if (futureComponents.length > 0) {
+            // Check if school allows advance payments (for now, reject by default)
+            // TODO: Add school settings table to check allow_advance_payments flag
+            const futureMonths = futureComponents.map((c) => `${c.period_month}/${c.period_year}`).join(', ');
+            return res.status(400).json({
+                error: `Cannot record payment for future months (${futureMonths}). Advance payments require Principal approval. Please contact Principal to enable advance payments.`
+            });
+        }
         // Verify student belongs to school
         const { data: student } = await adminSupabase
             .from('students')
@@ -179,10 +195,16 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
         const totalPending = components.reduce((sum, comp) => {
             return sum + parseFloat(comp.pending_amount || 0);
         }, 0);
-        if (payment_amount > totalPending * 1.1) {
-            // Allow 10% tolerance for rounding
+        // Validate: Payment amount should not exceed pending fee
+        if (payment_amount > totalPending) {
             return res.status(400).json({
-                error: `Payment amount (₹${payment_amount}) exceeds total pending (₹${totalPending})`
+                error: `Payment amount (₹${payment_amount.toFixed(2)}) cannot exceed total pending amount (₹${totalPending.toFixed(2)})`
+            });
+        }
+        // Validate: Payment amount must be positive
+        if (payment_amount <= 0) {
+            return res.status(400).json({
+                error: `Payment amount must be greater than 0`
             });
         }
         // Generate receipt number
@@ -250,48 +272,17 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
             payments.push(payment);
             remainingPayment -= amountToPay;
         }
-        // If there's remaining payment (overpayment), apply to next pending months
-        let overpayment = remainingPayment;
-        if (overpayment > 0) {
-            // Get next pending components for this student (future months)
-            const { data: nextPendingComponents } = await adminSupabase
-                .from('monthly_fee_components')
-                .select('*')
-                .eq('student_id', studentId)
-                .eq('school_id', user.schoolId)
-                .in('status', ['pending', 'partially-paid'])
-                .gt('pending_amount', 0)
-                .order('period_year', { ascending: true })
-                .order('period_month', { ascending: true })
-                .limit(10); // Limit to next 10 pending months
-            if (nextPendingComponents && nextPendingComponents.length > 0) {
-                for (const nextComponent of nextPendingComponents) {
-                    if (overpayment <= 0)
-                        break;
-                    const nextPending = parseFloat(nextComponent.pending_amount || 0);
-                    if (nextPending <= 0)
-                        continue;
-                    const amountToApply = Math.min(overpayment, nextPending);
-                    // Create advance payment record
-                    await adminSupabase
-                        .from('monthly_fee_payments')
-                        .insert({
-                        monthly_fee_component_id: nextComponent.id,
-                        student_id: studentId,
-                        school_id: user.schoolId,
-                        payment_amount: amountToApply,
-                        payment_date: payment_date.toISOString().split('T')[0],
-                        payment_mode: payment_mode,
-                        transaction_id: transaction_id || null,
-                        cheque_number: cheque_number || null,
-                        bank_name: bank_name || null,
-                        received_by: user.id,
-                        receipt_number: receiptNumber,
-                        notes: `Advance payment from receipt ${receiptNumber}. ${notes || ''}`
-                    });
-                    overpayment -= amountToApply;
-                }
-            }
+        // Check if there's any remaining payment (should not happen with new validation, but keep for safety)
+        if (remainingPayment > 0.01) { // Allow small rounding differences (1 paisa)
+            console.warn(`[clerk-fees/collect] Warning: Remaining payment ${remainingPayment} after distribution. This should not happen with validation.`);
+            // This should not happen with the new validation, but if it does, we'll log it
+            // The payment has already been recorded for the selected components
+        }
+        // Verify that at least one payment was recorded
+        if (payments.length === 0) {
+            return res.status(500).json({
+                error: 'No payment was recorded. Please check that selected components have pending amounts.'
+            });
         }
         // Get updated components to return status
         const { data: updatedComponents } = await adminSupabase
@@ -299,9 +290,6 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
             .select('*')
             .in('id', monthly_fee_component_ids)
             .eq('school_id', user.schoolId);
-        const successMessage = overpayment > 0
-            ? `₹${overpayment.toFixed(2)} applied as advance payment to future pending months`
-            : 'Payment recorded successfully';
         return res.status(201).json({
             success: true,
             receipt_number: receiptNumber,
@@ -317,9 +305,9 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
                 notes: notes || null,
                 receipt_number: receiptNumber
             },
+            payments: payments, // Return all payment records created
             components: updatedComponents,
-            overpayment: overpayment > 0 ? overpayment : 0,
-            message: successMessage
+            message: 'Payment recorded successfully'
         });
     }
     catch (err) {
