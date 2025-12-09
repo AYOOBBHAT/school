@@ -76,6 +76,7 @@ export default function FeeCollection() {
   // Reload students when class filter changes
   useEffect(() => {
     loadStudents();
+    // Keep search query but it will be re-applied to the new filtered list
   }, [selectedClass]);
 
   // Auto-update payment amount when selection changes (if modal is open)
@@ -149,8 +150,13 @@ export default function FeeCollection() {
           class_group_id: s.class_group_id
         }));
         setAllStudents(studentsList);
-        // Apply search filter immediately
-        applySearchFilter(studentsList, searchQuery);
+        // Apply search filter immediately on the newly loaded students
+        // Note: The debounced effect will also handle this, but this ensures immediate update
+        if (searchQuery.trim()) {
+          applySearchFilter(studentsList, searchQuery);
+        } else {
+          setStudents(studentsList);
+        }
       }
     } catch (error) {
       console.error('Error loading students:', error);
@@ -174,9 +180,12 @@ export default function FeeCollection() {
     setStudents(filtered);
   };
 
-  // Debounced search handler
+  // Debounced search handler - re-applies when search query or students list changes
+  // Note: allStudents is already filtered by class from the backend when selectedClass changes
   useEffect(() => {
     const timeoutId = setTimeout(() => {
+      // allStudents is already filtered by class from loadStudents() if selectedClass is set
+      // So we just need to apply the search filter
       applySearchFilter(allStudents, searchQuery);
     }, 150); // 150ms debounce for better performance
 
@@ -510,12 +519,16 @@ export default function FeeCollection() {
             <label className="block text-sm font-medium mb-2">Search by Name</label>
             <input
               type="text"
-              placeholder="Type student name (predictive search)..."
+              placeholder={selectedClass ? `Search in ${classes.find(c => c.id === selectedClass)?.name || 'selected class'}...` : "Type student name (predictive search)..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-4 py-2"
             />
-            <p className="text-xs text-gray-500 mt-1">Search shows students whose names start with your input</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {selectedClass 
+                ? `Searching in ${classes.find(c => c.id === selectedClass)?.name || 'selected class'} - names starting with your input`
+                : 'Search shows students whose names start with your input'}
+            </p>
           </div>
         </div>
         
