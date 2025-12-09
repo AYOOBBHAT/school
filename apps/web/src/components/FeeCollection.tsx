@@ -131,7 +131,7 @@ export default function FeeCollection() {
       if (!token) return;
 
       // Build URL with class filter if selected
-      let url = `${API_URL}/students`;
+      let url = `${API_URL}/students-admin`;
       if (selectedClass) {
         url += `?class_group_id=${selectedClass}`;
       }
@@ -142,13 +142,40 @@ export default function FeeCollection() {
 
       if (response.ok) {
         const data = await response.json();
-        const studentsList = (data.students || []).map((s: any) => ({
-          id: s.id,
-          name: s.profile?.full_name || 'Unknown',
-          roll_number: s.roll_number || 'N/A',
-          class: s.class_groups?.name || 'N/A',
-          class_group_id: s.class_group_id
-        }));
+        // The /students-admin endpoint returns { classes: [...], unassigned: [...] }
+        // Extract students from classes array
+        let studentsList: Student[] = [];
+        
+        if (data.classes && Array.isArray(data.classes)) {
+          // Extract students from all classes (or just the selected class if filtered)
+          data.classes.forEach((cls: any) => {
+            if (cls.students && Array.isArray(cls.students)) {
+              cls.students.forEach((s: any) => {
+                studentsList.push({
+                  id: s.id,
+                  name: s.profile?.full_name || 'Unknown',
+                  roll_number: s.roll_number || 'N/A',
+                  class: cls.name || 'N/A',
+                  class_group_id: cls.id
+                });
+              });
+            }
+          });
+        }
+        
+        // Also include unassigned students if no class filter is selected
+        if (!selectedClass && data.unassigned && Array.isArray(data.unassigned)) {
+          data.unassigned.forEach((s: any) => {
+            studentsList.push({
+              id: s.id,
+              name: s.profile?.full_name || 'Unknown',
+              roll_number: s.roll_number || 'N/A',
+              class: 'Unassigned',
+              class_group_id: undefined
+            });
+          });
+        }
+        
         setAllStudents(studentsList);
         // Apply search filter immediately on the newly loaded students
         // Note: The debounced effect will also handle this, but this ensures immediate update
@@ -163,7 +190,7 @@ export default function FeeCollection() {
     }
   };
 
-  // Apply search filter (predictive - starts with)
+  // Apply search filter (predictive - starts with, but also includes partial matches)
   const applySearchFilter = (studentList: Student[], query: string) => {
     if (!query.trim()) {
       setStudents(studentList);
@@ -172,10 +199,13 @@ export default function FeeCollection() {
 
     const queryLower = query.toLowerCase().trim();
     const filtered = studentList.filter(s => {
-      const nameLower = s.name.toLowerCase();
-      // Predictive search: name starts with query
-      return nameLower.startsWith(queryLower) || 
-             s.roll_number.toLowerCase().includes(queryLower);
+      const nameLower = (s.name || '').toLowerCase();
+      const rollNumberLower = (s.roll_number || '').toLowerCase();
+      // Predictive search: name starts with query (preferred) or contains query
+      const nameStartsWith = nameLower.startsWith(queryLower);
+      const nameContains = nameLower.includes(queryLower);
+      const rollMatches = rollNumberLower.includes(queryLower);
+      return nameStartsWith || nameContains || rollMatches;
     });
     setStudents(filtered);
   };
@@ -537,12 +567,24 @@ export default function FeeCollection() {
           <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto">
             {students.length === 0 ? (
               <div className="p-4 text-gray-500 text-center">
-                {searchQuery ? 'No students found matching your search' : 'Start typing to search for students'}
+                {searchQuery ? (
+                  <div>
+                    <p>No students found matching "{searchQuery}"</p>
+                    {selectedClass && (
+                      <p className="text-xs mt-1">in {classes.find(c => c.id === selectedClass)?.name || 'selected class'}</p>
+                    )}
+                    {allStudents.length > 0 && (
+                      <p className="text-xs mt-1 text-gray-400">Total students available: {allStudents.length}</p>
+                    )}
+                  </div>
+                ) : (
+                  'Start typing to search for students'
+                )}
               </div>
             ) : (
               <>
                 <div className="p-2 bg-gray-50 text-xs text-gray-600 border-b">
-                  Found {students.length} student{students.length !== 1 ? 's' : ''}
+                  Found {students.length} student{students.length !== 1 ? 's' : ''} matching "{searchQuery}"
                   {selectedClass && ` in ${classes.find(c => c.id === selectedClass)?.name || 'selected class'}`}
                 </div>
                 {students.slice(0, 50).map(student => (

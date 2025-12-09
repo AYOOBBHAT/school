@@ -92,7 +92,7 @@ export default function FeeCollection() {
             if (!token)
                 return;
             // Build URL with class filter if selected
-            let url = `${API_URL}/students`;
+            let url = `${API_URL}/students-admin`;
             if (selectedClass) {
                 url += `?class_group_id=${selectedClass}`;
             }
@@ -101,13 +101,37 @@ export default function FeeCollection() {
             });
             if (response.ok) {
                 const data = await response.json();
-                const studentsList = (data.students || []).map((s) => ({
-                    id: s.id,
-                    name: s.profile?.full_name || 'Unknown',
-                    roll_number: s.roll_number || 'N/A',
-                    class: s.class_groups?.name || 'N/A',
-                    class_group_id: s.class_group_id
-                }));
+                // The /students-admin endpoint returns { classes: [...], unassigned: [...] }
+                // Extract students from classes array
+                let studentsList = [];
+                if (data.classes && Array.isArray(data.classes)) {
+                    // Extract students from all classes (or just the selected class if filtered)
+                    data.classes.forEach((cls) => {
+                        if (cls.students && Array.isArray(cls.students)) {
+                            cls.students.forEach((s) => {
+                                studentsList.push({
+                                    id: s.id,
+                                    name: s.profile?.full_name || 'Unknown',
+                                    roll_number: s.roll_number || 'N/A',
+                                    class: cls.name || 'N/A',
+                                    class_group_id: cls.id
+                                });
+                            });
+                        }
+                    });
+                }
+                // Also include unassigned students if no class filter is selected
+                if (!selectedClass && data.unassigned && Array.isArray(data.unassigned)) {
+                    data.unassigned.forEach((s) => {
+                        studentsList.push({
+                            id: s.id,
+                            name: s.profile?.full_name || 'Unknown',
+                            roll_number: s.roll_number || 'N/A',
+                            class: 'Unassigned',
+                            class_group_id: undefined
+                        });
+                    });
+                }
                 setAllStudents(studentsList);
                 // Apply search filter immediately on the newly loaded students
                 // Note: The debounced effect will also handle this, but this ensures immediate update
@@ -123,7 +147,7 @@ export default function FeeCollection() {
             console.error('Error loading students:', error);
         }
     };
-    // Apply search filter (predictive - starts with)
+    // Apply search filter (predictive - starts with, but also includes partial matches)
     const applySearchFilter = (studentList, query) => {
         if (!query.trim()) {
             setStudents(studentList);
@@ -131,10 +155,13 @@ export default function FeeCollection() {
         }
         const queryLower = query.toLowerCase().trim();
         const filtered = studentList.filter(s => {
-            const nameLower = s.name.toLowerCase();
-            // Predictive search: name starts with query
-            return nameLower.startsWith(queryLower) ||
-                s.roll_number.toLowerCase().includes(queryLower);
+            const nameLower = (s.name || '').toLowerCase();
+            const rollNumberLower = (s.roll_number || '').toLowerCase();
+            // Predictive search: name starts with query (preferred) or contains query
+            const nameStartsWith = nameLower.startsWith(queryLower);
+            const nameContains = nameLower.includes(queryLower);
+            const rollMatches = rollNumberLower.includes(queryLower);
+            return nameStartsWith || nameContains || rollMatches;
         });
         setStudents(filtered);
     };
@@ -419,7 +446,7 @@ export default function FeeCollection() {
                                             setSearchQuery(''); // Clear search when class changes
                                         }, className: "w-full border border-gray-300 rounded-lg px-4 py-2", children: [_jsx("option", { value: "", children: "All Classes" }), classes.map(cls => (_jsx("option", { value: cls.id, children: cls.name }, cls.id)))] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Search by Name" }), _jsx("input", { type: "text", placeholder: selectedClass ? `Search in ${classes.find(c => c.id === selectedClass)?.name || 'selected class'}...` : "Type student name (predictive search)...", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value), className: "w-full border border-gray-300 rounded-lg px-4 py-2" }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: selectedClass
                                             ? `Searching in ${classes.find(c => c.id === selectedClass)?.name || 'selected class'} - names starting with your input`
-                                            : 'Search shows students whose names start with your input' })] })] }), searchQuery && (_jsx("div", { className: "border border-gray-200 rounded-lg max-h-64 overflow-y-auto", children: students.length === 0 ? (_jsx("div", { className: "p-4 text-gray-500 text-center", children: searchQuery ? 'No students found matching your search' : 'Start typing to search for students' })) : (_jsxs(_Fragment, { children: [_jsxs("div", { className: "p-2 bg-gray-50 text-xs text-gray-600 border-b", children: ["Found ", students.length, " student", students.length !== 1 ? 's' : '', selectedClass && ` in ${classes.find(c => c.id === selectedClass)?.name || 'selected class'}`] }), students.slice(0, 50).map(student => (_jsxs("div", { onClick: () => handleStudentSelect(student), className: `p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''}`, children: [_jsx("div", { className: "font-semibold text-gray-900", children: student.name }), _jsxs("div", { className: "text-sm text-gray-600", children: ["Roll: ", student.roll_number, " | Class: ", student.class] })] }, student.id))), students.length > 50 && (_jsx("div", { className: "p-4 text-center text-sm text-gray-500 bg-gray-50", children: "Showing first 50 results. Refine your search for more specific results." }))] })) })), !searchQuery && selectedClass && (_jsxs("div", { className: "border border-gray-200 rounded-lg max-h-64 overflow-y-auto", children: [_jsxs("div", { className: "p-2 bg-gray-50 text-xs text-gray-600 border-b", children: ["All students in ", classes.find(c => c.id === selectedClass)?.name || 'selected class', " (", students.length, ")"] }), students.slice(0, 50).map(student => (_jsxs("div", { onClick: () => handleStudentSelect(student), className: `p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''}`, children: [_jsx("div", { className: "font-semibold text-gray-900", children: student.name }), _jsxs("div", { className: "text-sm text-gray-600", children: ["Roll: ", student.roll_number, " | Class: ", student.class] })] }, student.id)))] }))] }), selectedStudent && (_jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsxs("div", { className: "flex justify-between items-start mb-4", children: [_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-semibold", children: selectedStudent.name }), _jsxs("p", { className: "text-gray-600", children: ["Roll: ", selectedStudent.roll_number, " | Class: ", selectedStudent.class] })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: loadPaymentHistory, className: "px-4 py-2 rounded-lg font-semibold bg-green-600 text-white hover:bg-green-700", children: "View Payment History" }), _jsxs("button", { onClick: () => {
+                                            : 'Search shows students whose names start with your input' })] })] }), searchQuery && (_jsx("div", { className: "border border-gray-200 rounded-lg max-h-64 overflow-y-auto", children: students.length === 0 ? (_jsx("div", { className: "p-4 text-gray-500 text-center", children: searchQuery ? (_jsxs("div", { children: [_jsxs("p", { children: ["No students found matching \"", searchQuery, "\""] }), selectedClass && (_jsxs("p", { className: "text-xs mt-1", children: ["in ", classes.find(c => c.id === selectedClass)?.name || 'selected class'] })), allStudents.length > 0 && (_jsxs("p", { className: "text-xs mt-1 text-gray-400", children: ["Total students available: ", allStudents.length] }))] })) : ('Start typing to search for students') })) : (_jsxs(_Fragment, { children: [_jsxs("div", { className: "p-2 bg-gray-50 text-xs text-gray-600 border-b", children: ["Found ", students.length, " student", students.length !== 1 ? 's' : '', " matching \"", searchQuery, "\"", selectedClass && ` in ${classes.find(c => c.id === selectedClass)?.name || 'selected class'}`] }), students.slice(0, 50).map(student => (_jsxs("div", { onClick: () => handleStudentSelect(student), className: `p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''}`, children: [_jsx("div", { className: "font-semibold text-gray-900", children: student.name }), _jsxs("div", { className: "text-sm text-gray-600", children: ["Roll: ", student.roll_number, " | Class: ", student.class] })] }, student.id))), students.length > 50 && (_jsx("div", { className: "p-4 text-center text-sm text-gray-500 bg-gray-50", children: "Showing first 50 results. Refine your search for more specific results." }))] })) })), !searchQuery && selectedClass && (_jsxs("div", { className: "border border-gray-200 rounded-lg max-h-64 overflow-y-auto", children: [_jsxs("div", { className: "p-2 bg-gray-50 text-xs text-gray-600 border-b", children: ["All students in ", classes.find(c => c.id === selectedClass)?.name || 'selected class', " (", students.length, ")"] }), students.slice(0, 50).map(student => (_jsxs("div", { onClick: () => handleStudentSelect(student), className: `p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''}`, children: [_jsx("div", { className: "font-semibold text-gray-900", children: student.name }), _jsxs("div", { className: "text-sm text-gray-600", children: ["Roll: ", student.roll_number, " | Class: ", student.class] })] }, student.id)))] }))] }), selectedStudent && (_jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsxs("div", { className: "flex justify-between items-start mb-4", children: [_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-semibold", children: selectedStudent.name }), _jsxs("p", { className: "text-gray-600", children: ["Roll: ", selectedStudent.roll_number, " | Class: ", selectedStudent.class] })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: loadPaymentHistory, className: "px-4 py-2 rounded-lg font-semibold bg-green-600 text-white hover:bg-green-700", children: "View Payment History" }), _jsxs("button", { onClick: () => {
                                             setShowPaymentModal(true);
                                             setActiveFeeTab('class-fee');
                                             // Pre-fill payment amount with total pending
