@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { API_URL } from '../utils/api.js';
 
@@ -79,21 +79,26 @@ export default function FeeCollection() {
     // Keep search query but it will be re-applied to the new filtered list
   }, [selectedClass]);
 
+  // Memoize selected components data to avoid recalculating on every render
+  const selectedComponentsData = useMemo(() => {
+    if (selectedComponents.length === 0) return [];
+    return monthlyLedger
+      .flatMap(month => month.components)
+      .filter(comp => selectedComponents.includes(comp.id));
+  }, [selectedComponents, monthlyLedger]);
+
+  // Memoize total pending amount calculation
+  const totalPending = useMemo(() => {
+    return selectedComponentsData.reduce((sum, comp) => sum + comp.pending_amount, 0);
+  }, [selectedComponentsData]);
+
   // Auto-update payment amount when selection changes (if modal is open)
+  // Use totalPending (pending_amount) instead of fee_amount
   useEffect(() => {
-    if (showPaymentModal && selectedComponents.length > 0) {
-      const newTotal = monthlyLedger
-        .flatMap(month => month.components)
-        .filter(comp => selectedComponents.includes(comp.id))
-        .reduce((sum, comp) => {
-          const baseAmount = comp.fee_amount;
-          // TODO: Add previous balance and late fee calculation
-          return sum + baseAmount;
-        }, 0);
-      
+    if (showPaymentModal && selectedComponents.length > 0 && totalPending > 0) {
       setPaymentForm(prevForm => ({
         ...prevForm,
-        payment_amount: newTotal > 0 ? newTotal.toFixed(2) : prevForm.payment_amount
+        payment_amount: totalPending.toFixed(2)
       }));
     } else if (showPaymentModal && selectedComponents.length === 0) {
       // Clear payment amount when no components selected
@@ -102,7 +107,7 @@ export default function FeeCollection() {
         payment_amount: ''
       }));
     }
-  }, [selectedComponents, showPaymentModal, monthlyLedger]);
+  }, [selectedComponents.length, showPaymentModal, totalPending]);
 
   const loadClasses = async () => {
     setLoadingClasses(true);
@@ -295,7 +300,7 @@ export default function FeeCollection() {
     return year > currentYear || (year === currentYear && month > currentMonth);
   };
 
-  const handleComponentToggle = (componentId: string, monthYear: number, monthNumber: number) => {
+  const handleComponentToggle = useCallback((componentId: string, monthYear: number, monthNumber: number) => {
     // Prevent selecting future months
     if (isFutureMonth(monthYear, monthNumber)) {
       alert('Cannot select future months for payment. Advance payments require Principal approval.');
@@ -305,30 +310,9 @@ export default function FeeCollection() {
       const newSelection = prev.includes(componentId)
         ? prev.filter(id => id !== componentId)
         : [...prev, componentId];
-      
-      // Auto-update payment amount when selection changes (if modal is open)
-      if (showPaymentModal) {
-        const newTotal = monthlyLedger
-          .flatMap(month => month.components)
-          .filter(comp => newSelection.includes(comp.id))
-          .reduce((sum, comp) => {
-            const monthEntry = monthlyLedger.find(m => 
-              m.components.some(c => c.id === comp.id)
-            );
-            const baseAmount = comp.fee_amount;
-            // TODO: Add previous balance and late fee calculation
-            return sum + baseAmount;
-          }, 0);
-        
-        setPaymentForm(prevForm => ({
-          ...prevForm,
-          payment_amount: newSelection.length > 0 ? newTotal.toFixed(2) : ''
-        }));
-      }
-      
       return newSelection;
     });
-  };
+  }, []);
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -496,39 +480,48 @@ export default function FeeCollection() {
   };
 
   const activeTabInfo = getActiveTabInfo();
-
-  const selectedComponentsData = monthlyLedger
-    .flatMap(month => month.components)
-    .filter(comp => selectedComponents.includes(comp.id));
-
-  const totalPending = selectedComponentsData.reduce((sum, comp) => sum + comp.pending_amount, 0);
   
-  // Calculate summary for selected components
-  const selectedMonthsSet = new Set<string>();
-  selectedComponentsData.forEach(comp => {
-    const monthEntry = monthlyLedger.find(m => 
-      m.components.some(c => c.id === comp.id)
-    );
-    if (monthEntry) selectedMonthsSet.add(monthEntry.month);
-  });
-  const selectedMonths = Array.from(selectedMonthsSet);
+  // Calculate summary for selected components (memoized)
+  const selectedMonths = useMemo(() => {
+    const selectedMonthsSet = new Set<string>();
+    selectedComponentsData.forEach(comp => {
+      const monthEntry = monthlyLedger.find(m => 
+        m.components.some(c => c.id === comp.id)
+      );
+      if (monthEntry) selectedMonthsSet.add(monthEntry.month);
+    });
+    return Array.from(selectedMonthsSet);
+  }, [selectedComponentsData, monthlyLedger]);
 
-  const baseFeeTotal = selectedComponentsData.reduce((sum, comp) => sum + comp.fee_amount, 0);
-  const previousBalance = selectedComponentsData.reduce((sum, comp) => {
+  // Memoize summary calculations
+  const baseFeeTotal = useMemo(() => 
+    selectedComponentsData.reduce((sum, comp) => sum + comp.fee_amount, 0),
+    [selectedComponentsData]
+  );
+  
+  const previousBalance = useMemo(() => {
     // Previous balance would be from earlier unpaid months - simplified for now
-    return sum;
-  }, 0);
-  const lateFee = selectedComponentsData.reduce((sum, comp) => {
-    // Calculate late fee for overdue components
-    if (comp.status === 'overdue' && comp.due_date) {
-      const daysOverdue = Math.floor((new Date().getTime() - new Date(comp.due_date).getTime()) / (1000 * 60 * 60 * 24));
-      // TODO: Apply fine rules from fine_rules table
-      return sum; // Placeholder
-    }
-    return sum;
-  }, 0);
-  const discount = 0; // TODO: Get from principal-approved discounts
-  const finalAmount = baseFeeTotal + previousBalance + lateFee - discount;
+    return 0;
+  }, []);
+  
+  const lateFee = useMemo(() => {
+    return selectedComponentsData.reduce((sum, comp) => {
+      // Calculate late fee for overdue components
+      if (comp.status === 'overdue' && comp.due_date) {
+        const daysOverdue = Math.floor((new Date().getTime() - new Date(comp.due_date).getTime()) / (1000 * 60 * 60 * 24));
+        // TODO: Apply fine rules from fine_rules table
+        return sum; // Placeholder
+      }
+      return sum;
+    }, 0);
+  }, [selectedComponentsData]);
+  
+  const discount = useMemo(() => 0, []); // TODO: Get from principal-approved discounts
+  
+  const finalAmount = useMemo(() => 
+    baseFeeTotal + previousBalance + lateFee - discount,
+    [baseFeeTotal, previousBalance, lateFee, discount]
+  );
   
   // Check if all months are paid for active tab
   const allPaidForActiveTab = activeTabByMonth.every(month => 
@@ -674,15 +667,8 @@ export default function FeeCollection() {
                 onClick={() => {
                   setShowPaymentModal(true);
                   setActiveFeeTab('class-fee');
-                  // Pre-fill payment amount with total pending
-                  const total = monthlyLedger
-                    .flatMap(month => month.components)
-                    .filter(comp => selectedComponents.includes(comp.id))
-                    .reduce((sum, comp) => sum + comp.pending_amount, 0);
-                  setPaymentForm(prev => ({
-                    ...prev,
-                    payment_amount: total > 0 ? total.toFixed(2) : ''
-                  }));
+                  // Payment amount will be auto-filled by useEffect when modal opens
+                  // using totalPending (which is already memoized)
                 }}
                 disabled={selectedComponents.length === 0}
                 className={`px-4 py-2 rounded-lg font-semibold ${
@@ -1158,10 +1144,16 @@ export default function FeeCollection() {
                           max={totalPending}
                           value={paymentForm.payment_amount || (selectedComponents.length > 0 ? totalPending.toFixed(2) : '')}
                           onChange={(e) => {
+                            // Optimized: Allow any input, validate only on blur/submit
+                            setPaymentForm({...paymentForm, payment_amount: e.target.value});
+                          }}
+                          onBlur={(e) => {
+                            // Validate on blur instead of every keystroke
                             const value = e.target.value;
                             const numValue = parseFloat(value);
-                            if (value === '' || (numValue >= 0 && numValue <= totalPending)) {
-                              setPaymentForm({...paymentForm, payment_amount: value});
+                            if (value && (numValue < 0 || numValue > totalPending)) {
+                              // Reset to totalPending if invalid
+                              setPaymentForm({...paymentForm, payment_amount: totalPending.toFixed(2)});
                             }
                           }}
                           className="w-full border border-gray-300 rounded-lg px-3 py-2"

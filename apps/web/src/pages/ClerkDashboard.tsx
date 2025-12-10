@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import FeeCollection from '../components/FeeCollection.js';
+import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics.tsx';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
@@ -273,6 +274,16 @@ export default function ClerkDashboard() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Unpaid Fee Analytics */}
+                  <UnpaidFeeAnalytics
+                    userRole="clerk"
+                    onCollectFee={(studentId) => {
+                      // Navigate to fee collection with student pre-selected
+                      setActiveTab('fee-collection');
+                      navigate(`/clerk/fees?student=${studentId}`);
+                    }}
+                  />
 
                   {/* Recent Payments */}
                   <div className="bg-white rounded-lg shadow-md p-6">

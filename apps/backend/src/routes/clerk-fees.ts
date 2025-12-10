@@ -327,8 +327,8 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
       console.warn(`[clerk-fees/collect] Warning: Remaining payment ${remainingPayment} after distribution. This should not happen with validation.`);
       // This should not happen with the new validation, but if it does, we'll log it
       // The payment has already been recorded for the selected components
-    }
-
+      }
+      
     // Verify that at least one payment was recorded
     if (payments.length === 0) {
       return res.status(500).json({ 
@@ -560,6 +560,277 @@ router.get('/student/:studentId/payments', requireRoles(['clerk', 'principal', '
   } catch (err: any) {
     console.error('[clerk-fees/payments] Error:', err);
     return res.status(500).json({ error: err.message || 'Failed to get payment history' });
+  }
+});
+
+// ============================================
+// 6. Get Unpaid Fee Analytics
+// ============================================
+router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req, res) => {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+  const { user } = req;
+  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+
+  try {
+    const { class_group_id, time_scope, page = 1, limit = 20 } = req.query;
+    
+    // Validate time scope
+    const validTimeScopes = ['last_month', 'last_2_months', 'last_3_months', 'last_6_months', 'current_academic_year', 'custom'];
+    const timeScope = time_scope as string || 'last_month';
+    
+    if (!validTimeScopes.includes(timeScope)) {
+      return res.status(400).json({ error: 'Invalid time scope' });
+    }
+
+    // Calculate date range based on time scope
+    const today = new Date();
+    let startDate: Date;
+    let endDate: Date = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    switch (timeScope) {
+      case 'last_month':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        break;
+      case 'last_2_months':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+        break;
+      case 'last_3_months':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+        break;
+      case 'last_6_months':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+        break;
+      case 'current_academic_year':
+        // Assume academic year starts in April (month 3)
+        const currentMonth = today.getMonth();
+        const academicYearStart = currentMonth >= 3 
+          ? new Date(today.getFullYear(), 3, 1)  // April of current year
+          : new Date(today.getFullYear() - 1, 3, 1); // April of previous year
+        startDate = academicYearStart;
+        break;
+      default:
+        startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    }
+
+    // Build query for monthly_fee_components - simplified to get student IDs first
+    let componentsQuery = adminSupabase
+      .from('monthly_fee_components')
+      .select('id, student_id, fee_amount, paid_amount, pending_amount, status, period_year, period_month, period_start, period_end')
+      .eq('school_id', user.schoolId)
+      .in('status', ['pending', 'partially-paid', 'overdue'])
+      .gt('pending_amount', 0)
+      .gte('period_start', startDate.toISOString().split('T')[0])
+      .lte('period_end', endDate.toISOString().split('T')[0]);
+
+    const { data: components, error: componentsError } = await componentsQuery;
+
+    if (componentsError) {
+      console.error('[analytics/unpaid] Error fetching components:', componentsError);
+      return res.status(500).json({ error: componentsError.message });
+    }
+
+    // Get unique student IDs
+    const studentIds = [...new Set((components || []).map((c: any) => c.student_id))];
+
+    if (studentIds.length === 0) {
+      return res.json({
+        summary: {
+          total_students: 0,
+          unpaid_count: 0,
+          partially_paid_count: 0,
+          paid_count: 0,
+          total_unpaid_amount: 0
+        },
+        chart_data: { paid: 0, unpaid: 0, partially_paid: 0 },
+        students: [],
+        pagination: { page: 1, limit: 20, total: 0, total_pages: 0 }
+      });
+    }
+
+    // Get students with their details
+    let studentsQuery = adminSupabase
+      .from('students')
+      .select(`
+        id,
+        roll_number,
+        class_group_id,
+        profile:profiles!students_profile_id_fkey(
+          full_name,
+          email,
+          phone,
+          address
+        ),
+        class_groups:class_group_id(
+          id,
+          name
+        )
+      `)
+      .eq('school_id', user.schoolId)
+      .eq('status', 'active')
+      .in('id', studentIds);
+
+    // Filter by class if provided
+    if (class_group_id) {
+      studentsQuery = studentsQuery.eq('class_group_id', class_group_id);
+    }
+
+    const { data: students, error: studentsError } = await studentsQuery;
+
+    if (studentsError) {
+      console.error('[analytics/unpaid] Error fetching students:', studentsError);
+      return res.status(500).json({ error: studentsError.message });
+    }
+
+    // Get guardians for students
+    const filteredStudentIds = (students || []).map((s: any) => s.id);
+    const { data: guardians } = await adminSupabase
+      .from('student_guardians')
+      .select(`
+        student_id,
+        guardian_profile:profiles!student_guardians_guardian_profile_id_fkey(
+          full_name,
+          phone,
+          address
+        )
+      `)
+      .in('student_id', filteredStudentIds);
+    
+    // Group guardians by student and get first one (primary if is_primary exists, otherwise first)
+    const guardianByStudent = new Map();
+    (guardians || []).forEach((g: any) => {
+      if (!guardianByStudent.has(g.student_id)) {
+        const guardian = Array.isArray(g.guardian_profile) ? g.guardian_profile[0] : g.guardian_profile;
+        guardianByStudent.set(g.student_id, guardian);
+      }
+    });
+
+    // Use guardianByStudent map
+    const guardianMap = guardianByStudent;
+
+    // Group by student and calculate totals
+    const studentMap = new Map<string, {
+      student_id: string;
+      student_name: string;
+      roll_number: string;
+      class_name: string;
+      parent_name: string;
+      parent_phone: string;
+      parent_address: string;
+      pending_months: number;
+      total_pending: number;
+      total_fee: number;
+      total_paid: number;
+      payment_status: 'paid' | 'unpaid' | 'partially-paid';
+    }>();
+
+    // Create student map for quick lookup
+    const studentLookup = new Map();
+    (students || []).forEach((s: any) => {
+      const profile = Array.isArray(s.profile) ? s.profile[0] : s.profile;
+      const classGroup = Array.isArray(s.class_groups) ? s.class_groups[0] : s.class_groups;
+      const guardian = guardianMap.get(s.id);
+      
+      studentLookup.set(s.id, {
+        profile,
+        classGroup,
+        guardian,
+        roll_number: s.roll_number
+      });
+    });
+
+    // Group components by student
+    (components || []).forEach((comp: any) => {
+      const studentInfo = studentLookup.get(comp.student_id);
+      if (!studentInfo) return; // Skip if student not found (filtered by class)
+
+      const studentId = comp.student_id;
+      const { profile, classGroup, guardian, roll_number } = studentInfo;
+
+      if (!studentMap.has(studentId)) {
+        studentMap.set(studentId, {
+          student_id: studentId,
+          student_name: profile?.full_name || 'Unknown',
+          roll_number: roll_number || 'N/A',
+          class_name: classGroup?.name || 'N/A',
+          parent_name: guardian?.full_name || profile?.full_name || 'N/A',
+          parent_phone: guardian?.phone || profile?.phone || 'N/A',
+          parent_address: guardian?.address || profile?.address || 'N/A',
+          pending_months: 0,
+          total_pending: 0,
+          total_fee: 0,
+          total_paid: 0,
+          payment_status: 'unpaid'
+        });
+      }
+
+      const studentData = studentMap.get(studentId)!;
+      studentData.pending_months += 1;
+      studentData.total_pending += parseFloat(comp.pending_amount || 0);
+      studentData.total_fee += parseFloat(comp.fee_amount || 0);
+      studentData.total_paid += parseFloat(comp.paid_amount || 0);
+
+      // Update payment status
+      if (comp.status === 'partially-paid' || studentData.total_paid > 0) {
+        studentData.payment_status = 'partially-paid';
+      }
+    });
+
+    const studentsList = Array.from(studentMap.values());
+
+    // Get all students in the class for chart calculation
+    let allStudentsQuery = adminSupabase
+      .from('students')
+      .select('id')
+      .eq('school_id', user.schoolId)
+      .eq('status', 'active');
+
+    if (class_group_id) {
+      allStudentsQuery = allStudentsQuery.eq('class_group_id', class_group_id);
+    }
+
+    const { data: allStudents, error: allStudentsError } = await allStudentsQuery;
+    const totalStudents = allStudents?.length || 0;
+
+    // Calculate chart data
+    const unpaidCount = studentsList.filter(s => s.payment_status === 'unpaid').length;
+    const partiallyPaidCount = studentsList.filter(s => s.payment_status === 'partially-paid').length;
+    const paidCount = totalStudents - unpaidCount - partiallyPaidCount;
+
+    // Pagination
+    const pageNum = parseInt(page as string) || 1;
+    const limitNum = parseInt(limit as string) || 20;
+    const startIndex = (pageNum - 1) * limitNum;
+    const endIndex = startIndex + limitNum;
+    const paginatedStudents = studentsList.slice(startIndex, endIndex);
+
+    return res.json({
+      summary: {
+        total_students: totalStudents,
+        unpaid_count: unpaidCount,
+        partially_paid_count: partiallyPaidCount,
+        paid_count: paidCount,
+        total_unpaid_amount: studentsList.reduce((sum, s) => sum + s.total_pending, 0)
+      },
+      chart_data: {
+        paid: paidCount,
+        unpaid: unpaidCount,
+        partially_paid: partiallyPaidCount
+      },
+      students: paginatedStudents,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: studentsList.length,
+        total_pages: Math.ceil(studentsList.length / limitNum)
+      }
+    });
+  } catch (err: any) {
+    console.error('[analytics/unpaid] Error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to get unpaid fee analytics' });
   }
 });
 
