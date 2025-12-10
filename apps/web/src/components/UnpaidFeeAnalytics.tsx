@@ -1,19 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { API_URL } from '../utils/api.js';
-// Dynamic import for recharts to handle missing dependency gracefully
-let PieChart: any, Pie: any, Cell: any, ResponsiveContainer: any, Legend: any, Tooltip: any;
-try {
-  const recharts = require('recharts');
-  PieChart = recharts.PieChart;
-  Pie = recharts.Pie;
-  Cell = recharts.Cell;
-  ResponsiveContainer = recharts.ResponsiveContainer;
-  Legend = recharts.Legend;
-  Tooltip = recharts.Tooltip;
-} catch (e) {
-  console.warn('recharts not installed, charts will be disabled');
-}
+// Import recharts components
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
@@ -84,7 +73,8 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
 
   // Load analytics when filters change
   useEffect(() => {
-    if (selectedClass !== '' || timeScope) {
+    // Load analytics when timeScope is set (always true) or when class is selected
+    if (timeScope) {
       loadAnalytics();
     }
   }, [selectedClass, timeScope, currentPage]);

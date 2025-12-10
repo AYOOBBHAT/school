@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import FeeCollection from '../components/FeeCollection.js';
-import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics.tsx';
+import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import { API_URL } from '../utils/api';
+import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics';
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL || '', import.meta.env.VITE_SUPABASE_ANON_KEY || '');
 function Sidebar({ currentPath }) {
     const navigate = useNavigate();
@@ -308,7 +309,7 @@ function DashboardOverview() {
                             female: '#EC4899', // pink
                             other: '#10B981', // green
                             unknown: '#9CA3AF', // gray
-                        } })] })] }));
+                        } })] }), _jsx(UnpaidFeeAnalytics, { userRole: "principal" })] }));
 }
 function StaffManagement() {
     const [staff, setStaff] = useState([]);
