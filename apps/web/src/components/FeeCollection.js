@@ -1,5 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { API_URL } from '../utils/api.js';
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL || '', import.meta.env.VITE_SUPABASE_ANON_KEY || '');
@@ -41,20 +41,25 @@ export default function FeeCollection() {
         loadStudents();
         // Keep search query but it will be re-applied to the new filtered list
     }, [selectedClass]);
+    // Memoize selected components data to avoid recalculating on every render
+    const selectedComponentsData = useMemo(() => {
+        if (selectedComponents.length === 0)
+            return [];
+        return monthlyLedger
+            .flatMap(month => month.components)
+            .filter(comp => selectedComponents.includes(comp.id));
+    }, [selectedComponents, monthlyLedger]);
+    // Memoize total pending amount calculation
+    const totalPending = useMemo(() => {
+        return selectedComponentsData.reduce((sum, comp) => sum + comp.pending_amount, 0);
+    }, [selectedComponentsData]);
     // Auto-update payment amount when selection changes (if modal is open)
+    // Use totalPending (pending_amount) instead of fee_amount
     useEffect(() => {
-        if (showPaymentModal && selectedComponents.length > 0) {
-            const newTotal = monthlyLedger
-                .flatMap(month => month.components)
-                .filter(comp => selectedComponents.includes(comp.id))
-                .reduce((sum, comp) => {
-                const baseAmount = comp.fee_amount;
-                // TODO: Add previous balance and late fee calculation
-                return sum + baseAmount;
-            }, 0);
+        if (showPaymentModal && selectedComponents.length > 0 && totalPending > 0) {
             setPaymentForm(prevForm => ({
                 ...prevForm,
-                payment_amount: newTotal > 0 ? newTotal.toFixed(2) : prevForm.payment_amount
+                payment_amount: totalPending.toFixed(2)
             }));
         }
         else if (showPaymentModal && selectedComponents.length === 0) {
@@ -64,7 +69,7 @@ export default function FeeCollection() {
                 payment_amount: ''
             }));
         }
-    }, [selectedComponents, showPaymentModal, monthlyLedger]);
+    }, [selectedComponents.length, showPaymentModal, totalPending]);
     const loadClasses = async () => {
         setLoadingClasses(true);
         try {
@@ -250,7 +255,7 @@ export default function FeeCollection() {
         const currentMonth = today.getMonth() + 1;
         return year > currentYear || (year === currentYear && month > currentMonth);
     };
-    const handleComponentToggle = (componentId, monthYear, monthNumber) => {
+    const handleComponentToggle = useCallback((componentId, monthYear, monthNumber) => {
         // Prevent selecting future months
         if (isFutureMonth(monthYear, monthNumber)) {
             alert('Cannot select future months for payment. Advance payments require Principal approval.');
@@ -260,25 +265,9 @@ export default function FeeCollection() {
             const newSelection = prev.includes(componentId)
                 ? prev.filter(id => id !== componentId)
                 : [...prev, componentId];
-            // Auto-update payment amount when selection changes (if modal is open)
-            if (showPaymentModal) {
-                const newTotal = monthlyLedger
-                    .flatMap(month => month.components)
-                    .filter(comp => newSelection.includes(comp.id))
-                    .reduce((sum, comp) => {
-                    const monthEntry = monthlyLedger.find(m => m.components.some(c => c.id === comp.id));
-                    const baseAmount = comp.fee_amount;
-                    // TODO: Add previous balance and late fee calculation
-                    return sum + baseAmount;
-                }, 0);
-                setPaymentForm(prevForm => ({
-                    ...prevForm,
-                    payment_amount: newSelection.length > 0 ? newTotal.toFixed(2) : ''
-                }));
-            }
             return newSelection;
         });
-    };
+    }, []);
     const handlePaymentSubmit = async (e) => {
         e.preventDefault();
         if (selectedComponents.length === 0) {
@@ -426,34 +415,35 @@ export default function FeeCollection() {
         };
     };
     const activeTabInfo = getActiveTabInfo();
-    const selectedComponentsData = monthlyLedger
-        .flatMap(month => month.components)
-        .filter(comp => selectedComponents.includes(comp.id));
-    const totalPending = selectedComponentsData.reduce((sum, comp) => sum + comp.pending_amount, 0);
-    // Calculate summary for selected components
-    const selectedMonthsSet = new Set();
-    selectedComponentsData.forEach(comp => {
-        const monthEntry = monthlyLedger.find(m => m.components.some(c => c.id === comp.id));
-        if (monthEntry)
-            selectedMonthsSet.add(monthEntry.month);
-    });
-    const selectedMonths = Array.from(selectedMonthsSet);
-    const baseFeeTotal = selectedComponentsData.reduce((sum, comp) => sum + comp.fee_amount, 0);
-    const previousBalance = selectedComponentsData.reduce((sum, comp) => {
+    // Calculate summary for selected components (memoized)
+    const selectedMonths = useMemo(() => {
+        const selectedMonthsSet = new Set();
+        selectedComponentsData.forEach(comp => {
+            const monthEntry = monthlyLedger.find(m => m.components.some(c => c.id === comp.id));
+            if (monthEntry)
+                selectedMonthsSet.add(monthEntry.month);
+        });
+        return Array.from(selectedMonthsSet);
+    }, [selectedComponentsData, monthlyLedger]);
+    // Memoize summary calculations
+    const baseFeeTotal = useMemo(() => selectedComponentsData.reduce((sum, comp) => sum + comp.fee_amount, 0), [selectedComponentsData]);
+    const previousBalance = useMemo(() => {
         // Previous balance would be from earlier unpaid months - simplified for now
-        return sum;
-    }, 0);
-    const lateFee = selectedComponentsData.reduce((sum, comp) => {
-        // Calculate late fee for overdue components
-        if (comp.status === 'overdue' && comp.due_date) {
-            const daysOverdue = Math.floor((new Date().getTime() - new Date(comp.due_date).getTime()) / (1000 * 60 * 60 * 24));
-            // TODO: Apply fine rules from fine_rules table
-            return sum; // Placeholder
-        }
-        return sum;
-    }, 0);
-    const discount = 0; // TODO: Get from principal-approved discounts
-    const finalAmount = baseFeeTotal + previousBalance + lateFee - discount;
+        return 0;
+    }, []);
+    const lateFee = useMemo(() => {
+        return selectedComponentsData.reduce((sum, comp) => {
+            // Calculate late fee for overdue components
+            if (comp.status === 'overdue' && comp.due_date) {
+                const daysOverdue = Math.floor((new Date().getTime() - new Date(comp.due_date).getTime()) / (1000 * 60 * 60 * 24));
+                // TODO: Apply fine rules from fine_rules table
+                return sum; // Placeholder
+            }
+            return sum;
+        }, 0);
+    }, [selectedComponentsData]);
+    const discount = useMemo(() => 0, []); // TODO: Get from principal-approved discounts
+    const finalAmount = useMemo(() => baseFeeTotal + previousBalance + lateFee - discount, [baseFeeTotal, previousBalance, lateFee, discount]);
     // Check if all months are paid for active tab
     const allPaidForActiveTab = activeTabByMonth.every(month => month.components.every(c => c.status === 'paid' || c.pending_amount === 0));
     return (_jsxs("div", { className: "space-y-6", children: [_jsx("div", { className: "flex justify-between items-center", children: _jsx("h2", { className: "text-3xl font-bold", children: "Fee Collection" }) }), _jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h3", { className: "text-xl font-semibold mb-4", children: "Search Student" }), _jsxs("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-4 mb-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Filter by Class (Optional)" }), _jsxs("select", { value: selectedClass, onChange: (e) => {
@@ -464,15 +454,8 @@ export default function FeeCollection() {
                                             : 'Search shows students whose names start with your input' })] })] }), searchQuery && (_jsx("div", { className: "border border-gray-200 rounded-lg max-h-64 overflow-y-auto", children: students.length === 0 ? (_jsx("div", { className: "p-4 text-gray-500 text-center", children: searchQuery ? (_jsxs("div", { children: [_jsxs("p", { children: ["No students found matching \"", searchQuery, "\""] }), selectedClass && (_jsxs("p", { className: "text-xs mt-1", children: ["in ", classes.find(c => c.id === selectedClass)?.name || 'selected class'] })), allStudents.length > 0 && (_jsxs("p", { className: "text-xs mt-1 text-gray-400", children: ["Total students available: ", allStudents.length] }))] })) : ('Start typing to search for students') })) : (_jsxs(_Fragment, { children: [_jsxs("div", { className: "p-2 bg-gray-50 text-xs text-gray-600 border-b", children: ["Found ", students.length, " student", students.length !== 1 ? 's' : '', " matching \"", searchQuery, "\"", selectedClass && ` in ${classes.find(c => c.id === selectedClass)?.name || 'selected class'}`] }), students.slice(0, 50).map(student => (_jsxs("div", { onClick: () => handleStudentSelect(student), className: `p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''}`, children: [_jsx("div", { className: "font-semibold text-gray-900", children: student.name }), _jsxs("div", { className: "text-sm text-gray-600", children: ["Roll: ", student.roll_number, " | Class: ", student.class] })] }, student.id))), students.length > 50 && (_jsx("div", { className: "p-4 text-center text-sm text-gray-500 bg-gray-50", children: "Showing first 50 results. Refine your search for more specific results." }))] })) })), !searchQuery && selectedClass && (_jsxs("div", { className: "border border-gray-200 rounded-lg max-h-64 overflow-y-auto", children: [_jsxs("div", { className: "p-2 bg-gray-50 text-xs text-gray-600 border-b", children: ["All students in ", classes.find(c => c.id === selectedClass)?.name || 'selected class', " (", students.length, ")"] }), students.slice(0, 50).map(student => (_jsxs("div", { onClick: () => handleStudentSelect(student), className: `p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''}`, children: [_jsx("div", { className: "font-semibold text-gray-900", children: student.name }), _jsxs("div", { className: "text-sm text-gray-600", children: ["Roll: ", student.roll_number, " | Class: ", student.class] })] }, student.id)))] }))] }), selectedStudent && (_jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsxs("div", { className: "flex justify-between items-start mb-4", children: [_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-semibold", children: selectedStudent.name }), _jsxs("p", { className: "text-gray-600", children: ["Roll: ", selectedStudent.roll_number, " | Class: ", selectedStudent.class] })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: loadPaymentHistory, className: "px-4 py-2 rounded-lg font-semibold bg-green-600 text-white hover:bg-green-700", children: "View Payment History" }), _jsxs("button", { onClick: () => {
                                             setShowPaymentModal(true);
                                             setActiveFeeTab('class-fee');
-                                            // Pre-fill payment amount with total pending
-                                            const total = monthlyLedger
-                                                .flatMap(month => month.components)
-                                                .filter(comp => selectedComponents.includes(comp.id))
-                                                .reduce((sum, comp) => sum + comp.pending_amount, 0);
-                                            setPaymentForm(prev => ({
-                                                ...prev,
-                                                payment_amount: total > 0 ? total.toFixed(2) : ''
-                                            }));
+                                            // Payment amount will be auto-filled by useEffect when modal opens
+                                            // using totalPending (which is already memoized)
                                         }, disabled: selectedComponents.length === 0, className: `px-4 py-2 rounded-lg font-semibold ${selectedComponents.length === 0
                                             ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                             : 'bg-blue-600 text-white hover:bg-blue-700'}`, children: ["Collect Payment (", selectedComponents.length, ")"] })] })] }), loading ? (_jsx("div", { className: "text-center py-8", children: "Loading fee data..." })) : feeStructure === null ? (_jsxs("div", { className: "bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center", children: [_jsx("p", { className: "text-yellow-800 font-semibold text-lg", children: "\u26A0\uFE0F No fee configured for this student" }), _jsx("p", { className: "text-yellow-700 mt-2", children: "Please contact Principal to assign fee structure." })] })) : (_jsxs("div", { className: "space-y-6", children: [_jsxs("div", { className: "bg-blue-50 border border-blue-200 rounded-lg p-4", children: [_jsx("h4", { className: "font-semibold mb-3", children: "Assigned Fee Structure" }), _jsxs("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 text-sm", children: [feeStructure?.class_fee && (_jsxs("div", { className: "bg-white rounded p-3", children: [_jsx("div", { className: "font-semibold text-blue-700", children: "Class Fee" }), _jsxs("div", { children: ["\u20B9", feeStructure.class_fee.amount.toFixed(2)] }), _jsx("div", { className: "text-xs text-gray-600", children: feeStructure.class_fee.billing_frequency })] })), feeStructure?.transport_fee && (_jsxs("div", { className: "bg-white rounded p-3", children: [_jsx("div", { className: "font-semibold text-blue-700", children: "Transport Fee" }), _jsxs("div", { children: ["\u20B9", feeStructure.transport_fee.amount.toFixed(2)] }), _jsxs("div", { className: "text-xs text-gray-600", children: [feeStructure.transport_fee.route_name, " | ", feeStructure.transport_fee.billing_frequency] })] })), feeStructure?.custom_fees && feeStructure.custom_fees.length > 0 && (_jsxs("div", { className: "bg-white rounded p-3", children: [_jsxs("div", { className: "font-semibold text-blue-700", children: ["Custom Fees (", feeStructure.custom_fees.length, ")"] }), feeStructure.custom_fees.map((cf, idx) => (_jsxs("div", { className: "text-xs", children: [cf.category_name, ": \u20B9", cf.amount.toFixed(2), " (", cf.billing_frequency, ")"] }, idx)))] }))] })] }), _jsxs("div", { children: [_jsx("h4", { className: "font-semibold mb-3", children: "Monthly Fee Status Ledger" }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full bg-white border border-gray-200 rounded-lg", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b", children: "Month" }), _jsx("th", { className: "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b", children: "Fee Type" }), _jsx("th", { className: "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b", children: "Fee Amount" }), _jsx("th", { className: "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b", children: "Paid Amount" }), _jsx("th", { className: "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b", children: "Pending Amount" }), _jsx("th", { className: "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b", children: "Status" }), _jsx("th", { className: "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-b", children: "Due Date" }), _jsx("th", { className: "px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-b", children: "Select" })] }) }), _jsxs("tbody", { className: "divide-y divide-gray-200", children: [monthlyLedger.map((monthEntry, monthIdx) => monthEntry.components.map((comp, compIdx) => {
@@ -535,10 +518,15 @@ export default function FeeCollection() {
                                                                                                 comp.status === 'partially-paid' ? 'Partially Paid' :
                                                                                                     'Pending'] }) }), _jsxs("td", { className: "px-4 py-3 text-sm font-semibold", children: ["\u20B9", comp.fee_amount.toFixed(2)] }), _jsx("td", { className: "px-4 py-3 text-center", children: _jsx("input", { type: "checkbox", checked: selectedComponents.includes(comp.id), onChange: () => handleComponentToggle(comp.id, monthEntry.year, monthEntry.monthNumber), disabled: isDisabled, className: "w-5 h-5 cursor-pointer disabled:cursor-not-allowed" }) })] }, `${monthEntry.year}-${monthEntry.monthNumber}-${compIdx}`));
                                                                 })) })] }) }))] }), _jsx("div", { className: "lg:col-span-1", children: _jsxs("div", { className: "bg-gray-50 border border-gray-200 rounded-lg p-4 sticky top-4", children: [_jsx("h4", { className: "font-semibold mb-4", children: "Payment Summary" }), selectedComponents.length === 0 ? (_jsx("p", { className: "text-sm text-gray-500 text-center py-4", children: "Select months to collect payment" })) : (_jsxs("div", { className: "space-y-3 text-sm", children: [_jsxs("div", { children: [_jsx("span", { className: "text-gray-600", children: "Selected Months:" }), _jsx("div", { className: "mt-1 font-medium", children: selectedMonths.length > 0 ? selectedMonths.join(', ') : 'None' })] }), _jsxs("div", { className: "border-t pt-3", children: [_jsxs("div", { className: "flex justify-between mb-2", children: [_jsx("span", { className: "text-gray-600", children: "Base Fee Total:" }), _jsxs("span", { className: "font-semibold", children: ["\u20B9", baseFeeTotal.toFixed(2)] })] }), previousBalance > 0 && (_jsxs("div", { className: "flex justify-between mb-2 text-orange-600", children: [_jsx("span", { children: "Previous Balance:" }), _jsxs("span", { children: ["\u20B9", previousBalance.toFixed(2)] })] })), lateFee > 0 && (_jsxs("div", { className: "flex justify-between mb-2 text-red-600", children: [_jsx("span", { children: "Late Fee / Fine:" }), _jsxs("span", { children: ["\u20B9", lateFee.toFixed(2)] })] })), discount > 0 && (_jsxs("div", { className: "flex justify-between mb-2 text-green-600", children: [_jsx("span", { children: "Discount:" }), _jsxs("span", { children: ["-\u20B9", discount.toFixed(2)] })] })), _jsx("div", { className: "border-t pt-2 mt-2", children: _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "font-semibold", children: "Final Amount:" }), _jsxs("span", { className: "font-bold text-lg text-blue-600", children: ["\u20B9", finalAmount.toFixed(2)] })] }) })] }), parseFloat(paymentForm.payment_amount || '0') < finalAmount && parseFloat(paymentForm.payment_amount || '0') > 0 && (_jsx("div", { className: "bg-yellow-50 border border-yellow-200 rounded p-2 text-xs text-yellow-800", children: "\u26A0\uFE0F This will mark selected months as Partially Paid" }))] }))] }) })] }), selectedComponents.length > 0 && (_jsxs("div", { className: "mt-6 border-t pt-6", children: [_jsx("h4", { className: "font-semibold mb-4", children: "Payment Details" }), _jsxs("form", { onSubmit: handlePaymentSubmit, children: [_jsxs("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Mode *" }), _jsxs("select", { value: paymentForm.payment_mode, onChange: (e) => setPaymentForm({ ...paymentForm, payment_mode: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, children: [_jsx("option", { value: "cash", children: "Cash" }), _jsx("option", { value: "upi", children: "UPI" }), _jsx("option", { value: "online", children: "Online" }), _jsx("option", { value: "card", children: "Card" }), _jsx("option", { value: "cheque", children: "Cheque" }), _jsx("option", { value: "bank_transfer", children: "Bank Transfer" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Amount *" }), _jsx("input", { type: "number", step: "0.01", min: "0", max: totalPending, value: paymentForm.payment_amount || (selectedComponents.length > 0 ? totalPending.toFixed(2) : ''), onChange: (e) => {
+                                                                        // Optimized: Allow any input, validate only on blur/submit
+                                                                        setPaymentForm({ ...paymentForm, payment_amount: e.target.value });
+                                                                    }, onBlur: (e) => {
+                                                                        // Validate on blur instead of every keystroke
                                                                         const value = e.target.value;
                                                                         const numValue = parseFloat(value);
-                                                                        if (value === '' || (numValue >= 0 && numValue <= totalPending)) {
-                                                                            setPaymentForm({ ...paymentForm, payment_amount: value });
+                                                                        if (value && (numValue < 0 || numValue > totalPending)) {
+                                                                            // Reset to totalPending if invalid
+                                                                            setPaymentForm({ ...paymentForm, payment_amount: totalPending.toFixed(2) });
                                                                         }
                                                                     }, className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true }), _jsxs("p", { className: `text-xs mt-1 ${parseFloat(paymentForm.payment_amount || '0') > totalPending ? 'text-red-600 font-semibold' : 'text-gray-500'}`, children: ["Max: \u20B9", totalPending.toFixed(2), " (Total Pending) ", selectedComponents.length === 0 && '- Select months first'] }), parseFloat(paymentForm.payment_amount || '0') > totalPending && (_jsx("p", { className: "text-xs text-red-600 mt-1", children: "\u26A0\uFE0F Payment amount cannot exceed total pending amount" }))] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Date *" }), _jsx("input", { type: "date", value: paymentForm.payment_date, onChange: (e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true })] }), (paymentForm.payment_mode === 'upi' || paymentForm.payment_mode === 'online' || paymentForm.payment_mode === 'card') && (_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Transaction ID" }), _jsx("input", { type: "text", value: paymentForm.transaction_id, onChange: (e) => setPaymentForm({ ...paymentForm, transaction_id: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "Enter transaction ID" })] })), paymentForm.payment_mode === 'cheque' && (_jsxs(_Fragment, { children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Cheque Number" }), _jsx("input", { type: "text", value: paymentForm.cheque_number, onChange: (e) => setPaymentForm({ ...paymentForm, cheque_number: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "Enter cheque number" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Bank Name" }), _jsx("input", { type: "text", value: paymentForm.bank_name, onChange: (e) => setPaymentForm({ ...paymentForm, bank_name: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "Enter bank name" })] })] })), paymentForm.payment_mode === 'bank_transfer' && (_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Bank Name" }), _jsx("input", { type: "text", value: paymentForm.bank_name, onChange: (e) => setPaymentForm({ ...paymentForm, bank_name: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "Enter bank name" })] })), _jsxs("div", { className: "md:col-span-2", children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Notes (Optional)" }), _jsx("textarea", { value: paymentForm.notes, onChange: (e) => setPaymentForm({ ...paymentForm, notes: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", rows: 2, placeholder: "Additional notes..." })] })] }), _jsxs("div", { className: "flex justify-between items-center mt-6 pt-6 border-t", children: [_jsx("button", { type: "button", onClick: () => {
                                                                 setShowPaymentModal(false);
