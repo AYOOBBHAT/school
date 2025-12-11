@@ -585,22 +585,23 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
             });
         }
         const allStudentIds = allStudents.map((s) => s.id);
-        // Get ALL unpaid components for these students (not filtered by date range yet)
-        // We'll filter by date range when calculating totals for the selected period
-        let componentsQuery = adminSupabase
+        // Get ALL components for these students (including paid ones) to correctly determine payment status
+        // We'll filter unpaid ones later for the list, but need all to determine if student is paid
+        let allComponentsQuery = adminSupabase
             .from('monthly_fee_components')
             .select('id, student_id, fee_amount, paid_amount, pending_amount, status, period_year, period_month, period_start, period_end')
             .eq('school_id', user.schoolId)
-            .in('student_id', allStudentIds)
-            .in('status', ['pending', 'partially-paid', 'overdue'])
-            .gt('pending_amount', 0);
-        const { data: components, error: componentsError } = await componentsQuery;
-        if (componentsError) {
-            console.error('[analytics/unpaid] Error fetching components:', componentsError);
-            return res.status(500).json({ error: componentsError.message });
+            .in('student_id', allStudentIds);
+        const { data: allComponents, error: allComponentsError } = await allComponentsQuery;
+        if (allComponentsError) {
+            console.error('[analytics/unpaid] Error fetching all components:', allComponentsError);
+            return res.status(500).json({ error: allComponentsError.message });
         }
-        // Filter components by date range
-        const filteredComponents = (components || []).filter((comp) => {
+        // Filter to get only unpaid components (for the unpaid list)
+        // A component is unpaid if pending_amount > 0 (regardless of status, as status might not always be accurate)
+        const unpaidComponents = (allComponents || []).filter((c) => parseFloat(c.pending_amount || 0) > 0);
+        // Filter unpaid components by date range (for pending_months calculation)
+        const filteredUnpaidComponents = unpaidComponents.filter((comp) => {
             const compStart = new Date(comp.period_start);
             const compEnd = new Date(comp.period_end);
             return compStart >= startDate && compEnd <= endDate;
@@ -648,8 +649,8 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
                 roll_number: s.roll_number
             });
         });
-        // Group components by student (using filtered components)
-        filteredComponents.forEach((comp) => {
+        // Group unpaid components by student (using filtered components for period calculation)
+        filteredUnpaidComponents.forEach((comp) => {
             const studentInfo = studentLookup.get(comp.student_id);
             if (!studentInfo)
                 return; // Skip if student not found (filtered by class)
@@ -690,41 +691,34 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
             const profile = Array.isArray(s.profile) ? s.profile[0] : s.profile;
             const classGroup = Array.isArray(s.class_groups) ? s.class_groups[0] : s.class_groups;
             const guardian = guardianMap.get(s.id);
-            // Get all unpaid components for this student (not filtered by date)
-            const allStudentComponents = (components || []).filter((c) => c.student_id === s.id);
-            // Get components in the selected time period
-            const studentComponentsInPeriod = filteredComponents.filter((c) => c.student_id === s.id);
-            if (allStudentComponents.length === 0) {
-                // Student has no unpaid components at all - mark as paid
-                studentsList.push({
-                    student_id: s.id,
-                    student_name: profile?.full_name || 'Unknown',
-                    roll_number: s.roll_number || 'N/A',
-                    class_name: classGroup?.name || 'N/A',
-                    parent_name: guardian?.full_name || profile?.full_name || 'N/A',
-                    parent_phone: guardian?.phone || profile?.phone || 'N/A',
-                    parent_address: guardian?.address || profile?.address || 'N/A',
-                    pending_months: 0,
-                    total_pending: 0,
-                    total_fee: 0,
-                    total_paid: 0,
-                    payment_status: 'paid'
-                });
+            // Get ALL components for this student (paid and unpaid) to determine status correctly
+            const allStudentComponents = (allComponents || []).filter((c) => c.student_id === s.id);
+            // Get unpaid components for this student
+            const studentUnpaidComponents = unpaidComponents.filter((c) => c.student_id === s.id);
+            // Get unpaid components in the selected time period
+            const studentUnpaidInPeriod = filteredUnpaidComponents.filter((c) => c.student_id === s.id);
+            // Calculate totals from ALL components (to get accurate fee/paid amounts)
+            const totalFee = allStudentComponents.reduce((sum, c) => sum + parseFloat(c.fee_amount || 0), 0);
+            const totalPaid = allStudentComponents.reduce((sum, c) => sum + parseFloat(c.paid_amount || 0), 0);
+            const totalPending = studentUnpaidComponents.reduce((sum, c) => sum + parseFloat(c.pending_amount || 0), 0);
+            // Calculate paid amount specifically for unpaid components
+            const unpaidComponentsPaidAmount = studentUnpaidComponents.reduce((sum, c) => sum + parseFloat(c.paid_amount || 0), 0);
+            // Determine payment status based on unpaid components
+            let paymentStatus;
+            if (studentUnpaidComponents.length === 0) {
+                // No unpaid components - student is fully paid
+                paymentStatus = 'paid';
             }
             else {
-                // Student has unpaid components - calculate totals
-                // Use components in period for pending_months, but all components for total_pending
-                const totalPending = allStudentComponents.reduce((sum, c) => sum + parseFloat(c.pending_amount || 0), 0);
-                const totalPaid = allStudentComponents.reduce((sum, c) => sum + parseFloat(c.paid_amount || 0), 0);
-                const totalFee = allStudentComponents.reduce((sum, c) => sum + parseFloat(c.fee_amount || 0), 0);
-                // Determine payment status
-                let paymentStatus = 'unpaid';
-                if (totalPending === 0) {
-                    paymentStatus = 'paid';
-                }
-                else if (totalPaid > 0) {
-                    paymentStatus = 'partially-paid';
-                }
+                // Has unpaid components - check if any of them have partial payments
+                // If any unpaid component has paid_amount > 0, it's partially-paid
+                // Otherwise, it's unpaid
+                const hasPartialPayment = studentUnpaidComponents.some((c) => parseFloat(c.paid_amount || 0) > 0);
+                paymentStatus = hasPartialPayment ? 'partially-paid' : 'unpaid';
+            }
+            // Only add to list if student has unpaid fees OR if we want to show all students
+            // For unpaid analytics, we only show students with unpaid fees
+            if (studentUnpaidComponents.length > 0) {
                 studentsList.push({
                     student_id: s.id,
                     student_name: profile?.full_name || 'Unknown',
@@ -733,7 +727,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
                     parent_name: guardian?.full_name || profile?.full_name || 'N/A',
                     parent_phone: guardian?.phone || profile?.phone || 'N/A',
                     parent_address: guardian?.address || profile?.address || 'N/A',
-                    pending_months: studentComponentsInPeriod.length > 0 ? studentComponentsInPeriod.length : allStudentComponents.length,
+                    pending_months: studentUnpaidInPeriod.length > 0 ? studentUnpaidInPeriod.length : studentUnpaidComponents.length,
                     total_pending: totalPending,
                     total_fee: totalFee,
                     total_paid: totalPaid,
@@ -741,12 +735,26 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
                 });
             }
         });
-        // Filter to only show unpaid/partially-paid students in the list
-        const unpaidStudentsList = studentsList.filter(s => s.payment_status !== 'paid' || s.total_pending > 0);
-        // Calculate chart data - count all students correctly
-        const unpaidCount = studentsList.filter(s => s.payment_status === 'unpaid' && s.total_pending > 0).length;
-        const partiallyPaidCount = studentsList.filter(s => s.payment_status === 'partially-paid' && s.total_pending > 0).length;
-        const paidCount = studentsList.filter(s => s.payment_status === 'paid' || s.total_pending === 0).length;
+        // studentsList already only contains students with unpaid fees, so no need to filter again
+        const unpaidStudentsList = studentsList;
+        // Calculate chart data - need to check ALL students, not just those in studentsList
+        // studentsList only contains students with unpaid fees, so we need to check all students
+        const studentStatusMap = new Map();
+        // First, mark all students in studentsList with their status
+        studentsList.forEach(s => {
+            studentStatusMap.set(s.student_id, s.payment_status);
+        });
+        // Then check remaining students (those not in studentsList) - they should be paid
+        students.forEach((s) => {
+            if (!studentStatusMap.has(s.id)) {
+                // Student not in unpaid list - they have no unpaid components, so they're paid
+                studentStatusMap.set(s.id, 'paid');
+            }
+        });
+        // Count students by status
+        const unpaidCount = Array.from(studentStatusMap.values()).filter(s => s === 'unpaid').length;
+        const partiallyPaidCount = Array.from(studentStatusMap.values()).filter(s => s === 'partially-paid').length;
+        const paidCount = Array.from(studentStatusMap.values()).filter(s => s === 'paid').length;
         // Pagination - only paginate unpaid/partially-paid students
         const pageNum = parseInt(page) || 1;
         const limitNum = parseInt(limit) || 20;
