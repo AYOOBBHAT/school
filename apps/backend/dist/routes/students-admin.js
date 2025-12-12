@@ -370,7 +370,7 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
         // Verify student belongs to the school
         const { data: student, error: studentError } = await adminSupabase
             .from('students')
-            .select('id, school_id, profile_id, class_group_id')
+            .select('id, school_id, profile_id, class_group_id, admission_date')
             .eq('id', studentId)
             .eq('school_id', user.schoolId)
             .single();
@@ -433,6 +433,8 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             const yesterdayStr = yesterday.toISOString().split('T')[0];
+            // Use admission_date if available, otherwise use today
+            const effectiveFromDate = student.admission_date || today;
             // Close all active fee records in parallel for better performance
             // This preserves the fee history for past months
             const updateTime = new Date().toISOString();
@@ -557,7 +559,7 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
                             school_id: user.schoolId,
                             fee_category_id: selectedClassFee.fee_category_id || null,
                             discount_amount: feeConfigToApply.class_fee_discount,
-                            effective_from: today,
+                            effective_from: effectiveFromDate,
                             is_active: true,
                             applied_by: user.id
                         });
@@ -576,7 +578,7 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
                             school_id: user.schoolId,
                             transport_enabled: true,
                             transport_route: route.route_name,
-                            effective_from: today,
+                            effective_from: effectiveFromDate,
                             is_active: true
                         }),
                         adminSupabase
@@ -597,7 +599,7 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
                             school_id: user.schoolId,
                             fee_category_id: transportCategory.id,
                             discount_amount: feeConfigToApply.transport_fee_discount,
-                            effective_from: today,
+                            effective_from: effectiveFromDate,
                             is_active: true,
                             applied_by: user.id
                         }));
@@ -617,7 +619,7 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
                         student_id: studentId,
                         school_id: user.schoolId,
                         transport_enabled: false,
-                        effective_from: today, // New version starts today
+                        effective_from: effectiveFromDate,
                         is_active: true
                     });
                     if (transportDisabledError) {
@@ -635,7 +637,7 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
                         school_id: user.schoolId,
                         fee_category_id: otherFee.fee_category_id,
                         discount_amount: otherFee.discount,
-                        effective_from: today,
+                        effective_from: effectiveFromDate,
                         is_active: true,
                         applied_by: user.id
                     }));
@@ -681,7 +683,7 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
                                             school_id: user.schoolId,
                                             fee_category_id: customFeeDef.fee_category_id,
                                             is_full_free: true,
-                                            effective_from: today,
+                                            effective_from: effectiveFromDate,
                                             is_active: true,
                                             applied_by: user.id,
                                             notes: `Custom fee exemption: ${customFee.custom_fee_id}`
@@ -693,7 +695,7 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
                                             school_id: user.schoolId,
                                             fee_category_id: customFeeDef.fee_category_id,
                                             discount_amount: customFee.discount,
-                                            effective_from: today,
+                                            effective_from: effectiveFromDate,
                                             is_active: true,
                                             applied_by: user.id,
                                             notes: `Custom fee discount: ${customFee.custom_fee_id}`

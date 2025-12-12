@@ -452,7 +452,9 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
         // FEE CONFIGURATION SETUP
         // ============================================
         if (value.class_group_id && value.fee_config) {
-            const today = new Date().toISOString().split('T')[0];
+            // Use admission_date if available, otherwise use today
+            const effectiveFromDate = value.admission_date || new Date().toISOString().split('T')[0];
+            const today = new Date().toISOString().split('T')[0]; // Still needed for querying active class fees
             const feeConfig = value.fee_config;
             try {
                 // 1. Get default class fees
@@ -487,7 +489,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                             school_id: user.schoolId,
                             fee_category_id: selectedClassFee.fee_category_id || null,
                             discount_amount: feeConfig.class_fee_discount,
-                            effective_from: today,
+                            effective_from: effectiveFromDate,
                             is_active: true,
                             applied_by: user.id
                         });
@@ -514,7 +516,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                             school_id: user.schoolId,
                             transport_enabled: true,
                             transport_route: route.route_name,
-                            effective_from: today,
+                            effective_from: effectiveFromDate,
                             is_active: true
                         });
                         if (profileError) {
@@ -549,7 +551,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                                     school_id: user.schoolId,
                                     fee_category_id: transportCategory.id,
                                     discount_amount: feeConfig.transport_fee_discount,
-                                    effective_from: today,
+                                    effective_from: effectiveFromDate,
                                     is_active: true,
                                     applied_by: user.id
                                 });
@@ -568,7 +570,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                         student_id: studentRecord.id,
                         school_id: user.schoolId,
                         transport_enabled: false,
-                        effective_from: today,
+                        effective_from: effectiveFromDate,
                         is_active: true
                     });
                     if (profileError) {
@@ -588,7 +590,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                                     school_id: user.schoolId,
                                     fee_category_id: otherFee.fee_category_id,
                                     discount_amount: otherFee.discount,
-                                    effective_from: today,
+                                    effective_from: effectiveFromDate,
                                     is_active: true,
                                     applied_by: user.id
                                 });
@@ -606,7 +608,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                                 school_id: user.schoolId,
                                 fee_category_id: otherFee.fee_category_id,
                                 is_full_free: true,
-                                effective_from: today,
+                                effective_from: effectiveFromDate,
                                 is_active: true,
                                 applied_by: user.id
                             });
@@ -647,7 +649,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                                     school_id: user.schoolId,
                                     fee_category_id: customFeeDef.fee_category_id, // Use the custom fee's category ID
                                     is_full_free: true,
-                                    effective_from: today,
+                                    effective_from: effectiveFromDate,
                                     is_active: true,
                                     applied_by: user.id,
                                     notes: `Custom fee exemption: ${customFee.custom_fee_id}`
@@ -665,7 +667,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                                     school_id: user.schoolId,
                                     fee_category_id: customFeeDef.fee_category_id, // Use the custom fee's category ID
                                     discount_amount: customFee.discount,
-                                    effective_from: today,
+                                    effective_from: effectiveFromDate,
                                     is_active: true,
                                     applied_by: user.id,
                                     notes: `Custom fee discount: ${customFee.custom_fee_id}`
