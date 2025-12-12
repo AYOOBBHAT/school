@@ -1241,6 +1241,7 @@ function StudentsManagement() {
     });
     const [editDefaultFees, setEditDefaultFees] = useState(null);
     const [loadingEditFees, setLoadingEditFees] = useState(false);
+    const [updatingStudent, setUpdatingStudent] = useState(false);
     const [promoteForm, setPromoteForm] = useState({
         target_class_id: '',
         section_id: ''
@@ -1333,44 +1334,50 @@ function StudentsManagement() {
         const timeoutId = setTimeout(checkUsername, 300);
         return () => clearTimeout(timeoutId);
     }, [addStudentForm.username]);
-    useEffect(() => {
-        const loadStudents = async () => {
-            try {
-                setError(null);
+    const loadStudents = async (showFullPageLoading = false) => {
+        try {
+            setError(null);
+            if (showFullPageLoading) {
                 setLoading(true);
-                const token = (await supabase.auth.getSession()).data.session?.access_token;
-                if (!token) {
-                    setError('No authentication token found. Please log in again.');
+            }
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token) {
+                setError('No authentication token found. Please log in again.');
+                if (showFullPageLoading) {
                     setLoading(false);
-                    return;
                 }
-                const response = await fetch(`${API_URL}/students-admin`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                });
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ error: 'Failed to load students' }));
-                    throw new Error(errorData.error || `Failed to load students: ${response.status} ${response.statusText}`);
-                }
-                const data = await response.json();
-                setClassesWithStudents(data.classes || []);
-                setUnassignedStudents(data.unassigned || []);
-                setTotalStudents(data.total_students || 0);
-                // Auto-expand first class if available
-                if (data.classes && data.classes.length > 0) {
-                    setExpandedClasses(new Set([data.classes[0].id]));
-                }
+                return;
             }
-            catch (error) {
-                console.error('Error loading students:', error);
-                setError(error.message || 'Failed to load students. Please try again.');
+            const response = await fetch(`${API_URL}/students-admin`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to load students' }));
+                throw new Error(errorData.error || `Failed to load students: ${response.status} ${response.statusText}`);
             }
-            finally {
+            const data = await response.json();
+            setClassesWithStudents(data.classes || []);
+            setUnassignedStudents(data.unassigned || []);
+            setTotalStudents(data.total_students || 0);
+            // Auto-expand first class if available (only on initial load)
+            if (showFullPageLoading && data.classes && data.classes.length > 0 && expandedClasses.size === 0) {
+                setExpandedClasses(new Set([data.classes[0].id]));
+            }
+        }
+        catch (error) {
+            console.error('Error loading students:', error);
+            setError(error.message || 'Failed to load students. Please try again.');
+        }
+        finally {
+            if (showFullPageLoading) {
                 setLoading(false);
             }
-        };
-        loadStudents();
+        }
+    };
+    useEffect(() => {
+        loadStudents(true);
         loadAllClasses();
     }, []);
     const loadAllClasses = async () => {
@@ -1579,6 +1586,7 @@ function StudentsManagement() {
         if (!selectedStudent)
             return;
         try {
+            setUpdatingStudent(true);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
                 return;
@@ -1604,13 +1612,18 @@ function StudentsManagement() {
                 const error = await response.json();
                 throw new Error(error.error || 'Failed to update student');
             }
-            alert('Student updated successfully!');
+            // Close modal first for better UX
             setEditModalOpen(false);
-            // Reload students
-            window.location.reload();
+            // Show success message
+            alert('Student updated successfully!');
+            // Refetch students data (lightweight, no full page reload)
+            await loadStudents(false);
         }
         catch (error) {
             alert(error.message || 'Failed to update student');
+        }
+        finally {
+            setUpdatingStudent(false);
         }
     };
     const handlePromoteStudentSubmit = async () => {
@@ -1619,6 +1632,7 @@ function StudentsManagement() {
             return;
         }
         try {
+            setUpdatingStudent(true);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
                 return;
@@ -1637,13 +1651,16 @@ function StudentsManagement() {
                 throw new Error(error.error || 'Failed to promote student');
             }
             const data = await response.json();
-            alert(data.message || 'Student promoted successfully!');
             setPromoteModalOpen(false);
-            // Reload students
-            window.location.reload();
+            alert(data.message || 'Student promoted successfully!');
+            // Refetch students data (lightweight, no full page reload)
+            await loadStudents(false);
         }
         catch (error) {
             alert(error.message || 'Failed to promote student');
+        }
+        finally {
+            setUpdatingStudent(false);
         }
     };
     const handlePromoteClassSubmit = async () => {
@@ -1655,6 +1672,7 @@ function StudentsManagement() {
             return;
         }
         try {
+            setUpdatingStudent(true);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
                 return;
@@ -1671,13 +1689,16 @@ function StudentsManagement() {
                 throw new Error(error.error || 'Failed to promote class');
             }
             const data = await response.json();
-            alert(data.message || 'Class promoted successfully!');
             setPromoteClassModalOpen(false);
-            // Reload students
-            window.location.reload();
+            alert(data.message || 'Class promoted successfully!');
+            // Refetch students data (lightweight, no full page reload)
+            await loadStudents(false);
         }
         catch (error) {
             alert(error.message || 'Failed to promote class');
+        }
+        finally {
+            setUpdatingStudent(false);
         }
     };
     const toggleClass = (classId) => {
@@ -1907,7 +1928,7 @@ function StudentsManagement() {
                                                                                                 }
                                                                                                 setEditFeeConfig({ ...editFeeConfig, custom_fees: updatedCustomFees });
                                                                                             }, className: "w-full px-2 py-1 border rounded text-sm", placeholder: "0" })] }), _jsxs("div", { className: "flex justify-between text-xs font-semibold pt-1 border-t mt-1", children: [_jsx("span", { children: "Final Amount:" }), _jsxs("span", { className: "text-green-600", children: ["\u20B9", finalAmount.toFixed(2), "/", customFee.fee_cycle || 'monthly'] })] })] })), feeConfigItem.is_exempt && (_jsx("div", { className: "text-xs text-red-600 font-semibold pt-1", children: "Student is exempt from this fee" }))] }, customFee.id));
-                                                            }) })] }))] })) : (_jsx("p", { className: "text-sm text-gray-500", children: "Select a class to configure fees" }))] }))] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handleUpdateStudent, className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Update" }), _jsx("button", { onClick: () => setEditModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), promoteModalOpen && selectedStudent && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Promote/Demote Student: ", selectedStudent.profile?.full_name] }), _jsx("div", { className: "space-y-4", children: _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Target Class" }), _jsxs("select", { value: promoteForm.target_class_id, onChange: (e) => {
+                                                            }) })] }))] })) : (_jsx("p", { className: "text-sm text-gray-500", children: "Select a class to configure fees" }))] }))] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handleUpdateStudent, disabled: updatingStudent, className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center", children: updatingStudent ? 'Updating...' : 'Update' }), _jsx("button", { onClick: () => setEditModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), promoteModalOpen && selectedStudent && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Promote/Demote Student: ", selectedStudent.profile?.full_name] }), _jsx("div", { className: "space-y-4", children: _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Target Class" }), _jsxs("select", { value: promoteForm.target_class_id, onChange: (e) => {
                                             setPromoteForm({ ...promoteForm, target_class_id: e.target.value, section_id: '' });
                                         }, className: "w-full px-3 py-2 border rounded-md", required: true, children: [_jsx("option", { value: "", children: "Select Target Class" }), allClasses.map((cls) => {
                                                 const classificationText = cls.classifications && cls.classifications.length > 0

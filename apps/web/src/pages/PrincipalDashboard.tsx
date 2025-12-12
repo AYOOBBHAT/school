@@ -2837,6 +2837,7 @@ function StudentsManagement() {
     custom_fees: any[];
   } | null>(null);
   const [loadingEditFees, setLoadingEditFees] = useState(false);
+  const [updatingStudent, setUpdatingStudent] = useState(false);
   const [promoteForm, setPromoteForm] = useState({
     target_class_id: '',
     section_id: ''
@@ -2950,47 +2951,53 @@ function StudentsManagement() {
     return () => clearTimeout(timeoutId);
   }, [addStudentForm.username]);
 
-  useEffect(() => {
-    const loadStudents = async () => {
-      try {
-        setError(null);
+  const loadStudents = async (showFullPageLoading = false) => {
+    try {
+      setError(null);
+      if (showFullPageLoading) {
         setLoading(true);
-        const token = (await supabase.auth.getSession()).data.session?.access_token;
-        if (!token) {
-          setError('No authentication token found. Please log in again.');
+      }
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) {
+        setError('No authentication token found. Please log in again.');
+        if (showFullPageLoading) {
           setLoading(false);
-          return;
         }
+        return;
+      }
 
-        const response = await fetch(`${API_URL}/students-admin`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+      const response = await fetch(`${API_URL}/students-admin`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Failed to load students' }));
-          throw new Error(errorData.error || `Failed to load students: ${response.status} ${response.statusText}`);
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to load students' }));
+        throw new Error(errorData.error || `Failed to load students: ${response.status} ${response.statusText}`);
+      }
 
-        const data = await response.json();
-        setClassesWithStudents(data.classes || []);
-        setUnassignedStudents(data.unassigned || []);
-        setTotalStudents(data.total_students || 0);
-        
-        // Auto-expand first class if available
-        if (data.classes && data.classes.length > 0) {
-          setExpandedClasses(new Set([data.classes[0].id]));
-        }
-      } catch (error: any) {
-        console.error('Error loading students:', error);
-        setError(error.message || 'Failed to load students. Please try again.');
-      } finally {
+      const data = await response.json();
+      setClassesWithStudents(data.classes || []);
+      setUnassignedStudents(data.unassigned || []);
+      setTotalStudents(data.total_students || 0);
+      
+      // Auto-expand first class if available (only on initial load)
+      if (showFullPageLoading && data.classes && data.classes.length > 0 && expandedClasses.size === 0) {
+        setExpandedClasses(new Set([data.classes[0].id]));
+      }
+    } catch (error: any) {
+      console.error('Error loading students:', error);
+      setError(error.message || 'Failed to load students. Please try again.');
+    } finally {
+      if (showFullPageLoading) {
         setLoading(false);
       }
-    };
+    }
+  };
 
-    loadStudents();
+  useEffect(() => {
+    loadStudents(true);
     loadAllClasses();
   }, []);
 
@@ -3215,6 +3222,7 @@ function StudentsManagement() {
     if (!selectedStudent) return;
 
     try {
+      setUpdatingStudent(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
@@ -3244,12 +3252,18 @@ function StudentsManagement() {
         throw new Error(error.error || 'Failed to update student');
       }
 
-      alert('Student updated successfully!');
+      // Close modal first for better UX
       setEditModalOpen(false);
-      // Reload students
-      window.location.reload();
+      
+      // Show success message
+      alert('Student updated successfully!');
+      
+      // Refetch students data (lightweight, no full page reload)
+      await loadStudents(false);
     } catch (error: any) {
       alert(error.message || 'Failed to update student');
+    } finally {
+      setUpdatingStudent(false);
     }
   };
 
@@ -3260,6 +3274,7 @@ function StudentsManagement() {
     }
 
     try {
+      setUpdatingStudent(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
@@ -3280,12 +3295,15 @@ function StudentsManagement() {
       }
 
       const data = await response.json();
-      alert(data.message || 'Student promoted successfully!');
       setPromoteModalOpen(false);
-      // Reload students
-      window.location.reload();
+      alert(data.message || 'Student promoted successfully!');
+      
+      // Refetch students data (lightweight, no full page reload)
+      await loadStudents(false);
     } catch (error: any) {
       alert(error.message || 'Failed to promote student');
+    } finally {
+      setUpdatingStudent(false);
     }
   };
 
@@ -3300,6 +3318,7 @@ function StudentsManagement() {
     }
 
     try {
+      setUpdatingStudent(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
@@ -3318,12 +3337,15 @@ function StudentsManagement() {
       }
 
       const data = await response.json();
-      alert(data.message || 'Class promoted successfully!');
       setPromoteClassModalOpen(false);
-      // Reload students
-      window.location.reload();
+      alert(data.message || 'Class promoted successfully!');
+      
+      // Refetch students data (lightweight, no full page reload)
+      await loadStudents(false);
     } catch (error: any) {
       alert(error.message || 'Failed to promote class');
+    } finally {
+      setUpdatingStudent(false);
     }
   };
 
@@ -4024,9 +4046,10 @@ function StudentsManagement() {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleUpdateStudent}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                disabled={updatingStudent}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
-                Update
+                {updatingStudent ? 'Updating...' : 'Update'}
               </button>
               <button
                 onClick={() => setEditModalOpen(false)}
