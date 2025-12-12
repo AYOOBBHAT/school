@@ -496,28 +496,37 @@ function DashboardOverview() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>
         {schoolInfo && (
-          <div className="mt-4 space-y-2">
-            <p className="text-gray-600">
-              Welcome to <span className="font-semibold text-gray-900">{schoolInfo.name}</span>
-            </p>
-            <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-              {schoolInfo.join_code && (
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">School Code:</span>
-                  <span className="font-mono font-semibold text-gray-900">{schoolInfo.join_code}</span>
-                </div>
-              )}
-              {schoolInfo.registration_number && (
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">Registration No:</span>
-                  <span className="font-semibold text-gray-900">{schoolInfo.registration_number}</span>
-                </div>
-              )}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-8 mb-6 shadow-2xl">
+            <div className="absolute inset-0 bg-black opacity-10"></div>
+            <div className="relative z-10">
+              <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-2 drop-shadow-lg">
+                Welcome to{' '}
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-yellow-200 via-white to-yellow-200 animate-pulse">
+                  {schoolInfo.name}
+                </span>
+              </h1>
+              <div className="flex flex-wrap gap-4 mt-4 text-sm">
+                {schoolInfo.join_code && (
+                  <div className="flex items-center gap-2 bg-white bg-opacity-20 backdrop-blur-sm px-4 py-2 rounded-lg">
+                    <span className="font-medium text-white">School Code:</span>
+                    <span className="font-mono font-bold text-yellow-200">{schoolInfo.join_code}</span>
+                  </div>
+                )}
+                {schoolInfo.registration_number && (
+                  <div className="flex items-center gap-2 bg-white bg-opacity-20 backdrop-blur-sm px-4 py-2 rounded-lg">
+                    <span className="font-medium text-white">Registration No:</span>
+                    <span className="font-bold text-yellow-200">{schoolInfo.registration_number}</span>
+                  </div>
+                )}
+              </div>
             </div>
+            {/* Decorative elements */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -mr-32 -mt-32"></div>
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white opacity-5 rounded-full -ml-24 -mb-24"></div>
           </div>
         )}
+        <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>
       </div>
 
       {/* Join Code Card - Prominent Display */}
