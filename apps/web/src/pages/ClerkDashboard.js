@@ -20,7 +20,10 @@ export default function ClerkDashboard() {
         if (path.includes('/clerk/fees') || path.includes('/clerk/payments')) {
             setActiveTab('fee-collection');
         }
-        else if (path === '/clerk') {
+        else if (path.includes('/clerk/salary')) {
+            setActiveTab('salary-payment');
+        }
+        else if (path === '/clerk' || path === '/clerk/') {
             setActiveTab('dashboard');
         }
     }, [location.pathname]);
@@ -200,8 +203,11 @@ function SalaryPaymentSection() {
         try {
             setLoading(true);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
-            if (!token)
+            if (!token) {
+                console.error('No authentication token found');
+                setLoading(false);
                 return;
+            }
             const response = await fetch(`${API_URL}/salary/records?status=approved`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -209,9 +215,15 @@ function SalaryPaymentSection() {
                 const data = await response.json();
                 setApprovedSalaries(data.records || []);
             }
+            else {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to load salaries' }));
+                console.error('Error loading approved salaries:', errorData);
+                setApprovedSalaries([]);
+            }
         }
         catch (error) {
             console.error('Error loading approved salaries:', error);
+            setApprovedSalaries([]);
         }
         finally {
             setLoading(false);
