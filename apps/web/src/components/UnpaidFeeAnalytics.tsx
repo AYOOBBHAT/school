@@ -33,7 +33,7 @@ interface Student {
   parent_name: string;
   parent_phone: string;
   parent_address: string;
-  pending_months: number;
+  pending_months: number | string; // Can be number or formatted string like "3 class fee, 2 transport"
   total_pending: number;
   total_fee: number;
   total_paid: number;
