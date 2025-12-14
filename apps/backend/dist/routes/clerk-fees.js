@@ -763,6 +763,15 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
                 const order = { 'class-fee': 1, 'transport-fee': 2, 'custom-fee': 3 };
                 return (order[a.fee_type] || 99) - (order[b.fee_type] || 99);
             });
+            // Format pending months as breakdown string: "3 class fee, 2 transport, 1 library fee"
+            const pendingMonthsBreakdown = feeComponentBreakdown
+                .filter(component => component.pending_months > 0)
+                .map(component => {
+                // Format fee name - capitalize first letter and make it lowercase for consistency
+                const feeName = component.fee_name.toLowerCase();
+                return `${component.pending_months} ${feeName}`;
+            })
+                .join(', ');
             // Only add to list if student has unpaid fees OR if we want to show all students
             // For unpaid analytics, we only show students with unpaid fees
             if (studentUnpaidComponents.length > 0) {
@@ -774,7 +783,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
                     parent_name: guardian?.full_name || profile?.full_name || 'N/A',
                     parent_phone: guardian?.phone || profile?.phone || 'N/A',
                     parent_address: guardian?.address || profile?.address || 'N/A',
-                    pending_months: studentUnpaidInPeriod.length > 0 ? studentUnpaidInPeriod.length : studentUnpaidComponents.length,
+                    pending_months: pendingMonthsBreakdown || '0',
                     total_pending: totalPending,
                     total_fee: totalFee,
                     total_paid: totalPaid,
