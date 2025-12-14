@@ -734,15 +734,35 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
                 }
                 componentBreakdownMap.get(groupKey).components.push(comp);
             });
+            // Helper function to format month name from period_year and period_month
+            const formatMonthName = (year, month) => {
+                const date = new Date(year, month - 1, 1);
+                return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            };
+            // Sort components by period (year and month) to get chronological order
+            const sortComponentsByPeriod = (comps) => {
+                return [...comps].sort((a, b) => {
+                    if (a.period_year !== b.period_year) {
+                        return a.period_year - b.period_year;
+                    }
+                    return a.period_month - b.period_month;
+                });
+            };
             // Calculate breakdown for each fee component
             const feeComponentBreakdown = [];
             componentBreakdownMap.forEach((group) => {
-                const components = group.components;
+                const components = sortComponentsByPeriod(group.components);
                 const totalMonthsDue = components.length;
+                // Get all month names (sorted chronologically)
+                const allMonthNames = components.map((c) => formatMonthName(c.period_year, c.period_month));
                 // Calculate paid months: months where paid_amount >= fee_amount (fully paid)
-                const paidMonths = components.filter((c) => parseFloat(c.paid_amount || 0) >= parseFloat(c.fee_amount || 0) && parseFloat(c.fee_amount || 0) > 0).length;
+                const paidComponents = components.filter((c) => parseFloat(c.paid_amount || 0) >= parseFloat(c.fee_amount || 0) && parseFloat(c.fee_amount || 0) > 0);
+                const paidMonths = paidComponents.length;
+                const paidMonthNames = paidComponents.map((c) => formatMonthName(c.period_year, c.period_month));
                 // Calculate pending months: months where pending_amount > 0
-                const pendingMonths = components.filter((c) => parseFloat(c.pending_amount || 0) > 0).length;
+                const pendingComponents = components.filter((c) => parseFloat(c.pending_amount || 0) > 0);
+                const pendingMonths = pendingComponents.length;
+                const pendingMonthNames = pendingComponents.map((c) => formatMonthName(c.period_year, c.period_month));
                 // Calculate amounts
                 const totalFeeAmount = components.reduce((sum, c) => sum + parseFloat(c.fee_amount || 0), 0);
                 const totalPaidAmount = components.reduce((sum, c) => sum + parseFloat(c.paid_amount || 0), 0);
@@ -751,8 +771,11 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
                     fee_type: group.fee_type,
                     fee_name: group.fee_name,
                     total_months_due: totalMonthsDue,
+                    total_months_due_names: allMonthNames,
                     paid_months: paidMonths,
+                    paid_months_names: paidMonthNames,
                     pending_months: pendingMonths,
+                    pending_months_names: pendingMonthNames,
                     total_fee_amount: totalFeeAmount,
                     total_paid_amount: totalPaidAmount,
                     total_pending_amount: totalPendingAmount

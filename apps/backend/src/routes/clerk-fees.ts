@@ -814,8 +814,11 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
         fee_type: string;
         fee_name: string;
         total_months_due: number;
+        total_months_due_names: string[];
         paid_months: number;
+        paid_months_names: string[];
         pending_months: number;
+        pending_months_names: string[];
         total_fee_amount: number;
         total_paid_amount: number;
         total_pending_amount: number;
@@ -885,31 +888,63 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
         componentBreakdownMap.get(groupKey)!.components.push(comp);
       });
 
+      // Helper function to format month name from period_year and period_month
+      const formatMonthName = (year: number, month: number): string => {
+        const date = new Date(year, month - 1, 1);
+        return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      };
+
+      // Sort components by period (year and month) to get chronological order
+      const sortComponentsByPeriod = (comps: any[]) => {
+        return [...comps].sort((a, b) => {
+          if (a.period_year !== b.period_year) {
+            return a.period_year - b.period_year;
+          }
+          return a.period_month - b.period_month;
+        });
+      };
+
       // Calculate breakdown for each fee component
       const feeComponentBreakdown: Array<{
         fee_type: string;
         fee_name: string;
         total_months_due: number;
+        total_months_due_names: string[]; // Array of month names like ["January 2024", "February 2024"]
         paid_months: number;
+        paid_months_names: string[]; // Array of paid month names
         pending_months: number;
+        pending_months_names: string[]; // Array of pending month names
         total_fee_amount: number;
         total_paid_amount: number;
         total_pending_amount: number;
       }> = [];
 
       componentBreakdownMap.forEach((group) => {
-        const components = group.components;
+        const components = sortComponentsByPeriod(group.components);
         const totalMonthsDue = components.length;
         
+        // Get all month names (sorted chronologically)
+        const allMonthNames = components.map((c: any) => 
+          formatMonthName(c.period_year, c.period_month)
+        );
+        
         // Calculate paid months: months where paid_amount >= fee_amount (fully paid)
-        const paidMonths = components.filter((c: any) => 
+        const paidComponents = components.filter((c: any) => 
           parseFloat(c.paid_amount || 0) >= parseFloat(c.fee_amount || 0) && parseFloat(c.fee_amount || 0) > 0
-        ).length;
+        );
+        const paidMonths = paidComponents.length;
+        const paidMonthNames = paidComponents.map((c: any) => 
+          formatMonthName(c.period_year, c.period_month)
+        );
         
         // Calculate pending months: months where pending_amount > 0
-        const pendingMonths = components.filter((c: any) => 
+        const pendingComponents = components.filter((c: any) => 
           parseFloat(c.pending_amount || 0) > 0
-        ).length;
+        );
+        const pendingMonths = pendingComponents.length;
+        const pendingMonthNames = pendingComponents.map((c: any) => 
+          formatMonthName(c.period_year, c.period_month)
+        );
         
         // Calculate amounts
         const totalFeeAmount = components.reduce((sum: number, c: any) => sum + parseFloat(c.fee_amount || 0), 0);
@@ -920,8 +955,11 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
           fee_type: group.fee_type,
           fee_name: group.fee_name,
           total_months_due: totalMonthsDue,
+          total_months_due_names: allMonthNames,
           paid_months: paidMonths,
+          paid_months_names: paidMonthNames,
           pending_months: pendingMonths,
+          pending_months_names: pendingMonthNames,
           total_fee_amount: totalFeeAmount,
           total_paid_amount: totalPaidAmount,
           total_pending_amount: totalPendingAmount
