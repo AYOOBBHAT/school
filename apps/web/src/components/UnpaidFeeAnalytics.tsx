@@ -14,6 +14,17 @@ interface UnpaidFeeAnalyticsProps {
   onCollectFee?: (studentId: string) => void;
 }
 
+interface FeeComponentBreakdown {
+  fee_type: string;
+  fee_name: string;
+  total_months_due: number;
+  paid_months: number;
+  pending_months: number;
+  total_fee_amount: number;
+  total_paid_amount: number;
+  total_pending_amount: number;
+}
+
 interface Student {
   student_id: string;
   student_name: string;
@@ -27,6 +38,7 @@ interface Student {
   total_fee: number;
   total_paid: number;
   payment_status: 'paid' | 'unpaid' | 'partially-paid';
+  fee_component_breakdown?: FeeComponentBreakdown[];
 }
 
 interface AnalyticsData {
@@ -65,6 +77,7 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
   const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
+  const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set());
 
   // Load classes
   useEffect(() => {
@@ -341,29 +354,101 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {data.students.map((student) => (
-                        <tr key={student.student_id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium">{student.student_name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{student.roll_number}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{student.parent_name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{student.parent_phone}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{student.parent_address || 'N/A'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{student.pending_months}</td>
-                          <td className="px-4 py-3 text-sm font-semibold text-red-600">₹{student.total_pending.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-center">
-                            {userRole === 'clerk' && onCollectFee ? (
-                              <button
-                                onClick={() => onCollectFee(student.student_id)}
-                                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-semibold"
-                              >
-                                Collect Fee
-                              </button>
-                            ) : (
-                              <span className="text-sm text-gray-500">View Only</span>
+                      {data.students.map((student) => {
+                        const isExpanded = expandedStudents.has(student.student_id);
+                        const hasBreakdown = student.fee_component_breakdown && student.fee_component_breakdown.length > 0;
+                        
+                        return (
+                          <React.Fragment key={student.student_id}>
+                            <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => {
+                              if (hasBreakdown) {
+                                setExpandedStudents(prev => {
+                                  const newSet = new Set(prev);
+                                  if (newSet.has(student.student_id)) {
+                                    newSet.delete(student.student_id);
+                                  } else {
+                                    newSet.add(student.student_id);
+                                  }
+                                  return newSet;
+                                });
+                              }
+                            }}>
+                              <td className="px-4 py-3 text-sm font-medium">
+                                <div className="flex items-center gap-2">
+                                  {hasBreakdown && (
+                                    <span className="text-gray-400">
+                                      {isExpanded ? '▼' : '▶'}
+                                    </span>
+                                  )}
+                                  {student.student_name}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{student.roll_number}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{student.parent_name}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{student.parent_phone}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{student.parent_address || 'N/A'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{student.pending_months}</td>
+                              <td className="px-4 py-3 text-sm font-semibold text-red-600">₹{student.total_pending.toFixed(2)}</td>
+                              <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                {userRole === 'clerk' && onCollectFee ? (
+                                  <button
+                                    onClick={() => onCollectFee(student.student_id)}
+                                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-semibold"
+                                  >
+                                    Collect Fee
+                                  </button>
+                                ) : (
+                                  <span className="text-sm text-gray-500">View Only</span>
+                                )}
+                              </td>
+                            </tr>
+                            {isExpanded && hasBreakdown && (
+                              <tr>
+                                <td colSpan={8} className="px-4 py-4 bg-gray-50">
+                                  <div className="ml-6">
+                                    <h5 className="text-sm font-semibold text-gray-700 mb-3">Fee Component Breakdown</h5>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                      {student.fee_component_breakdown!.map((component, idx) => (
+                                        <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4">
+                                          <div className="font-semibold text-gray-900 mb-2">{component.fee_name}</div>
+                                          <div className="space-y-1 text-sm">
+                                            <div className="flex justify-between">
+                                              <span className="text-gray-600">Total Months Due:</span>
+                                              <span className="font-medium">{component.total_months_due}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                              <span className="text-gray-600">Paid Months:</span>
+                                              <span className="font-medium text-green-600">{component.paid_months}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                              <span className="text-gray-600">Pending Months:</span>
+                                              <span className="font-medium text-red-600">{component.pending_months}</span>
+                                            </div>
+                                            <div className="border-t border-gray-200 pt-1 mt-2">
+                                              <div className="flex justify-between">
+                                                <span className="text-gray-600">Total Fee:</span>
+                                                <span className="font-medium">₹{component.total_fee_amount.toFixed(2)}</span>
+                                              </div>
+                                              <div className="flex justify-between">
+                                                <span className="text-gray-600">Total Paid:</span>
+                                                <span className="font-medium text-green-600">₹{component.total_paid_amount.toFixed(2)}</span>
+                                              </div>
+                                              <div className="flex justify-between">
+                                                <span className="text-gray-600">Total Pending:</span>
+                                                <span className="font-medium text-red-600">₹{component.total_pending_amount.toFixed(2)}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
                             )}
-                          </td>
-                        </tr>
-                      ))}
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

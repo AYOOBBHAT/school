@@ -589,7 +589,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
         // We'll filter unpaid ones later for the list, but need all to determine if student is paid
         let allComponentsQuery = adminSupabase
             .from('monthly_fee_components')
-            .select('id, student_id, fee_amount, paid_amount, pending_amount, status, period_year, period_month, period_start, period_end')
+            .select('id, student_id, fee_type, fee_name, fee_category_id, fee_amount, paid_amount, pending_amount, status, period_year, period_month, period_start, period_end')
             .eq('school_id', user.schoolId)
             .in('student_id', allStudentIds);
         const { data: allComponents, error: allComponentsError } = await allComponentsQuery;
@@ -701,8 +701,6 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
             const totalFee = allStudentComponents.reduce((sum, c) => sum + parseFloat(c.fee_amount || 0), 0);
             const totalPaid = allStudentComponents.reduce((sum, c) => sum + parseFloat(c.paid_amount || 0), 0);
             const totalPending = studentUnpaidComponents.reduce((sum, c) => sum + parseFloat(c.pending_amount || 0), 0);
-            // Calculate paid amount specifically for unpaid components
-            const unpaidComponentsPaidAmount = studentUnpaidComponents.reduce((sum, c) => sum + parseFloat(c.paid_amount || 0), 0);
             // Determine payment status based on unpaid components
             let paymentStatus;
             if (studentUnpaidComponents.length === 0) {
@@ -716,6 +714,55 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
                 const hasPartialPayment = studentUnpaidComponents.some((c) => parseFloat(c.paid_amount || 0) > 0);
                 paymentStatus = hasPartialPayment ? 'partially-paid' : 'unpaid';
             }
+            // Calculate fee component breakdown
+            // Group components by fee_type and fee_name (or fee_category_id for unique identification)
+            const componentBreakdownMap = new Map();
+            allStudentComponents.forEach((comp) => {
+                // Create a unique key for grouping: fee_type + fee_name (or fee_category_id if available)
+                // For transport, use fee_name; for others, use fee_category_id if available, otherwise fee_name
+                const groupKey = comp.fee_type === 'transport-fee'
+                    ? `${comp.fee_type}:${comp.fee_name}`
+                    : comp.fee_category_id
+                        ? `${comp.fee_type}:${comp.fee_category_id}`
+                        : `${comp.fee_type}:${comp.fee_name}`;
+                if (!componentBreakdownMap.has(groupKey)) {
+                    componentBreakdownMap.set(groupKey, {
+                        fee_type: comp.fee_type,
+                        fee_name: comp.fee_name || 'Unknown Fee',
+                        components: []
+                    });
+                }
+                componentBreakdownMap.get(groupKey).components.push(comp);
+            });
+            // Calculate breakdown for each fee component
+            const feeComponentBreakdown = [];
+            componentBreakdownMap.forEach((group) => {
+                const components = group.components;
+                const totalMonthsDue = components.length;
+                // Calculate paid months: months where paid_amount >= fee_amount (fully paid)
+                const paidMonths = components.filter((c) => parseFloat(c.paid_amount || 0) >= parseFloat(c.fee_amount || 0) && parseFloat(c.fee_amount || 0) > 0).length;
+                // Calculate pending months: months where pending_amount > 0
+                const pendingMonths = components.filter((c) => parseFloat(c.pending_amount || 0) > 0).length;
+                // Calculate amounts
+                const totalFeeAmount = components.reduce((sum, c) => sum + parseFloat(c.fee_amount || 0), 0);
+                const totalPaidAmount = components.reduce((sum, c) => sum + parseFloat(c.paid_amount || 0), 0);
+                const totalPendingAmount = components.reduce((sum, c) => sum + parseFloat(c.pending_amount || 0), 0);
+                feeComponentBreakdown.push({
+                    fee_type: group.fee_type,
+                    fee_name: group.fee_name,
+                    total_months_due: totalMonthsDue,
+                    paid_months: paidMonths,
+                    pending_months: pendingMonths,
+                    total_fee_amount: totalFeeAmount,
+                    total_paid_amount: totalPaidAmount,
+                    total_pending_amount: totalPendingAmount
+                });
+            });
+            // Sort breakdown by fee_type (class-fee first, then transport-fee, then custom-fee)
+            feeComponentBreakdown.sort((a, b) => {
+                const order = { 'class-fee': 1, 'transport-fee': 2, 'custom-fee': 3 };
+                return (order[a.fee_type] || 99) - (order[b.fee_type] || 99);
+            });
             // Only add to list if student has unpaid fees OR if we want to show all students
             // For unpaid analytics, we only show students with unpaid fees
             if (studentUnpaidComponents.length > 0) {
@@ -731,7 +778,8 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
                     total_pending: totalPending,
                     total_fee: totalFee,
                     total_paid: totalPaid,
-                    payment_status: paymentStatus
+                    payment_status: paymentStatus,
+                    fee_component_breakdown: feeComponentBreakdown
                 });
             }
         });
