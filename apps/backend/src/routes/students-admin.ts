@@ -492,13 +492,27 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
     const finalClassId = class_group_id !== undefined ? class_group_id : student.class_group_id;
     if ((classChanged || fee_config) && finalClassId) {
       // IMPORTANT: Versioning logic - close old records and create new ones
-      // This ensures historical fee data remains unchanged for past months
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      // Determine effective_from_date for new fee structure
+      // If fee_config.effective_from_date is provided, use it; otherwise use admission_date or today
+      let effectiveFromDate: string;
+      if (fee_config?.effective_from_date) {
+        effectiveFromDate = fee_config.effective_from_date;
+        // Validate that effective_from_date is not in the past relative to admission
+        if (student.admission_date && effectiveFromDate < student.admission_date) {
+          return res.status(400).json({ 
+            error: `Effective from date (${effectiveFromDate}) cannot be earlier than admission date (${student.admission_date})` 
+          });
+        }
+      } else {
+        // Default: use admission_date if available, otherwise use today
+        effectiveFromDate = student.admission_date || today;
+      }
 
-      // Use admission_date if available, otherwise use today
-      const effectiveFromDate = student.admission_date || today;
+      // Calculate the day before the new effective_from_date
+      // This will be used to close old fee structures
+      const effectiveFromDateObj = new Date(effectiveFromDate);
+      effectiveFromDateObj.setDate(effectiveFromDateObj.getDate() - 1);
+      const dayBeforeEffectiveFrom = effectiveFromDateObj.toISOString().split('T')[0];
 
       // Close all active fee records in parallel for better performance
       // This preserves the fee history for past months
@@ -507,7 +521,7 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
         adminSupabase
           .from('student_fee_profile')
           .update({ 
-            effective_to: yesterdayStr, 
+            effective_to: dayBeforeEffectiveFrom, 
             is_active: false,
             updated_at: updateTime
           })
@@ -518,7 +532,7 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
         adminSupabase
           .from('student_fee_overrides')
           .update({ 
-            effective_to: yesterdayStr, 
+            effective_to: dayBeforeEffectiveFrom, 
             is_active: false,
             updated_at: updateTime
           })

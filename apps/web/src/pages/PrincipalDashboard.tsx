@@ -628,6 +628,7 @@ function StaffManagement() {
   // Modal states
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
+  const [dailyAttendanceModalOpen, setDailyAttendanceModalOpen] = useState(false);
   const [performanceModalOpen, setPerformanceModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [viewAssignmentsModalOpen, setViewAssignmentsModalOpen] = useState(false);
@@ -645,6 +646,13 @@ function StaffManagement() {
     status: 'present' as 'present' | 'absent' | 'late' | 'leave',
     notes: ''
   });
+  
+  // Daily attendance states
+  const [attendanceMonth, setAttendanceMonth] = useState(new Date().getMonth() + 1);
+  const [attendanceYear, setAttendanceYear] = useState(new Date().getFullYear());
+  const [dailyAttendance, setDailyAttendance] = useState<Record<string, 'present' | 'absent'>>({});
+  const [attendanceStats, setAttendanceStats] = useState({ totalDays: 0, presentDays: 0, absentDays: 0 });
+  const [savingAttendance, setSavingAttendance] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: '',
     email: '',
@@ -657,6 +665,15 @@ function StaffManagement() {
   const [attendanceSummary, setAttendanceSummary] = useState<any>(null);
   const [performanceData, setPerformanceData] = useState<any>(null);
   const [teacherAssignments, setTeacherAssignments] = useState<any[]>([]);
+  const [attendanceAssignments, setAttendanceAssignments] = useState<any[]>([]);
+  
+  // Attendance assignment modal states
+  const [attendanceAssignmentModalOpen, setAttendanceAssignmentModalOpen] = useState(false);
+  const [attendanceAssignmentForm, setAttendanceAssignmentForm] = useState({
+    teacher_id: '',
+    class_group_id: '',
+    section_id: ''
+  });
 
   // Add Staff Modal State (must be before any early returns)
   const [addStaffModalOpen, setAddStaffModalOpen] = useState(false);
@@ -674,6 +691,7 @@ function StaffManagement() {
     loadAllClasses();
     loadAllSubjects();
     loadAllAssignments();
+    loadAttendanceAssignments();
   }, []);
 
   const loadAllClasses = async () => {
@@ -727,6 +745,24 @@ function StaffManagement() {
       }
     } catch (error) {
       console.error('Error loading assignments:', error);
+    }
+  };
+
+  const loadAttendanceAssignments = async () => {
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/teacher-attendance-assignments`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAttendanceAssignments(data.assignments || []);
+      }
+    } catch (error) {
+      console.error('Error loading attendance assignments:', error);
     }
   };
 
@@ -794,6 +830,16 @@ function StaffManagement() {
       section_id: ''
     });
     setAssignModalOpen(true);
+  };
+
+  const handleAssignAttendanceClass = (teacher: Profile) => {
+    setSelectedTeacher(teacher);
+    setAttendanceAssignmentForm({
+      teacher_id: teacher.id,
+      class_group_id: '',
+      section_id: ''
+    });
+    setAttendanceAssignmentModalOpen(true);
   };
 
   const handleViewAttendance = async (teacher: Profile) => {
@@ -948,15 +994,31 @@ function StaffManagement() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/teacher-assignments/teacher/${teacher.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // Load both teaching and attendance assignments
+      const [teachingRes, attendanceRes] = await Promise.all([
+        fetch(`${API_URL}/teacher-assignments/teacher/${teacher.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/teacher-attendance-assignments/teacher/${teacher.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      ]);
 
-      if (response.ok) {
-        const data = await response.json();
+      if (teachingRes.ok) {
+        const data = await teachingRes.json();
         setTeacherAssignments(data.assignments || []);
-        setViewAssignmentsModalOpen(true);
       }
+
+      if (attendanceRes.ok) {
+        const data = await attendanceRes.json();
+        // Update attendance assignments for this teacher
+        setAttendanceAssignments(prev => {
+          const filtered = prev.filter(a => a.teacher_id !== teacher.id);
+          return [...filtered, ...(data.assignments || [])];
+        });
+      }
+
+      setViewAssignmentsModalOpen(true);
     } catch (error) {
       console.error('Error loading assignments:', error);
     }
@@ -986,11 +1048,47 @@ function StaffManagement() {
         throw new Error(error.error || 'Failed to create assignment');
       }
 
-      alert('Teacher assigned successfully!');
+      alert('Teaching assignment created successfully!');
       setAssignModalOpen(false);
       loadAllAssignments();
     } catch (error: any) {
       alert(error.message || 'Failed to create assignment');
+    }
+  };
+
+  const handleCreateAttendanceAssignment = async () => {
+    if (!attendanceAssignmentForm.teacher_id || !attendanceAssignmentForm.class_group_id) {
+      alert('Please select a class');
+      return;
+    }
+
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/teacher-attendance-assignments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          teacher_id: attendanceAssignmentForm.teacher_id,
+          class_group_id: attendanceAssignmentForm.class_group_id,
+          section_id: attendanceAssignmentForm.section_id || null
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create attendance assignment');
+      }
+
+      alert('Attendance assignment created successfully! Teacher can now mark attendance for this class.');
+      setAttendanceAssignmentModalOpen(false);
+      loadAttendanceAssignments();
+    } catch (error: any) {
+      alert(error.message || 'Failed to create attendance assignment');
     }
   };
 
@@ -1029,9 +1127,121 @@ function StaffManagement() {
     }
   }, [assignForm.class_group_id]);
 
+  useEffect(() => {
+    if (dailyAttendanceModalOpen && selectedTeacher) {
+      loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
+    }
+  }, [dailyAttendanceModalOpen, attendanceMonth, attendanceYear, selectedTeacher]);
+
   // Get assignments count for each teacher
   const getTeacherAssignmentsCount = (teacherId: string) => {
     return allAssignments.filter(a => a.teacher_id === teacherId).length;
+  };
+
+  const loadDailyAttendance = async (teacherId: string, month: number, year: number) => {
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      // Get first and last day of the month
+      const firstDay = new Date(year, month - 1, 1);
+      const lastDay = new Date(year, month, 0);
+      
+      const response = await fetch(
+        `${API_URL}/teacher-attendance?teacher_id=${teacherId}&start_date=${firstDay.toISOString().split('T')[0]}&end_date=${lastDay.toISOString().split('T')[0]}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const attendanceMap: Record<string, 'present' | 'absent'> = {};
+        const daysInMonth = lastDay.getDate();
+        
+        // Initialize all days as present by default
+        for (let day = 1; day <= daysInMonth; day++) {
+          const dateStr = new Date(year, month - 1, day).toISOString().split('T')[0];
+          attendanceMap[dateStr] = 'present';
+        }
+        
+        // Override with actual attendance records (only absent ones override the default present)
+        (data.attendance || []).forEach((record: any) => {
+          if (record.status === 'absent') {
+            attendanceMap[record.date] = 'absent';
+          }
+        });
+        
+        setDailyAttendance(attendanceMap);
+        
+        // Calculate stats (consider unmarked days as present)
+        const totalDays = daysInMonth;
+        const absentDays = Object.values(attendanceMap).filter(status => status === 'absent').length;
+        const presentDays = totalDays - absentDays;
+        
+        setAttendanceStats({ totalDays, presentDays, absentDays });
+      }
+    } catch (error) {
+      console.error('Error loading daily attendance:', error);
+    }
+  };
+
+  const toggleDayAttendance = (dateStr: string) => {
+    setDailyAttendance(prev => {
+      const newAttendance = { ...prev };
+      // Toggle between present and absent
+      newAttendance[dateStr] = prev[dateStr] === 'absent' ? 'present' : 'absent';
+      
+      // Update stats
+      const absentDays = Object.values(newAttendance).filter(status => status === 'absent').length;
+      const presentDays = attendanceStats.totalDays - absentDays;
+      setAttendanceStats({ totalDays: attendanceStats.totalDays, presentDays, absentDays });
+      
+      return newAttendance;
+    });
+  };
+
+  const saveDailyAttendance = async () => {
+    if (!selectedTeacher) return;
+    
+    try {
+      setSavingAttendance(true);
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      // Get first and last day of the month
+      const firstDay = new Date(attendanceYear, attendanceMonth - 1, 1);
+      const lastDay = new Date(attendanceYear, attendanceMonth, 0);
+      
+      // Get all absent dates
+      const absentDates = Object.entries(dailyAttendance)
+        .filter(([date, status]) => status === 'absent')
+        .map(([date]) => date);
+
+      const response = await fetch(`${API_URL}/teacher-attendance/bulk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          teacher_id: selectedTeacher.id,
+          start_date: firstDay.toISOString().split('T')[0],
+          end_date: lastDay.toISOString().split('T')[0],
+          absent_dates: absentDates
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save attendance');
+      }
+
+      alert('Attendance saved successfully!');
+      loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
+    } catch (error: any) {
+      alert(error.message || 'Failed to save attendance');
+    } finally {
+      setSavingAttendance(false);
+    }
   };
 
   if (loading) return <div className="p-6">Loading staff...</div>;
@@ -1116,6 +1326,7 @@ function StaffManagement() {
             setViewAssignmentsModalOpen(true);
             setSelectedTeacher(null);
             loadAllAssignments();
+            loadAttendanceAssignments();
           }}
           className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition"
         >
@@ -1178,16 +1389,27 @@ function StaffManagement() {
                         <button
                           onClick={() => handleAssignTeacher(member)}
                           className="text-blue-600 hover:text-blue-900"
-                          title="Assign to class/subject"
+                          title="Assign teaching (class + subject)"
                         >
-                          ➕ Assign
+                          📚 Teaching
                         </button>
                         <button
-                          onClick={() => handleViewAttendance(member)}
-                          className="text-green-600 hover:text-green-900"
-                          title="View attendance"
+                          onClick={() => handleAssignAttendanceClass(member)}
+                          className="text-teal-600 hover:text-teal-900"
+                          title="Assign attendance class (class only)"
                         >
                           📅 Attendance
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedTeacher(member);
+                            setDailyAttendanceModalOpen(true);
+                            loadDailyAttendance(member.id, attendanceMonth, attendanceYear);
+                          }}
+                          className="text-green-600 hover:text-green-900"
+                          title="Mark teacher daily attendance"
+                        >
+                          👤 Mark Teacher Attendance
                         </button>
                         <button
                           onClick={() => handleEvaluatePerformance(member)}
@@ -1199,9 +1421,9 @@ function StaffManagement() {
                         <button
                           onClick={() => handleViewAssignments(member)}
                           className="text-indigo-600 hover:text-indigo-900"
-                          title="View assignments"
+                          title="View all assignments"
                         >
-                          👁️ Assignments
+                          👁️ View All
                         </button>
                       </>
                     )}
@@ -1234,7 +1456,10 @@ function StaffManagement() {
       {assignModalOpen && selectedTeacher && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold mb-4">Assign Teacher: {selectedTeacher.full_name}</h3>
+            <h3 className="text-xl font-bold mb-4">Teaching Assignment: {selectedTeacher.full_name}</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Assign teacher to teach a specific subject in a class. This is separate from attendance responsibilities.
+            </p>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Class *</label>
@@ -1600,6 +1825,149 @@ function StaffManagement() {
         </div>
       )}
 
+      {/* Daily Attendance Modal */}
+      {dailyAttendanceModalOpen && selectedTeacher && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Mark Daily Attendance: {selectedTeacher.full_name}</h3>
+            
+            {/* Month/Year Selector */}
+            <div className="mb-4 flex gap-4 items-center">
+              <div>
+                <label className="block text-sm font-medium mb-1">Month</label>
+                <select
+                  value={attendanceMonth}
+                  onChange={(e) => {
+                    const newMonth = parseInt(e.target.value);
+                    setAttendanceMonth(newMonth);
+                    if (selectedTeacher) {
+                      loadDailyAttendance(selectedTeacher.id, newMonth, attendanceYear);
+                    }
+                  }}
+                  className="px-3 py-2 border rounded-md"
+                >
+                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                    <option key={m} value={m}>
+                      {new Date(2000, m-1).toLocaleString('default', { month: 'long' })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Year</label>
+                <input
+                  type="number"
+                  value={attendanceYear}
+                  onChange={(e) => {
+                    const newYear = parseInt(e.target.value);
+                    setAttendanceYear(newYear);
+                    if (selectedTeacher) {
+                      loadDailyAttendance(selectedTeacher.id, attendanceMonth, newYear);
+                    }
+                  }}
+                  className="px-3 py-2 border rounded-md w-24"
+                  min="2000"
+                  max="2100"
+                />
+              </div>
+            </div>
+
+            {/* Statistics */}
+            <div className="mb-4 grid grid-cols-3 gap-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="text-sm text-gray-600">Total Days</div>
+                <div className="text-2xl font-bold text-blue-600">{attendanceStats.totalDays}</div>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="text-sm text-gray-600">Present Days</div>
+                <div className="text-2xl font-bold text-green-600">{attendanceStats.presentDays}</div>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="text-sm text-gray-600">Absent Days</div>
+                <div className="text-2xl font-bold text-red-600">{attendanceStats.absentDays}</div>
+              </div>
+            </div>
+
+            {/* Calendar Grid */}
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">
+                💡 By default, all days are marked as <strong>Present</strong>. Click on a day to toggle it to <strong>Absent</strong>.
+              </p>
+              <div className="grid grid-cols-7 gap-2">
+                {/* Day headers */}
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                  <div key={day} className="text-center text-sm font-semibold text-gray-600 py-2">
+                    {day}
+                  </div>
+                ))}
+                {/* Calendar days */}
+                {(() => {
+                  const firstDay = new Date(attendanceYear, attendanceMonth - 1, 1);
+                  const lastDay = new Date(attendanceYear, attendanceMonth, 0);
+                  const daysInMonth = lastDay.getDate();
+                  const firstDayOfWeek = firstDay.getDay();
+                  const days = [];
+                  
+                  // Empty cells for days before month starts
+                  for (let i = 0; i < firstDayOfWeek; i++) {
+                    days.push(<div key={`empty-${i}`} className="p-2"></div>);
+                  }
+                  
+                  // Days of the month
+                  for (let day = 1; day <= daysInMonth; day++) {
+                    const dateStr = new Date(attendanceYear, attendanceMonth - 1, day).toISOString().split('T')[0];
+                    const status = dailyAttendance[dateStr] || 'present';
+                    const isToday = dateStr === new Date().toISOString().split('T')[0];
+                    
+                    days.push(
+                      <button
+                        key={day}
+                        onClick={() => toggleDayAttendance(dateStr)}
+                        className={`p-2 border-2 rounded-lg transition ${
+                          status === 'absent'
+                            ? 'bg-red-100 border-red-500 text-red-800 font-semibold'
+                            : 'bg-green-50 border-green-300 text-green-800 hover:bg-green-100'
+                        } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
+                        title={`${day} ${new Date(attendanceYear, attendanceMonth - 1).toLocaleString('default', { month: 'long' })} - Click to toggle`}
+                      >
+                        <div className="text-xs font-medium">{day}</div>
+                        <div className="text-xs mt-1">{status === 'absent' ? '❌' : '✅'}</div>
+                      </button>
+                    );
+                  }
+                  
+                  return days;
+                })()}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={saveDailyAttendance}
+                disabled={savingAttendance}
+                className={`flex-1 px-4 py-2 rounded-lg ${
+                  savingAttendance
+                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {savingAttendance ? 'Saving...' : 'Save Attendance'}
+              </button>
+              <button
+                onClick={() => {
+                  setDailyAttendanceModalOpen(false);
+                  setSelectedTeacher(null);
+                }}
+                className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Staff Modal */}
       {addStaffModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1695,18 +2063,97 @@ function StaffManagement() {
         </div>
       )}
 
-      {/* View All Assignments Modal */}
+      {/* Attendance Assignment Modal */}
+      {attendanceAssignmentModalOpen && selectedTeacher && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Attendance Assignment: {selectedTeacher.full_name}</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Assign teacher to mark attendance for a class. This is separate from teaching assignments. Teacher can mark day-wise attendance for this class.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Class *</label>
+                <select
+                  value={attendanceAssignmentForm.class_group_id}
+                  onChange={(e) => {
+                    setAttendanceAssignmentForm({ ...attendanceAssignmentForm, class_group_id: e.target.value, section_id: '' });
+                    if (e.target.value) {
+                      loadSections(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3 py-2 border rounded-md"
+                  required
+                >
+                  <option value="">Select Class</option>
+                  {allClasses.map((cls) => {
+                    const classificationText = cls.classifications && cls.classifications.length > 0
+                      ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
+                      : '';
+                    return (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.name}{classificationText}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              {attendanceAssignmentForm.class_group_id && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Section (Optional)</label>
+                  <select
+                    value={attendanceAssignmentForm.section_id}
+                    onChange={(e) => setAttendanceAssignmentForm({ ...attendanceAssignmentForm, section_id: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md"
+                  >
+                    <option value="">No Section (All Sections)</option>
+                    {(sections[attendanceAssignmentForm.class_group_id] || []).map((section) => (
+                      <option key={section.id} value={section.id}>
+                        {section.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    If no section is selected, teacher can mark attendance for all sections of this class.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleCreateAttendanceAssignment}
+                className="flex-1 bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700"
+              >
+                Assign Attendance
+              </button>
+              <button
+                onClick={() => {
+                  setAttendanceAssignmentModalOpen(false);
+                  setSelectedTeacher(null);
+                }}
+                className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View All Assignments Modal - Shows both Teaching and Attendance */}
       {viewAssignmentsModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">
-                {selectedTeacher ? `Assignments: ${selectedTeacher.full_name}` : 'All Teacher Assignments'}
+                {selectedTeacher ? `All Assignments: ${selectedTeacher.full_name}` : 'All Teacher Assignments'}
               </h3>
               <button
                 onClick={() => {
                   setViewAssignmentsModalOpen(false);
                   setSelectedTeacher(null);
+                  loadAllAssignments();
+                  loadAttendanceAssignments();
                 }}
                 className="text-gray-500 hover:text-gray-700"
               >
@@ -1714,51 +2161,146 @@ function StaffManagement() {
               </button>
             </div>
             
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Teacher</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Section</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Assigned</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {(selectedTeacher ? teacherAssignments : allAssignments).map((assignment: any) => (
-                    <tr key={assignment.id}>
-                      <td className="px-4 py-2 text-sm">
-                        {assignment.teacher?.full_name || 'N/A'}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {assignment.class_groups?.name || 'N/A'}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {assignment.sections?.name || 'N/A'}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {assignment.subjects?.name || 'N/A'} {assignment.subjects?.code ? `(${assignment.subjects.code})` : ''}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-500">
-                        {new Date(assignment.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        <button
-                          onClick={() => handleDeleteAssignment(assignment.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          🗑️ Remove
-                        </button>
-                      </td>
+            {/* Teaching Assignments Section */}
+            <div className="mb-6">
+              <h4 className="text-lg font-semibold mb-3 text-blue-600">📚 Teaching Assignments</h4>
+              <p className="text-sm text-gray-600 mb-3">
+                Teachers assigned to teach specific subjects in classes.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Teacher</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Section</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Assigned</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {(selectedTeacher ? teacherAssignments : allAssignments).length === 0 && (
-                <div className="text-center py-8 text-gray-500">No assignments found.</div>
-              )}
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {(selectedTeacher ? teacherAssignments : allAssignments).map((assignment: any) => (
+                      <tr key={assignment.id}>
+                        <td className="px-4 py-2 text-sm">
+                          {assignment.teacher?.full_name || selectedTeacher?.full_name || 'N/A'}
+                        </td>
+                        <td className="px-4 py-2 text-sm">
+                          {assignment.class_groups?.name || 'N/A'}
+                        </td>
+                        <td className="px-4 py-2 text-sm">
+                          {assignment.sections?.name || '-'}
+                        </td>
+                        <td className="px-4 py-2 text-sm">
+                          {assignment.subjects?.name || 'N/A'} {assignment.subjects?.code ? `(${assignment.subjects.code})` : ''}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-500">
+                          {new Date(assignment.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-2 text-sm">
+                          <button
+                            onClick={() => handleDeleteAssignment(assignment.id)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            🗑️ Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {(selectedTeacher ? teacherAssignments : allAssignments).length === 0 && (
+                  <div className="text-center py-8 text-gray-500">No teaching assignments found.</div>
+                )}
+              </div>
+            </div>
+
+            {/* Attendance Assignments Section */}
+            <div>
+              <h4 className="text-lg font-semibold mb-3 text-teal-600">📅 Attendance Assignments</h4>
+              <p className="text-sm text-gray-600 mb-3">
+                Teachers assigned to mark day-wise attendance for classes. Independent of teaching assignments.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Teacher</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Section</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Assigned</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {(selectedTeacher 
+                      ? attendanceAssignments.filter(a => a.teacher_id === selectedTeacher.id)
+                      : attendanceAssignments
+                    ).map((assignment: any) => (
+                      <tr key={assignment.id}>
+                        <td className="px-4 py-2 text-sm">
+                          {assignment.teacher?.full_name || selectedTeacher?.full_name || 'N/A'}
+                        </td>
+                        <td className="px-4 py-2 text-sm">
+                          {assignment.class_group?.name || 'N/A'}
+                        </td>
+                        <td className="px-4 py-2 text-sm">
+                          {assignment.section?.name || 'All Sections'}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-500">
+                          {new Date(assignment.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-2 text-sm">
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            assignment.is_active 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {assignment.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-sm">
+                          <button
+                            onClick={async () => {
+                              if (!confirm('Are you sure you want to remove this attendance assignment?')) return;
+                              try {
+                                const token = (await supabase.auth.getSession()).data.session?.access_token;
+                                if (!token) return;
+                                const response = await fetch(`${API_URL}/teacher-attendance-assignments/${assignment.id}`, {
+                                  method: 'DELETE',
+                                  headers: { Authorization: `Bearer ${token}` },
+                                });
+                                if (response.ok) {
+                                  alert('Attendance assignment removed successfully!');
+                                  loadAttendanceAssignments();
+                                  if (selectedTeacher) {
+                                    handleViewAssignments(selectedTeacher);
+                                  }
+                                } else {
+                                  const error = await response.json();
+                                  throw new Error(error.error || 'Failed to remove assignment');
+                                }
+                              } catch (error: any) {
+                                alert(error.message || 'Failed to remove assignment');
+                              }
+                            }}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            🗑️ Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {(selectedTeacher 
+                  ? attendanceAssignments.filter(a => a.teacher_id === selectedTeacher.id)
+                  : attendanceAssignments
+                ).length === 0 && (
+                  <div className="text-center py-8 text-gray-500">No attendance assignments found.</div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2836,7 +3378,8 @@ function StudentsManagement() {
     transport_route_id: '',
     transport_fee_discount: 0,
     other_fees: [] as Array<{ fee_category_id: string; enabled: boolean; discount: number }>,
-    custom_fees: [] as Array<{ custom_fee_id: string; discount: number; is_exempt: boolean }>
+    custom_fees: [] as Array<{ custom_fee_id: string; discount: number; is_exempt: boolean }>,
+    effective_from_date: '' // Apply From Date for new fee structure
   });
   const [editDefaultFees, setEditDefaultFees] = useState<{
     class_fees: any[];
@@ -3148,7 +3691,8 @@ function StudentsManagement() {
             transport_route_id: feeConfig.transport_route_id || '',
             transport_fee_discount: feeConfig.transport_fee_discount || 0,
             other_fees: feeConfig.other_fees || [],
-            custom_fees: feeConfig.custom_fees || []
+            custom_fees: feeConfig.custom_fees || [],
+            effective_from_date: '' // Will be set by user when editing
           });
         }
       } catch (error) {
@@ -3244,7 +3788,11 @@ function StudentsManagement() {
 
       // Include fee_config if class is selected
       if (editForm.class_group_id && editDefaultFees) {
-        updateData.fee_config = editFeeConfig;
+        // Include effective_from_date if provided (for editing existing student)
+        updateData.fee_config = {
+          ...editFeeConfig,
+          effective_from_date: editFeeConfig.effective_from_date || undefined
+        };
       }
 
       const response = await fetch(`${API_URL}/students-admin/${selectedStudent.id}`, {
@@ -3763,7 +4311,8 @@ function StudentsManagement() {
                         transport_route_id: '',
                         transport_fee_discount: 0,
                         other_fees: [],
-                        custom_fees: [] // Will be set by loadEditDefaultFees if fees exist
+                        custom_fees: [], // Will be set by loadEditDefaultFees if fees exist
+                        effective_from_date: ''
                       });
                     } else {
                       setEditDefaultFees(null);
@@ -3774,7 +4323,8 @@ function StudentsManagement() {
                         transport_route_id: '',
                         transport_fee_discount: 0,
                         other_fees: [],
-                        custom_fees: []
+                        custom_fees: [],
+                        effective_from_date: ''
                       });
                     }
                   }}
@@ -3807,6 +4357,27 @@ function StudentsManagement() {
               {editForm.class_group_id && (
                 <div className="border-t pt-4 mt-4">
                   <h4 className="text-lg font-semibold mb-3 text-gray-700">Fee Configuration</h4>
+                  
+                  {/* Apply From Date - Only show when editing (not adding new student) */}
+                  {selectedStudent && (
+                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Apply From Date *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={editFeeConfig.effective_from_date || new Date().toISOString().split('T')[0]}
+                        min={selectedStudent.admission_date || undefined}
+                        onChange={(e) => setEditFeeConfig({ ...editFeeConfig, effective_from_date: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                      <p className="text-xs text-gray-600 mt-1">
+                        The new fee structure will be effective from this date. Previous fee structure remains unchanged for all months before this date.
+                        {selectedStudent.admission_date && ` (Student admission date: ${new Date(selectedStudent.admission_date).toLocaleDateString()})`}
+                      </p>
+                    </div>
+                  )}
                   
                   {loadingEditFees ? (
                     <div className="text-center py-4">
@@ -5682,6 +6253,7 @@ function SalaryManagement() {
   
   // Structure form
   const [showStructureModal, setShowStructureModal] = useState(false);
+  const [selectedTeacherForEdit, setSelectedTeacherForEdit] = useState<any>(null); // Track if editing existing structure
   const [structureForm, setStructureForm] = useState({
     teacher_id: '',
     base_salary: '',
@@ -5689,7 +6261,8 @@ function SalaryManagement() {
     other_allowances: '',
     fixed_deductions: '',
     salary_cycle: 'monthly' as 'monthly' | 'weekly' | 'biweekly',
-    attendance_based_deduction: false
+    attendance_based_deduction: false,
+    effective_from_date: '' // Effective from date for new/edited structure
   });
 
   // Generate salary form
@@ -5754,6 +6327,7 @@ function SalaryManagement() {
           hra: parseFloat(structureForm.hra) || 0,
           other_allowances: parseFloat(structureForm.other_allowances) || 0,
           fixed_deductions: parseFloat(structureForm.fixed_deductions) || 0,
+          effective_from_date: structureForm.effective_from_date || undefined
         }),
       });
 
@@ -5764,6 +6338,7 @@ function SalaryManagement() {
 
       alert('Salary structure saved successfully!');
       setShowStructureModal(false);
+      setSelectedTeacherForEdit(null);
       setStructureForm({
         teacher_id: '',
         base_salary: '',
@@ -5771,7 +6346,8 @@ function SalaryManagement() {
         other_allowances: '',
         fixed_deductions: '',
         salary_cycle: 'monthly',
-        attendance_based_deduction: false
+        attendance_based_deduction: false,
+        effective_from_date: ''
       });
       loadData();
     } catch (error: any) {
@@ -5812,7 +6388,13 @@ function SalaryManagement() {
     }
   };
 
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [selectedRecordForReject, setSelectedRecordForReject] = useState<any>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+
   const handleApprove = async (recordId: string) => {
+    if (!confirm('Are you sure you want to approve this salary?')) return;
+    
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
@@ -5826,41 +6408,50 @@ function SalaryManagement() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to approve');
+        throw new Error(error.error || 'Failed to approve salary');
       }
 
-      alert('Salary approved successfully!');
+      alert('Salary approved successfully! Clerk can now process payment.');
       loadData();
     } catch (error: any) {
-      alert(error.message || 'Failed to approve');
+      alert(error.message || 'Failed to approve salary');
     }
   };
 
-  const handleMarkPaid = async (recordId: string) => {
+  const handleReject = async () => {
+    if (!selectedRecordForReject) return;
+    if (!rejectionReason.trim() || rejectionReason.trim().length < 5) {
+      alert('Please provide a rejection reason (minimum 5 characters)');
+      return;
+    }
+
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/salary/records/${recordId}/mark-paid`, {
+      const response = await fetch(`${API_URL}/salary/records/${selectedRecordForReject.id}/reject`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          payment_date: new Date().toISOString().split('T')[0]
+          rejection_reason: rejectionReason.trim()
         }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to mark as paid');
+        throw new Error(error.error || 'Failed to reject salary');
       }
 
-      alert('Salary marked as paid!');
+      alert('Salary rejected. Clerk can regenerate after corrections.');
+      setRejectModalOpen(false);
+      setSelectedRecordForReject(null);
+      setRejectionReason('');
       loadData();
     } catch (error: any) {
-      alert(error.message || 'Failed to mark as paid');
+      alert(error.message || 'Failed to reject salary');
     }
   };
 
@@ -5909,8 +6500,10 @@ function SalaryManagement() {
                   other_allowances: '',
                   fixed_deductions: '',
                   salary_cycle: 'monthly',
-                  attendance_based_deduction: false
+                  attendance_based_deduction: false,
+                  effective_from_date: ''
                 });
+                setSelectedTeacherForEdit(null);
                 setShowStructureModal(true);
               }}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
@@ -5962,8 +6555,10 @@ function SalaryManagement() {
                               other_allowances: structure.other_allowances.toString(),
                               fixed_deductions: structure.fixed_deductions.toString(),
                               salary_cycle: structure.salary_cycle,
-                              attendance_based_deduction: structure.attendance_based_deduction
+                              attendance_based_deduction: structure.attendance_based_deduction,
+                              effective_from_date: '' // Will be set by user
                             });
+                            setSelectedTeacherForEdit(structure);
                             setShowStructureModal(true);
                           }}
                           className="text-blue-600 hover:text-blue-900"
@@ -6042,10 +6637,13 @@ function SalaryManagement() {
         </div>
       )}
 
-      {/* Pending Salaries Tab */}
+      {/* Pending Salaries Tab - Only show pending (for Principal approval) */}
       {activeTab === 'pending' && (
         <div>
           <h3 className="text-xl font-bold mb-4">Pending Salary Approvals</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Review and approve or reject salary records. Only approved salaries can be paid by the clerk.
+          </p>
           <div className="bg-white rounded-lg shadow-md overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -6055,59 +6653,107 @@ function SalaryManagement() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gross</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deductions</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Generated By</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {salaryRecords.filter((r: any) => r.status === 'pending' || r.status === 'approved').length === 0 ? (
+                {salaryRecords.filter((r: any) => r.status === 'pending').length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
-                      No pending salaries
+                      No pending salaries awaiting approval
                     </td>
                   </tr>
                 ) : (
-                  salaryRecords.filter((r: any) => r.status === 'pending' || r.status === 'approved').map((record: any) => (
+                  salaryRecords.filter((r: any) => r.status === 'pending').map((record: any) => (
                     <tr key={record.id}>
                       <td className="px-6 py-4">{record.teacher?.full_name || 'Unknown'}</td>
                       <td className="px-6 py-4">
                         {new Date(2000, record.month - 1).toLocaleString('default', { month: 'long' })} {record.year}
                       </td>
-                      <td className="px-6 py-4">₹{record.gross_salary.toLocaleString()}</td>
-                      <td className="px-6 py-4">₹{record.total_deductions.toLocaleString()}</td>
-                      <td className="px-6 py-4 font-semibold">₹{record.net_salary.toLocaleString()}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          record.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          record.status === 'approved' ? 'bg-green-100 text-green-800' :
-                          'bg-blue-100 text-blue-800'
-                        }`}>
-                          {record.status}
-                        </span>
+                      <td className="px-6 py-4">₹{parseFloat(record.gross_salary || 0).toLocaleString()}</td>
+                      <td className="px-6 py-4">₹{parseFloat(record.total_deductions || 0).toLocaleString()}</td>
+                      <td className="px-6 py-4 font-semibold">₹{parseFloat(record.net_salary || 0).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {record.generated_by_profile?.full_name || 'System'}
                       </td>
                       <td className="px-6 py-4">
-                        {record.status === 'pending' && (
+                        <div className="flex gap-2">
                           <button
                             onClick={() => handleApprove(record.id)}
-                            className="text-green-600 hover:text-green-900 mr-3"
+                            className="text-green-600 hover:text-green-900 font-medium"
                           >
                             Approve
                           </button>
-                        )}
-                        {record.status === 'approved' && (
                           <button
-                            onClick={() => handleMarkPaid(record.id)}
-                            className="text-blue-600 hover:text-blue-900"
+                            onClick={() => {
+                              setSelectedRecordForReject(record);
+                              setRejectModalOpen(true);
+                            }}
+                            className="text-red-600 hover:text-red-900 font-medium"
                           >
-                            Mark as Paid
+                            Reject
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Salary Modal */}
+      {rejectModalOpen && selectedRecordForReject && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4">Reject Salary</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Rejecting salary for <strong>{selectedRecordForReject.teacher?.full_name}</strong> - {new Date(2000, selectedRecordForReject.month - 1).toLocaleString('default', { month: 'long' })} {selectedRecordForReject.year}
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">
+                Rejection Reason * (Minimum 5 characters)
+              </label>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                rows={4}
+                placeholder="Enter reason for rejection..."
+                required
+                minLength={5}
+                maxLength={500}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                This reason will be visible to the clerk for corrections. ({rejectionReason.length}/500)
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleReject}
+                disabled={!rejectionReason.trim() || rejectionReason.trim().length < 5}
+                className={`flex-1 px-4 py-2 rounded-lg ${
+                  !rejectionReason.trim() || rejectionReason.trim().length < 5
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-red-600 text-white hover:bg-red-700'
+                }`}
+              >
+                Reject Salary
+              </button>
+              <button
+                onClick={() => {
+                  setRejectModalOpen(false);
+                  setSelectedRecordForReject(null);
+                  setRejectionReason('');
+                }}
+                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -6222,8 +6868,28 @@ function SalaryManagement() {
       {showStructureModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold mb-4">Set Salary Structure</h3>
+            <h3 className="text-xl font-bold mb-4">
+              {selectedTeacherForEdit ? 'Edit Salary Structure' : 'Set Salary Structure'}
+            </h3>
             <form onSubmit={handleSaveStructure} className="space-y-4">
+              {/* Effective From Date - Always show, required when editing */}
+              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Effective From Date {selectedTeacherForEdit ? '*' : ''}
+                </label>
+                <input
+                  type="date"
+                  required={!!selectedTeacherForEdit}
+                  value={structureForm.effective_from_date || new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setStructureForm({ ...structureForm, effective_from_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+                <p className="text-xs text-gray-600 mt-1">
+                  {selectedTeacherForEdit 
+                    ? 'The new salary structure will be effective from this date. Previous salary structure remains unchanged for all months before this date.'
+                    : 'The salary structure will be effective from this date. Defaults to today if not specified.'}
+                </p>
+              </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Teacher *</label>
                 <select
@@ -6317,7 +6983,20 @@ function SalaryManagement() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowStructureModal(false)}
+                  onClick={() => {
+                    setShowStructureModal(false);
+                    setSelectedTeacherForEdit(null);
+                    setStructureForm({
+                      teacher_id: '',
+                      base_salary: '',
+                      hra: '',
+                      other_allowances: '',
+                      fixed_deductions: '',
+                      salary_cycle: 'monthly',
+                      attendance_based_deduction: false,
+                      effective_from_date: ''
+                    });
+                  }}
                   className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
                 >
                   Cancel
@@ -6332,7 +7011,7 @@ function SalaryManagement() {
 }
 
 function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'clerk' }) {
-  const [activeTab, setActiveTab] = useState<'class-fees' | 'custom-fees' | 'transport' | 'tracking' | 'hikes' | 'overrides'>('class-fees');
+  const [activeTab, setActiveTab] = useState<'class-fees' | 'custom-fees' | 'transport' | 'tracking' | 'hikes'>('class-fees');
   const [loading, setLoading] = useState(false);
   const isClerk = userRole === 'clerk';
 
@@ -6408,20 +7087,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
   });
   const [feeVersions, setFeeVersions] = useState<any[]>([]);
 
-  // Fee Overrides
-  const [feeOverrides, setFeeOverrides] = useState<any[]>([]);
-  const [showOverrideModal, setShowOverrideModal] = useState(false);
-  const [overrideForm, setOverrideForm] = useState({
-    student_id: '',
-    discount_amount: '',
-    custom_fee_amount: '',
-    is_full_free: false,
-    effective_from: new Date().toISOString().split('T')[0],
-    effective_to: '',
-    notes: ''
-  });
-  const [overrideFilterStudent, setOverrideFilterStudent] = useState<string>('');
-  const [overrideModalFilterClass, setOverrideModalFilterClass] = useState<string>('');
 
   useEffect(() => {
     loadInitialData();
@@ -6824,127 +7489,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
     }
   };
 
-  const loadFeeOverrides = async () => {
-    setLoading(true);
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      // If filtering by student, load that student's overrides
-      // Otherwise, we'll need to load all students' overrides (for now, show message)
-      if (overrideFilterStudent) {
-        const response = await fetch(`${API_URL}/student-fee-overrides/student/${overrideFilterStudent}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setFeeOverrides(data.overrides || []);
-        }
-      } else {
-        // For "all students", we'd need a different endpoint
-        // For now, show empty and prompt user to select a student
-        setFeeOverrides([]);
-      }
-    } catch (error) {
-      console.error('Error loading fee overrides:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveOverride = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      if (!overrideForm.student_id) {
-        alert('Please select a student');
-        return;
-      }
-
-      const payload: any = {
-        student_id: overrideForm.student_id,
-        effective_from: overrideForm.effective_from,
-        notes: overrideForm.notes || null
-      };
-
-      // If full free, set that flag
-      if (overrideForm.is_full_free) {
-        payload.is_full_free = true;
-        payload.fee_category_id = null; // null means applies to all fees
-      } else {
-        // Fee category is always null - applies to all fees
-        payload.fee_category_id = null;
-
-        if (overrideForm.custom_fee_amount) {
-          payload.custom_fee_amount = parseFloat(overrideForm.custom_fee_amount);
-        } else if (overrideForm.discount_amount) {
-          payload.discount_amount = parseFloat(overrideForm.discount_amount);
-        }
-      }
-
-      if (overrideForm.effective_to) {
-        payload.effective_to = overrideForm.effective_to;
-      }
-
-      const response = await fetch(`${API_URL}/student-fee-overrides`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save fee override');
-      }
-
-      alert('Fee override saved successfully!');
-      setShowOverrideModal(false);
-      setOverrideForm({
-        student_id: '',
-        discount_amount: '',
-        custom_fee_amount: '',
-        is_full_free: false,
-        effective_from: new Date().toISOString().split('T')[0],
-        effective_to: '',
-        notes: ''
-      });
-      loadFeeOverrides();
-    } catch (error: any) {
-      alert(error.message || 'Failed to save fee override');
-    }
-  };
-
-  const handleDeleteOverride = async (overrideId: string) => {
-    if (!confirm('Are you sure you want to deactivate this fee override?')) return;
-
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/student-fee-overrides/${overrideId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete fee override');
-      }
-
-      alert('Fee override deactivated successfully!');
-      loadFeeOverrides();
-    } catch (error: any) {
-      alert(error.message || 'Failed to delete fee override');
-    }
-  };
-
-
   if (loading) {
     return (
       <div className="p-6">
@@ -6969,7 +7513,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                 { id: 'custom-fees', label: 'Custom Fees' },
                 { id: 'transport', label: 'Transport' },
                 { id: 'hikes', label: 'Fee Hikes' },
-                { id: 'overrides', label: 'Fee Overrides' }
               ]),
               { id: 'tracking', label: 'Fee Tracking' }
             ].map((tab) => (
@@ -8012,332 +8555,6 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   Apply Fee Hike
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Fee Overrides Tab - Only for Principal */}
-      {activeTab === 'overrides' && !isClerk && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold">Student Fee Overrides</h3>
-            <button
-              onClick={() => {
-                setOverrideForm({
-                  student_id: overrideFilterStudent || '',
-                  discount_amount: '',
-                  custom_fee_amount: '',
-                  is_full_free: false,
-                  effective_from: new Date().toISOString().split('T')[0],
-                  effective_to: '',
-                  notes: ''
-                });
-                setShowOverrideModal(true);
-              }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              + Add Fee Override
-            </button>
-          </div>
-
-          <p className="text-gray-600 mb-6">
-            Manage student-specific fee overrides: discounts, custom fees, and full free scholarships.
-          </p>
-
-          {/* Filter by Class and Student */}
-          <div className="mb-4 grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Filter by Class</label>
-              <select
-                value={overrideFilterStudent ? students.find(s => s.id === overrideFilterStudent)?.class_group_id || '' : ''}
-                onChange={(e) => {
-                  const classId = e.target.value;
-                  setOverrideFilterStudent(''); // Reset student filter when class changes
-                  // Filter students by class for the dropdown
-                }}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
-              >
-                <option value="">All Classes</option>
-                {classGroups.map((classGroup) => (
-                  <option key={classGroup.id} value={classGroup.id}>
-                    {classGroup.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Filter by Student</label>
-              <select
-                value={overrideFilterStudent}
-                onChange={(e) => {
-                  setOverrideFilterStudent(e.target.value);
-                  loadFeeOverrides();
-                }}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
-              >
-                <option value="">All Students</option>
-                {students.map((student) => (
-                  <option key={student.id} value={student.id}>
-                    {student.profile?.full_name} ({student.roll_number}) - {classGroups.find(cg => cg.id === student.class_group_id)?.name || ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Discount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Custom Fee</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Free</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Effective From</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Effective To</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {feeOverrides.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
-                      {overrideFilterStudent 
-                        ? 'No fee overrides found for this student. Click "Add Fee Override" to create one.'
-                        : 'Please select a student to view their fee overrides, or click "Add Fee Override" to create a new one.'}
-                    </td>
-                  </tr>
-                ) : (
-                  feeOverrides.map((override) => (
-                    <tr key={override.id}>
-                      <td className="px-6 py-4">
-                        {override.students?.profile?.full_name || '-'}
-                        <div className="text-xs text-gray-500">
-                          {override.students?.roll_number || ''}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {override.is_full_free ? (
-                          <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">Full Free</span>
-                        ) : override.custom_fee_amount ? (
-                          <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">Custom Fee</span>
-                        ) : override.discount_amount > 0 ? (
-                          <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">Discount</span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        {override.discount_amount > 0 ? `₹${parseFloat(override.discount_amount || 0).toLocaleString()}` : '-'}
-                      </td>
-                      <td className="px-6 py-4">
-                        {override.custom_fee_amount ? `₹${parseFloat(override.custom_fee_amount || 0).toLocaleString()}` : '-'}
-                      </td>
-                      <td className="px-6 py-4">
-                        {override.is_full_free ? '✅ Yes' : '❌ No'}
-                      </td>
-                      <td className="px-6 py-4">
-                        {new Date(override.effective_from).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4">
-                        {override.effective_to ? new Date(override.effective_to).toLocaleDateString() : 'Active'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => handleDeleteOverride(override.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          Deactivate
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Fee Override Modal */}
-      {showOverrideModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold mb-4">Add Fee Override</h3>
-            <form onSubmit={handleSaveOverride}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Filter by Class</label>
-                  <select
-                    value={overrideModalFilterClass}
-                    onChange={(e) => {
-                      setOverrideModalFilterClass(e.target.value);
-                      setOverrideForm({ ...overrideForm, student_id: '' }); // Reset student when class changes
-                    }}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-2"
-                  >
-                    <option value="">All Classes</option>
-                    {classGroups.map((classGroup) => (
-                      <option key={classGroup.id} value={classGroup.id}>
-                        {classGroup.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Student *</label>
-                  <select
-                    value={overrideForm.student_id}
-                    onChange={(e) => setOverrideForm({ ...overrideForm, student_id: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    required
-                  >
-                    <option value="">Select Student</option>
-                    {students
-                      .filter((student) => !overrideModalFilterClass || student.class_group_id === overrideModalFilterClass)
-                      .map((student) => (
-                        <option key={student.id} value={student.id}>
-                          {student.profile?.full_name} ({student.roll_number}) - {classGroups.find(cg => cg.id === student.class_group_id)?.name || ''}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="flex items-center space-x-2 mb-2">
-                    <input
-                      type="checkbox"
-                      checked={overrideForm.is_full_free}
-                      onChange={(e) => {
-                        setOverrideForm({
-                          ...overrideForm,
-                          is_full_free: e.target.checked,
-                          discount_amount: '',
-                          custom_fee_amount: ''
-                        });
-                      }}
-                      className="rounded"
-                    />
-                    <span className="text-sm font-medium">Full Free Scholarship (All fees = 0)</span>
-                  </label>
-                </div>
-
-                {!overrideForm.is_full_free && (
-                  <>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Discount Amount (₹)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={overrideForm.discount_amount}
-                          onChange={(e) => {
-                            setOverrideForm({
-                              ...overrideForm,
-                              discount_amount: e.target.value,
-                              custom_fee_amount: '' // Clear custom fee if discount is set
-                            });
-                          }}
-                          className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                          disabled={!!overrideForm.custom_fee_amount}
-                        />
-                        <p className="text-xs text-gray-500 mt-1">
-                          Amount to subtract from default fee
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Custom Fee Amount (₹)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={overrideForm.custom_fee_amount}
-                          onChange={(e) => {
-                            setOverrideForm({
-                              ...overrideForm,
-                              custom_fee_amount: e.target.value,
-                              discount_amount: '' // Clear discount if custom fee is set
-                            });
-                          }}
-                          className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                          disabled={!!overrideForm.discount_amount}
-                        />
-                        <p className="text-xs text-gray-500 mt-1">
-                          Override default fee completely
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Effective From *</label>
-                    <input
-                      type="date"
-                      value={overrideForm.effective_from}
-                      onChange={(e) => setOverrideForm({ ...overrideForm, effective_from: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Effective To (Optional)</label>
-                    <input
-                      type="date"
-                      value={overrideForm.effective_to}
-                      onChange={(e) => setOverrideForm({ ...overrideForm, effective_to: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Leave empty for indefinite
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Notes</label>
-                  <textarea
-                    value={overrideForm.notes}
-                    onChange={(e) => setOverrideForm({ ...overrideForm, notes: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    rows={3}
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-4 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                >
-                  Save Override
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowOverrideModal(false);
-                    setOverrideForm({
-                      student_id: '',
-                      discount_amount: '',
-                      custom_fee_amount: '',
-                      is_full_free: false,
-                      effective_from: new Date().toISOString().split('T')[0],
-                      effective_to: '',
-                      notes: ''
-                    });
-                  }}
-                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
-                >
-                  Cancel
                 </button>
               </div>
             </form>
