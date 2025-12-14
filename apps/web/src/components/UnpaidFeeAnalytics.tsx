@@ -18,8 +18,11 @@ interface FeeComponentBreakdown {
   fee_type: string;
   fee_name: string;
   total_months_due: number;
+  total_months_due_names: string[]; // Array of month names like ["January 2024", "February 2024"]
   paid_months: number;
+  paid_months_names: string[]; // Array of paid month names
   pending_months: number;
+  pending_months_names: string[]; // Array of pending month names
   total_fee_amount: number;
   total_paid_amount: number;
   total_pending_amount: number;
@@ -410,21 +413,42 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                       {student.fee_component_breakdown!.map((component, idx) => (
                                         <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4">
-                                          <div className="font-semibold text-gray-900 mb-2">{component.fee_name}</div>
-                                          <div className="space-y-1 text-sm">
-                                            <div className="flex justify-between">
-                                              <span className="text-gray-600">Total Months Due:</span>
-                                              <span className="font-medium">{component.total_months_due}</span>
+                                          <div className="font-semibold text-gray-900 mb-3">{component.fee_name}</div>
+                                          <div className="space-y-2 text-sm">
+                                            <div>
+                                              <div className="flex justify-between mb-1">
+                                                <span className="text-gray-600">Total Months Due:</span>
+                                                <span className="font-medium">{component.total_months_due}</span>
+                                              </div>
+                                              {component.total_months_due_names && component.total_months_due_names.length > 0 && (
+                                                <div className="text-xs text-gray-500 pl-2">
+                                                  {component.total_months_due_names.join(', ')}
+                                                </div>
+                                              )}
                                             </div>
-                                            <div className="flex justify-between">
-                                              <span className="text-gray-600">Paid Months:</span>
-                                              <span className="font-medium text-green-600">{component.paid_months}</span>
+                                            <div>
+                                              <div className="flex justify-between mb-1">
+                                                <span className="text-gray-600">Paid Months:</span>
+                                                <span className="font-medium text-green-600">{component.paid_months}</span>
+                                              </div>
+                                              {component.paid_months_names && component.paid_months_names.length > 0 && (
+                                                <div className="text-xs text-green-600 pl-2">
+                                                  {component.paid_months_names.join(', ')}
+                                                </div>
+                                              )}
                                             </div>
-                                            <div className="flex justify-between">
-                                              <span className="text-gray-600">Pending Months:</span>
-                                              <span className="font-medium text-red-600">{component.pending_months}</span>
+                                            <div>
+                                              <div className="flex justify-between mb-1">
+                                                <span className="text-gray-600">Pending Months:</span>
+                                                <span className="font-medium text-red-600">{component.pending_months}</span>
+                                              </div>
+                                              {component.pending_months_names && component.pending_months_names.length > 0 && (
+                                                <div className="text-xs text-red-600 pl-2">
+                                                  {component.pending_months_names.join(', ')}
+                                                </div>
+                                              )}
                                             </div>
-                                            <div className="border-t border-gray-200 pt-1 mt-2">
+                                            <div className="border-t border-gray-200 pt-2 mt-2">
                                               <div className="flex justify-between">
                                                 <span className="text-gray-600">Total Fee:</span>
                                                 <span className="font-medium">₹{component.total_fee_amount.toFixed(2)}</span>
