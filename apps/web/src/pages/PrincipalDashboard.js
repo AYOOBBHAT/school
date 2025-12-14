@@ -322,6 +322,7 @@ function StaffManagement() {
     // Modal states
     const [assignModalOpen, setAssignModalOpen] = useState(false);
     const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
+    const [dailyAttendanceModalOpen, setDailyAttendanceModalOpen] = useState(false);
     const [performanceModalOpen, setPerformanceModalOpen] = useState(false);
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [viewAssignmentsModalOpen, setViewAssignmentsModalOpen] = useState(false);
@@ -338,6 +339,12 @@ function StaffManagement() {
         status: 'present',
         notes: ''
     });
+    // Daily attendance states
+    const [attendanceMonth, setAttendanceMonth] = useState(new Date().getMonth() + 1);
+    const [attendanceYear, setAttendanceYear] = useState(new Date().getFullYear());
+    const [dailyAttendance, setDailyAttendance] = useState({});
+    const [attendanceStats, setAttendanceStats] = useState({ totalDays: 0, presentDays: 0, absentDays: 0 });
+    const [savingAttendance, setSavingAttendance] = useState(false);
     const [editForm, setEditForm] = useState({
         full_name: '',
         email: '',
@@ -349,6 +356,14 @@ function StaffManagement() {
     const [attendanceSummary, setAttendanceSummary] = useState(null);
     const [performanceData, setPerformanceData] = useState(null);
     const [teacherAssignments, setTeacherAssignments] = useState([]);
+    const [attendanceAssignments, setAttendanceAssignments] = useState([]);
+    // Attendance assignment modal states
+    const [attendanceAssignmentModalOpen, setAttendanceAssignmentModalOpen] = useState(false);
+    const [attendanceAssignmentForm, setAttendanceAssignmentForm] = useState({
+        teacher_id: '',
+        class_group_id: '',
+        section_id: ''
+    });
     // Add Staff Modal State (must be before any early returns)
     const [addStaffModalOpen, setAddStaffModalOpen] = useState(false);
     const [addStaffForm, setAddStaffForm] = useState({
@@ -364,6 +379,7 @@ function StaffManagement() {
         loadAllClasses();
         loadAllSubjects();
         loadAllAssignments();
+        loadAttendanceAssignments();
     }, []);
     const loadAllClasses = async () => {
         try {
@@ -414,6 +430,23 @@ function StaffManagement() {
         }
         catch (error) {
             console.error('Error loading assignments:', error);
+        }
+    };
+    const loadAttendanceAssignments = async () => {
+        try {
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            const response = await fetch(`${API_URL}/teacher-attendance-assignments`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setAttendanceAssignments(data.assignments || []);
+            }
+        }
+        catch (error) {
+            console.error('Error loading attendance assignments:', error);
         }
     };
     const loadSections = async (classId) => {
@@ -476,6 +509,15 @@ function StaffManagement() {
             section_id: ''
         });
         setAssignModalOpen(true);
+    };
+    const handleAssignAttendanceClass = (teacher) => {
+        setSelectedTeacher(teacher);
+        setAttendanceAssignmentForm({
+            teacher_id: teacher.id,
+            class_group_id: '',
+            section_id: ''
+        });
+        setAttendanceAssignmentModalOpen(true);
     };
     const handleViewAttendance = async (teacher) => {
         setSelectedTeacher(teacher);
@@ -619,14 +661,28 @@ function StaffManagement() {
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
                 return;
-            const response = await fetch(`${API_URL}/teacher-assignments/teacher/${teacher.id}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (response.ok) {
-                const data = await response.json();
+            // Load both teaching and attendance assignments
+            const [teachingRes, attendanceRes] = await Promise.all([
+                fetch(`${API_URL}/teacher-assignments/teacher/${teacher.id}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetch(`${API_URL}/teacher-attendance-assignments/teacher/${teacher.id}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                })
+            ]);
+            if (teachingRes.ok) {
+                const data = await teachingRes.json();
                 setTeacherAssignments(data.assignments || []);
-                setViewAssignmentsModalOpen(true);
             }
+            if (attendanceRes.ok) {
+                const data = await attendanceRes.json();
+                // Update attendance assignments for this teacher
+                setAttendanceAssignments(prev => {
+                    const filtered = prev.filter(a => a.teacher_id !== teacher.id);
+                    return [...filtered, ...(data.assignments || [])];
+                });
+            }
+            setViewAssignmentsModalOpen(true);
         }
         catch (error) {
             console.error('Error loading assignments:', error);
@@ -653,12 +709,45 @@ function StaffManagement() {
                 const error = await response.json();
                 throw new Error(error.error || 'Failed to create assignment');
             }
-            alert('Teacher assigned successfully!');
+            alert('Teaching assignment created successfully!');
             setAssignModalOpen(false);
             loadAllAssignments();
         }
         catch (error) {
             alert(error.message || 'Failed to create assignment');
+        }
+    };
+    const handleCreateAttendanceAssignment = async () => {
+        if (!attendanceAssignmentForm.teacher_id || !attendanceAssignmentForm.class_group_id) {
+            alert('Please select a class');
+            return;
+        }
+        try {
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            const response = await fetch(`${API_URL}/teacher-attendance-assignments`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    teacher_id: attendanceAssignmentForm.teacher_id,
+                    class_group_id: attendanceAssignmentForm.class_group_id,
+                    section_id: attendanceAssignmentForm.section_id || null
+                }),
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to create attendance assignment');
+            }
+            alert('Attendance assignment created successfully! Teacher can now mark attendance for this class.');
+            setAttendanceAssignmentModalOpen(false);
+            loadAttendanceAssignments();
+        }
+        catch (error) {
+            alert(error.message || 'Failed to create attendance assignment');
         }
     };
     const handleDeleteAssignment = async (assignmentId) => {
@@ -692,9 +781,104 @@ function StaffManagement() {
             loadSections(assignForm.class_group_id);
         }
     }, [assignForm.class_group_id]);
+    useEffect(() => {
+        if (dailyAttendanceModalOpen && selectedTeacher) {
+            loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
+        }
+    }, [dailyAttendanceModalOpen, attendanceMonth, attendanceYear, selectedTeacher]);
     // Get assignments count for each teacher
     const getTeacherAssignmentsCount = (teacherId) => {
         return allAssignments.filter(a => a.teacher_id === teacherId).length;
+    };
+    const loadDailyAttendance = async (teacherId, month, year) => {
+        try {
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            // Get first and last day of the month
+            const firstDay = new Date(year, month - 1, 1);
+            const lastDay = new Date(year, month, 0);
+            const response = await fetch(`${API_URL}/teacher-attendance?teacher_id=${teacherId}&start_date=${firstDay.toISOString().split('T')[0]}&end_date=${lastDay.toISOString().split('T')[0]}`, { headers: { Authorization: `Bearer ${token}` } });
+            if (response.ok) {
+                const data = await response.json();
+                const attendanceMap = {};
+                const daysInMonth = lastDay.getDate();
+                // Initialize all days as present by default
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateStr = new Date(year, month - 1, day).toISOString().split('T')[0];
+                    attendanceMap[dateStr] = 'present';
+                }
+                // Override with actual attendance records (only absent ones override the default present)
+                (data.attendance || []).forEach((record) => {
+                    if (record.status === 'absent') {
+                        attendanceMap[record.date] = 'absent';
+                    }
+                });
+                setDailyAttendance(attendanceMap);
+                // Calculate stats (consider unmarked days as present)
+                const totalDays = daysInMonth;
+                const absentDays = Object.values(attendanceMap).filter(status => status === 'absent').length;
+                const presentDays = totalDays - absentDays;
+                setAttendanceStats({ totalDays, presentDays, absentDays });
+            }
+        }
+        catch (error) {
+            console.error('Error loading daily attendance:', error);
+        }
+    };
+    const toggleDayAttendance = (dateStr) => {
+        setDailyAttendance(prev => {
+            const newAttendance = { ...prev };
+            // Toggle between present and absent
+            newAttendance[dateStr] = prev[dateStr] === 'absent' ? 'present' : 'absent';
+            // Update stats
+            const absentDays = Object.values(newAttendance).filter(status => status === 'absent').length;
+            const presentDays = attendanceStats.totalDays - absentDays;
+            setAttendanceStats({ totalDays: attendanceStats.totalDays, presentDays, absentDays });
+            return newAttendance;
+        });
+    };
+    const saveDailyAttendance = async () => {
+        if (!selectedTeacher)
+            return;
+        try {
+            setSavingAttendance(true);
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            if (!token)
+                return;
+            // Get first and last day of the month
+            const firstDay = new Date(attendanceYear, attendanceMonth - 1, 1);
+            const lastDay = new Date(attendanceYear, attendanceMonth, 0);
+            // Get all absent dates
+            const absentDates = Object.entries(dailyAttendance)
+                .filter(([date, status]) => status === 'absent')
+                .map(([date]) => date);
+            const response = await fetch(`${API_URL}/teacher-attendance/bulk`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    teacher_id: selectedTeacher.id,
+                    start_date: firstDay.toISOString().split('T')[0],
+                    end_date: lastDay.toISOString().split('T')[0],
+                    absent_dates: absentDates
+                }),
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to save attendance');
+            }
+            alert('Attendance saved successfully!');
+            loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
+        }
+        catch (error) {
+            alert(error.message || 'Failed to save attendance');
+        }
+        finally {
+            setSavingAttendance(false);
+        }
     };
     if (loading)
         return _jsx("div", { className: "p-6", children: "Loading staff..." });
@@ -742,11 +926,16 @@ function StaffManagement() {
                         setViewAssignmentsModalOpen(true);
                         setSelectedTeacher(null);
                         loadAllAssignments();
+                        loadAttendanceAssignments();
                     }, className: "bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition", children: "\uD83D\uDCCB View All Assignments" }) }), _jsxs("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: [_jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Name" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Email" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Role" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Status" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Assignments" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Joined" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: staff.map((member) => (_jsxs("tr", { className: "hover:bg-gray-50", children: [_jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("div", { className: "text-sm font-medium text-gray-900", children: member.full_name || 'N/A' }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("div", { className: "text-sm text-gray-500", children: member.email }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("span", { className: "px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800", children: member.role }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("span", { className: `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${member.approval_status === 'approved'
                                                     ? 'bg-green-100 text-green-800'
                                                     : member.approval_status === 'pending'
                                                         ? 'bg-yellow-100 text-yellow-800'
-                                                        : 'bg-red-100 text-red-800'}`, children: member.approval_status }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsxs("span", { className: "text-sm text-gray-600", children: [getTeacherAssignmentsCount(member.id), " ", getTeacherAssignmentsCount(member.id) === 1 ? 'assignment' : 'assignments'] }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: new Date(member.created_at).toLocaleDateString() }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium", children: _jsxs("div", { className: "flex flex-wrap gap-2", children: [member.role === 'teacher' && (_jsxs(_Fragment, { children: [_jsx("button", { onClick: () => handleAssignTeacher(member), className: "text-blue-600 hover:text-blue-900", title: "Assign to class/subject", children: "\u2795 Assign" }), _jsx("button", { onClick: () => handleViewAttendance(member), className: "text-green-600 hover:text-green-900", title: "View attendance", children: "\uD83D\uDCC5 Attendance" }), _jsx("button", { onClick: () => handleEvaluatePerformance(member), className: "text-purple-600 hover:text-purple-900", title: "View performance", children: "\uD83D\uDCCA Performance" }), _jsx("button", { onClick: () => handleViewAssignments(member), className: "text-indigo-600 hover:text-indigo-900", title: "View assignments", children: "\uD83D\uDC41\uFE0F Assignments" })] })), _jsx("button", { onClick: () => handleEditTeacher(member), className: "text-orange-600 hover:text-orange-900", title: "Edit teacher", children: "\u270F\uFE0F Edit" }), _jsx("button", { onClick: () => handleDeactivateTeacher(member), className: `${member.approval_status === 'approved' ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'}`, title: member.approval_status === 'approved' ? 'Deactivate' : 'Activate', children: member.approval_status === 'approved' ? '🚫 Deactivate' : '✅ Activate' })] }) })] }, member.id))) })] }), staff.length === 0 && (_jsx("div", { className: "text-center py-12 text-gray-500", children: "No staff members found." }))] }), assignModalOpen && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Assign Teacher: ", selectedTeacher.full_name] }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class *" }), _jsxs("select", { value: assignForm.class_group_id, onChange: (e) => {
+                                                        : 'bg-red-100 text-red-800'}`, children: member.approval_status }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsxs("span", { className: "text-sm text-gray-600", children: [getTeacherAssignmentsCount(member.id), " ", getTeacherAssignmentsCount(member.id) === 1 ? 'assignment' : 'assignments'] }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500", children: new Date(member.created_at).toLocaleDateString() }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-medium", children: _jsxs("div", { className: "flex flex-wrap gap-2", children: [member.role === 'teacher' && (_jsxs(_Fragment, { children: [_jsx("button", { onClick: () => handleAssignTeacher(member), className: "text-blue-600 hover:text-blue-900", title: "Assign teaching (class + subject)", children: "\uD83D\uDCDA Teaching" }), _jsx("button", { onClick: () => handleAssignAttendanceClass(member), className: "text-teal-600 hover:text-teal-900", title: "Assign attendance class (class only)", children: "\uD83D\uDCC5 Attendance" }), _jsx("button", { onClick: () => {
+                                                                    setSelectedTeacher(member);
+                                                                    setDailyAttendanceModalOpen(true);
+                                                                    loadDailyAttendance(member.id, attendanceMonth, attendanceYear);
+                                                                }, className: "text-green-600 hover:text-green-900", title: "Mark teacher daily attendance", children: "\uD83D\uDC64 Mark Teacher Attendance" }), _jsx("button", { onClick: () => handleEvaluatePerformance(member), className: "text-purple-600 hover:text-purple-900", title: "View performance", children: "\uD83D\uDCCA Performance" }), _jsx("button", { onClick: () => handleViewAssignments(member), className: "text-indigo-600 hover:text-indigo-900", title: "View all assignments", children: "\uD83D\uDC41\uFE0F View All" })] })), _jsx("button", { onClick: () => handleEditTeacher(member), className: "text-orange-600 hover:text-orange-900", title: "Edit teacher", children: "\u270F\uFE0F Edit" }), _jsx("button", { onClick: () => handleDeactivateTeacher(member), className: `${member.approval_status === 'approved' ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'}`, title: member.approval_status === 'approved' ? 'Deactivate' : 'Activate', children: member.approval_status === 'approved' ? '🚫 Deactivate' : '✅ Activate' })] }) })] }, member.id))) })] }), staff.length === 0 && (_jsx("div", { className: "text-center py-12 text-gray-500", children: "No staff members found." }))] }), assignModalOpen && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Teaching Assignment: ", selectedTeacher.full_name] }), _jsx("p", { className: "text-sm text-gray-600 mb-4", children: "Assign teacher to teach a specific subject in a class. This is separate from attendance responsibilities." }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class *" }), _jsxs("select", { value: assignForm.class_group_id, onChange: (e) => {
                                                 setAssignForm({ ...assignForm, class_group_id: e.target.value, section_id: '' });
                                                 if (e.target.value) {
                                                     loadSections(e.target.value);
@@ -768,13 +957,97 @@ function StaffManagement() {
                                                                         ? 'bg-yellow-100 text-yellow-800'
                                                                         : record.status === 'leave'
                                                                             ? 'bg-blue-100 text-blue-800'
-                                                                            : 'bg-red-100 text-red-800'}`, children: record.status }) })] }, record.date))) })] }) })] })] }) })), editModalOpen && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Edit Teacher: ", selectedTeacher.full_name] }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name" }), _jsx("input", { type: "text", value: editForm.full_name, onChange: (e) => setEditForm({ ...editForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email" }), _jsx("input", { type: "email", value: editForm.email, onChange: (e) => setEditForm({ ...editForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "text", value: editForm.phone, onChange: (e) => setEditForm({ ...editForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Status" }), _jsxs("select", { value: editForm.approval_status, onChange: (e) => setEditForm({ ...editForm, approval_status: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "approved", children: "Approved" }), _jsx("option", { value: "rejected", children: "Rejected" })] })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handleUpdateTeacher, className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Update" }), _jsx("button", { onClick: () => setEditModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), addStaffModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Add New Staff Member" }), _jsxs("form", { onSubmit: handleAddStaff, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name *" }), _jsx("input", { type: "text", required: true, value: addStaffForm.full_name, onChange: (e) => setAddStaffForm({ ...addStaffForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Role *" }), _jsxs("select", { value: addStaffForm.role, onChange: (e) => setAddStaffForm({ ...addStaffForm, role: e.target.value }), className: "w-full px-3 py-2 border rounded-md", required: true, children: [_jsx("option", { value: "teacher", children: "Teacher" }), _jsx("option", { value: "clerk", children: "Clerk" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email *" }), _jsx("input", { type: "email", required: true, value: addStaffForm.email, onChange: (e) => setAddStaffForm({ ...addStaffForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Password *" }), _jsx("input", { type: "password", required: true, minLength: 8, value: addStaffForm.password, onChange: (e) => setAddStaffForm({ ...addStaffForm, password: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Minimum 8 characters" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "tel", value: addStaffForm.phone, onChange: (e) => setAddStaffForm({ ...addStaffForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Gender" }), _jsxs("select", { value: addStaffForm.gender, onChange: (e) => setAddStaffForm({ ...addStaffForm, gender: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Gender" }), _jsx("option", { value: "male", children: "Male" }), _jsx("option", { value: "female", children: "Female" }), _jsx("option", { value: "other", children: "Other" })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { type: "submit", className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Add Staff" }), _jsx("button", { type: "button", onClick: () => {
+                                                                            : 'bg-red-100 text-red-800'}`, children: record.status }) })] }, record.date))) })] }) })] })] }) })), editModalOpen && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Edit Teacher: ", selectedTeacher.full_name] }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name" }), _jsx("input", { type: "text", value: editForm.full_name, onChange: (e) => setEditForm({ ...editForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email" }), _jsx("input", { type: "email", value: editForm.email, onChange: (e) => setEditForm({ ...editForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "text", value: editForm.phone, onChange: (e) => setEditForm({ ...editForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Status" }), _jsxs("select", { value: editForm.approval_status, onChange: (e) => setEditForm({ ...editForm, approval_status: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "approved", children: "Approved" }), _jsx("option", { value: "rejected", children: "Rejected" })] })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handleUpdateTeacher, className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Update" }), _jsx("button", { onClick: () => setEditModalOpen(false), className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), dailyAttendanceModalOpen && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Mark Daily Attendance: ", selectedTeacher.full_name] }), _jsxs("div", { className: "mb-4 flex gap-4 items-center", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Month" }), _jsx("select", { value: attendanceMonth, onChange: (e) => {
+                                                const newMonth = parseInt(e.target.value);
+                                                setAttendanceMonth(newMonth);
+                                                if (selectedTeacher) {
+                                                    loadDailyAttendance(selectedTeacher.id, newMonth, attendanceYear);
+                                                }
+                                            }, className: "px-3 py-2 border rounded-md", children: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (_jsx("option", { value: m, children: new Date(2000, m - 1).toLocaleString('default', { month: 'long' }) }, m))) })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Year" }), _jsx("input", { type: "number", value: attendanceYear, onChange: (e) => {
+                                                const newYear = parseInt(e.target.value);
+                                                setAttendanceYear(newYear);
+                                                if (selectedTeacher) {
+                                                    loadDailyAttendance(selectedTeacher.id, attendanceMonth, newYear);
+                                                }
+                                            }, className: "px-3 py-2 border rounded-md w-24", min: "2000", max: "2100" })] })] }), _jsxs("div", { className: "mb-4 grid grid-cols-3 gap-4", children: [_jsxs("div", { className: "bg-blue-50 border border-blue-200 rounded-lg p-4", children: [_jsx("div", { className: "text-sm text-gray-600", children: "Total Days" }), _jsx("div", { className: "text-2xl font-bold text-blue-600", children: attendanceStats.totalDays })] }), _jsxs("div", { className: "bg-green-50 border border-green-200 rounded-lg p-4", children: [_jsx("div", { className: "text-sm text-gray-600", children: "Present Days" }), _jsx("div", { className: "text-2xl font-bold text-green-600", children: attendanceStats.presentDays })] }), _jsxs("div", { className: "bg-red-50 border border-red-200 rounded-lg p-4", children: [_jsx("div", { className: "text-sm text-gray-600", children: "Absent Days" }), _jsx("div", { className: "text-2xl font-bold text-red-600", children: attendanceStats.absentDays })] })] }), _jsxs("div", { className: "mb-4", children: [_jsxs("p", { className: "text-sm text-gray-600 mb-2", children: ["\uD83D\uDCA1 By default, all days are marked as ", _jsx("strong", { children: "Present" }), ". Click on a day to toggle it to ", _jsx("strong", { children: "Absent" }), "."] }), _jsxs("div", { className: "grid grid-cols-7 gap-2", children: [['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (_jsx("div", { className: "text-center text-sm font-semibold text-gray-600 py-2", children: day }, day))), (() => {
+                                            const firstDay = new Date(attendanceYear, attendanceMonth - 1, 1);
+                                            const lastDay = new Date(attendanceYear, attendanceMonth, 0);
+                                            const daysInMonth = lastDay.getDate();
+                                            const firstDayOfWeek = firstDay.getDay();
+                                            const days = [];
+                                            // Empty cells for days before month starts
+                                            for (let i = 0; i < firstDayOfWeek; i++) {
+                                                days.push(_jsx("div", { className: "p-2" }, `empty-${i}`));
+                                            }
+                                            // Days of the month
+                                            for (let day = 1; day <= daysInMonth; day++) {
+                                                const dateStr = new Date(attendanceYear, attendanceMonth - 1, day).toISOString().split('T')[0];
+                                                const status = dailyAttendance[dateStr] || 'present';
+                                                const isToday = dateStr === new Date().toISOString().split('T')[0];
+                                                days.push(_jsxs("button", { onClick: () => toggleDayAttendance(dateStr), className: `p-2 border-2 rounded-lg transition ${status === 'absent'
+                                                        ? 'bg-red-100 border-red-500 text-red-800 font-semibold'
+                                                        : 'bg-green-50 border-green-300 text-green-800 hover:bg-green-100'} ${isToday ? 'ring-2 ring-blue-500' : ''}`, title: `${day} ${new Date(attendanceYear, attendanceMonth - 1).toLocaleString('default', { month: 'long' })} - Click to toggle`, children: [_jsx("div", { className: "text-xs font-medium", children: day }), _jsx("div", { className: "text-xs mt-1", children: status === 'absent' ? '❌' : '✅' })] }, day));
+                                            }
+                                            return days;
+                                        })()] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: saveDailyAttendance, disabled: savingAttendance, className: `flex-1 px-4 py-2 rounded-lg ${savingAttendance
+                                        ? 'bg-gray-400 text-white cursor-not-allowed'
+                                        : 'bg-blue-600 text-white hover:bg-blue-700'}`, children: savingAttendance ? 'Saving...' : 'Save Attendance' }), _jsx("button", { onClick: () => {
+                                        setDailyAttendanceModalOpen(false);
+                                        setSelectedTeacher(null);
+                                    }, className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Close" })] })] }) })), addStaffModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Add New Staff Member" }), _jsxs("form", { onSubmit: handleAddStaff, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Full Name *" }), _jsx("input", { type: "text", required: true, value: addStaffForm.full_name, onChange: (e) => setAddStaffForm({ ...addStaffForm, full_name: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Role *" }), _jsxs("select", { value: addStaffForm.role, onChange: (e) => setAddStaffForm({ ...addStaffForm, role: e.target.value }), className: "w-full px-3 py-2 border rounded-md", required: true, children: [_jsx("option", { value: "teacher", children: "Teacher" }), _jsx("option", { value: "clerk", children: "Clerk" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Email *" }), _jsx("input", { type: "email", required: true, value: addStaffForm.email, onChange: (e) => setAddStaffForm({ ...addStaffForm, email: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Password *" }), _jsx("input", { type: "password", required: true, minLength: 8, value: addStaffForm.password, onChange: (e) => setAddStaffForm({ ...addStaffForm, password: e.target.value }), className: "w-full px-3 py-2 border rounded-md", placeholder: "Minimum 8 characters" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Phone" }), _jsx("input", { type: "tel", value: addStaffForm.phone, onChange: (e) => setAddStaffForm({ ...addStaffForm, phone: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Gender" }), _jsxs("select", { value: addStaffForm.gender, onChange: (e) => setAddStaffForm({ ...addStaffForm, gender: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "Select Gender" }), _jsx("option", { value: "male", children: "Male" }), _jsx("option", { value: "female", children: "Female" }), _jsx("option", { value: "other", children: "Other" })] })] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { type: "submit", className: "flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700", children: "Add Staff" }), _jsx("button", { type: "button", onClick: () => {
                                                 setAddStaffModalOpen(false);
                                                 setAddStaffForm({ email: '', password: '', full_name: '', role: 'teacher', phone: '', gender: '' });
-                                            }, className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] })] }) })), viewAssignmentsModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: selectedTeacher ? `Assignments: ${selectedTeacher.full_name}` : 'All Teacher Assignments' }), _jsx("button", { onClick: () => {
+                                            }, className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] })] }) })), attendanceAssignmentModalOpen && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto", children: [_jsxs("h3", { className: "text-xl font-bold mb-4", children: ["Attendance Assignment: ", selectedTeacher.full_name] }), _jsx("p", { className: "text-sm text-gray-600 mb-4", children: "Assign teacher to mark attendance for a class. This is separate from teaching assignments. Teacher can mark day-wise attendance for this class." }), _jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Class *" }), _jsxs("select", { value: attendanceAssignmentForm.class_group_id, onChange: (e) => {
+                                                setAttendanceAssignmentForm({ ...attendanceAssignmentForm, class_group_id: e.target.value, section_id: '' });
+                                                if (e.target.value) {
+                                                    loadSections(e.target.value);
+                                                }
+                                            }, className: "w-full px-3 py-2 border rounded-md", required: true, children: [_jsx("option", { value: "", children: "Select Class" }), allClasses.map((cls) => {
+                                                    const classificationText = cls.classifications && cls.classifications.length > 0
+                                                        ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
+                                                        : '';
+                                                    return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
+                                                })] })] }), attendanceAssignmentForm.class_group_id && (_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Section (Optional)" }), _jsxs("select", { value: attendanceAssignmentForm.section_id, onChange: (e) => setAttendanceAssignmentForm({ ...attendanceAssignmentForm, section_id: e.target.value }), className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "No Section (All Sections)" }), (sections[attendanceAssignmentForm.class_group_id] || []).map((section) => (_jsx("option", { value: section.id, children: section.name }, section.id)))] }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "If no section is selected, teacher can mark attendance for all sections of this class." })] }))] }), _jsxs("div", { className: "flex gap-3 mt-6", children: [_jsx("button", { onClick: handleCreateAttendanceAssignment, className: "flex-1 bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700", children: "Assign Attendance" }), _jsx("button", { onClick: () => {
+                                        setAttendanceAssignmentModalOpen(false);
+                                        setSelectedTeacher(null);
+                                    }, className: "flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400", children: "Cancel" })] })] }) })), viewAssignmentsModalOpen && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-6xl w-full max-h-[90vh] overflow-y-auto", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: selectedTeacher ? `All Assignments: ${selectedTeacher.full_name}` : 'All Teacher Assignments' }), _jsx("button", { onClick: () => {
                                         setViewAssignmentsModalOpen(false);
                                         setSelectedTeacher(null);
-                                    }, className: "text-gray-500 hover:text-gray-700", children: "\u2715" })] }), _jsxs("div", { className: "overflow-x-auto", children: [_jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Class" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Section" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Subject" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Assigned" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: (selectedTeacher ? teacherAssignments : allAssignments).map((assignment) => (_jsxs("tr", { children: [_jsx("td", { className: "px-4 py-2 text-sm", children: assignment.teacher?.full_name || 'N/A' }), _jsx("td", { className: "px-4 py-2 text-sm", children: assignment.class_groups?.name || 'N/A' }), _jsx("td", { className: "px-4 py-2 text-sm", children: assignment.sections?.name || 'N/A' }), _jsxs("td", { className: "px-4 py-2 text-sm", children: [assignment.subjects?.name || 'N/A', " ", assignment.subjects?.code ? `(${assignment.subjects.code})` : ''] }), _jsx("td", { className: "px-4 py-2 text-sm text-gray-500", children: new Date(assignment.created_at).toLocaleDateString() }), _jsx("td", { className: "px-4 py-2 text-sm", children: _jsx("button", { onClick: () => handleDeleteAssignment(assignment.id), className: "text-red-600 hover:text-red-900", children: "\uD83D\uDDD1\uFE0F Remove" }) })] }, assignment.id))) })] }), (selectedTeacher ? teacherAssignments : allAssignments).length === 0 && (_jsx("div", { className: "text-center py-8 text-gray-500", children: "No assignments found." }))] })] }) }))] }));
+                                        loadAllAssignments();
+                                        loadAttendanceAssignments();
+                                    }, className: "text-gray-500 hover:text-gray-700", children: "\u2715" })] }), _jsxs("div", { className: "mb-6", children: [_jsx("h4", { className: "text-lg font-semibold mb-3 text-blue-600", children: "\uD83D\uDCDA Teaching Assignments" }), _jsx("p", { className: "text-sm text-gray-600 mb-3", children: "Teachers assigned to teach specific subjects in classes." }), _jsxs("div", { className: "overflow-x-auto", children: [_jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Class" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Section" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Subject" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Assigned" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: (selectedTeacher ? teacherAssignments : allAssignments).map((assignment) => (_jsxs("tr", { children: [_jsx("td", { className: "px-4 py-2 text-sm", children: assignment.teacher?.full_name || selectedTeacher?.full_name || 'N/A' }), _jsx("td", { className: "px-4 py-2 text-sm", children: assignment.class_groups?.name || 'N/A' }), _jsx("td", { className: "px-4 py-2 text-sm", children: assignment.sections?.name || '-' }), _jsxs("td", { className: "px-4 py-2 text-sm", children: [assignment.subjects?.name || 'N/A', " ", assignment.subjects?.code ? `(${assignment.subjects.code})` : ''] }), _jsx("td", { className: "px-4 py-2 text-sm text-gray-500", children: new Date(assignment.created_at).toLocaleDateString() }), _jsx("td", { className: "px-4 py-2 text-sm", children: _jsx("button", { onClick: () => handleDeleteAssignment(assignment.id), className: "text-red-600 hover:text-red-900", children: "\uD83D\uDDD1\uFE0F Remove" }) })] }, assignment.id))) })] }), (selectedTeacher ? teacherAssignments : allAssignments).length === 0 && (_jsx("div", { className: "text-center py-8 text-gray-500", children: "No teaching assignments found." }))] })] }), _jsxs("div", { children: [_jsx("h4", { className: "text-lg font-semibold mb-3 text-teal-600", children: "\uD83D\uDCC5 Attendance Assignments" }), _jsx("p", { className: "text-sm text-gray-600 mb-3", children: "Teachers assigned to mark day-wise attendance for classes. Independent of teaching assignments." }), _jsxs("div", { className: "overflow-x-auto", children: [_jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Class" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Section" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Assigned" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Status" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: (selectedTeacher
+                                                        ? attendanceAssignments.filter(a => a.teacher_id === selectedTeacher.id)
+                                                        : attendanceAssignments).map((assignment) => (_jsxs("tr", { children: [_jsx("td", { className: "px-4 py-2 text-sm", children: assignment.teacher?.full_name || selectedTeacher?.full_name || 'N/A' }), _jsx("td", { className: "px-4 py-2 text-sm", children: assignment.class_group?.name || 'N/A' }), _jsx("td", { className: "px-4 py-2 text-sm", children: assignment.section?.name || 'All Sections' }), _jsx("td", { className: "px-4 py-2 text-sm text-gray-500", children: new Date(assignment.created_at).toLocaleDateString() }), _jsx("td", { className: "px-4 py-2 text-sm", children: _jsx("span", { className: `px-2 py-1 text-xs rounded-full ${assignment.is_active
+                                                                        ? 'bg-green-100 text-green-800'
+                                                                        : 'bg-gray-100 text-gray-800'}`, children: assignment.is_active ? 'Active' : 'Inactive' }) }), _jsx("td", { className: "px-4 py-2 text-sm", children: _jsx("button", { onClick: async () => {
+                                                                        if (!confirm('Are you sure you want to remove this attendance assignment?'))
+                                                                            return;
+                                                                        try {
+                                                                            const token = (await supabase.auth.getSession()).data.session?.access_token;
+                                                                            if (!token)
+                                                                                return;
+                                                                            const response = await fetch(`${API_URL}/teacher-attendance-assignments/${assignment.id}`, {
+                                                                                method: 'DELETE',
+                                                                                headers: { Authorization: `Bearer ${token}` },
+                                                                            });
+                                                                            if (response.ok) {
+                                                                                alert('Attendance assignment removed successfully!');
+                                                                                loadAttendanceAssignments();
+                                                                                if (selectedTeacher) {
+                                                                                    handleViewAssignments(selectedTeacher);
+                                                                                }
+                                                                            }
+                                                                            else {
+                                                                                const error = await response.json();
+                                                                                throw new Error(error.error || 'Failed to remove assignment');
+                                                                            }
+                                                                        }
+                                                                        catch (error) {
+                                                                            alert(error.message || 'Failed to remove assignment');
+                                                                        }
+                                                                    }, className: "text-red-600 hover:text-red-900", children: "\uD83D\uDDD1\uFE0F Remove" }) })] }, assignment.id))) })] }), (selectedTeacher
+                                            ? attendanceAssignments.filter(a => a.teacher_id === selectedTeacher.id)
+                                            : attendanceAssignments).length === 0 && (_jsx("div", { className: "text-center py-8 text-gray-500", children: "No attendance assignments found." }))] })] })] }) }))] }));
 }
 function ClassesManagement() {
     const [classes, setClasses] = useState([]);
@@ -1237,7 +1510,8 @@ function StudentsManagement() {
         transport_route_id: '',
         transport_fee_discount: 0,
         other_fees: [],
-        custom_fees: []
+        custom_fees: [],
+        effective_from_date: '' // Apply From Date for new fee structure
     });
     const [editDefaultFees, setEditDefaultFees] = useState(null);
     const [loadingEditFees, setLoadingEditFees] = useState(false);
@@ -1507,7 +1781,8 @@ function StudentsManagement() {
                         transport_route_id: feeConfig.transport_route_id || '',
                         transport_fee_discount: feeConfig.transport_fee_discount || 0,
                         other_fees: feeConfig.other_fees || [],
-                        custom_fees: feeConfig.custom_fees || []
+                        custom_fees: feeConfig.custom_fees || [],
+                        effective_from_date: '' // Will be set by user when editing
                     });
                 }
             }
@@ -1598,7 +1873,11 @@ function StudentsManagement() {
             };
             // Include fee_config if class is selected
             if (editForm.class_group_id && editDefaultFees) {
-                updateData.fee_config = editFeeConfig;
+                // Include effective_from_date if provided (for editing existing student)
+                updateData.fee_config = {
+                    ...editFeeConfig,
+                    effective_from_date: editFeeConfig.effective_from_date || undefined
+                };
             }
             const response = await fetch(`${API_URL}/students-admin/${selectedStudent.id}`, {
                 method: 'PUT',
@@ -1837,7 +2116,8 @@ function StudentsManagement() {
                                                         transport_route_id: '',
                                                         transport_fee_discount: 0,
                                                         other_fees: [],
-                                                        custom_fees: [] // Will be set by loadEditDefaultFees if fees exist
+                                                        custom_fees: [], // Will be set by loadEditDefaultFees if fees exist
+                                                        effective_from_date: ''
                                                     });
                                                 }
                                                 else {
@@ -1849,7 +2129,8 @@ function StudentsManagement() {
                                                         transport_route_id: '',
                                                         transport_fee_discount: 0,
                                                         other_fees: [],
-                                                        custom_fees: []
+                                                        custom_fees: [],
+                                                        effective_from_date: ''
                                                     });
                                                 }
                                             }, className: "w-full px-3 py-2 border rounded-md", children: [_jsx("option", { value: "", children: "No Class" }), allClasses.map((cls) => {
@@ -1857,7 +2138,7 @@ function StudentsManagement() {
                                                         ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
                                                         : '';
                                                     return (_jsxs("option", { value: cls.id, children: [cls.name, classificationText] }, cls.id));
-                                                })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Roll Number" }), _jsx("input", { type: "text", value: editForm.roll_number, onChange: (e) => setEditForm({ ...editForm, roll_number: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), editForm.class_group_id && (_jsxs("div", { className: "border-t pt-4 mt-4", children: [_jsx("h4", { className: "text-lg font-semibold mb-3 text-gray-700", children: "Fee Configuration" }), loadingEditFees ? (_jsxs("div", { className: "text-center py-4", children: [_jsx("div", { className: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" }), _jsx("p", { className: "text-sm text-gray-500 mt-2", children: "Loading fee information..." })] })) : editDefaultFees ? (_jsxs("div", { className: "space-y-4", children: [_jsxs("div", { className: "bg-blue-50 p-4 rounded-lg", children: [_jsx("h5", { className: "font-semibold text-gray-700 mb-2", children: "Class Fee (Default for this class)" }), (() => {
+                                                })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-1", children: "Roll Number" }), _jsx("input", { type: "text", value: editForm.roll_number, onChange: (e) => setEditForm({ ...editForm, roll_number: e.target.value }), className: "w-full px-3 py-2 border rounded-md" })] }), editForm.class_group_id && (_jsxs("div", { className: "border-t pt-4 mt-4", children: [_jsx("h4", { className: "text-lg font-semibold mb-3 text-gray-700", children: "Fee Configuration" }), selectedStudent && (_jsxs("div", { className: "mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg", children: [_jsx("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: "Apply From Date *" }), _jsx("input", { type: "date", required: true, value: editFeeConfig.effective_from_date || new Date().toISOString().split('T')[0], min: selectedStudent.admission_date || undefined, onChange: (e) => setEditFeeConfig({ ...editFeeConfig, effective_from_date: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-md" }), _jsxs("p", { className: "text-xs text-gray-600 mt-1", children: ["The new fee structure will be effective from this date. Previous fee structure remains unchanged for all months before this date.", selectedStudent.admission_date && ` (Student admission date: ${new Date(selectedStudent.admission_date).toLocaleDateString()})`] })] })), loadingEditFees ? (_jsxs("div", { className: "text-center py-4", children: [_jsx("div", { className: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" }), _jsx("p", { className: "text-sm text-gray-500 mt-2", children: "Loading fee information..." })] })) : editDefaultFees ? (_jsxs("div", { className: "space-y-4", children: [_jsxs("div", { className: "bg-blue-50 p-4 rounded-lg", children: [_jsx("h5", { className: "font-semibold text-gray-700 mb-2", children: "Class Fee (Default for this class)" }), (() => {
                                                             // Get the selected class fee (auto-selected first one or manually selected)
                                                             const classFeesArray = editDefaultFees.class_fees && Array.isArray(editDefaultFees.class_fees) ? editDefaultFees.class_fees : [];
                                                             let selectedClassFee = null;
@@ -2521,6 +2802,7 @@ function SalaryManagement() {
     const [activeTab, setActiveTab] = useState('structure');
     // Structure form
     const [showStructureModal, setShowStructureModal] = useState(false);
+    const [selectedTeacherForEdit, setSelectedTeacherForEdit] = useState(null); // Track if editing existing structure
     const [structureForm, setStructureForm] = useState({
         teacher_id: '',
         base_salary: '',
@@ -2528,7 +2810,8 @@ function SalaryManagement() {
         other_allowances: '',
         fixed_deductions: '',
         salary_cycle: 'monthly',
-        attendance_based_deduction: false
+        attendance_based_deduction: false,
+        effective_from_date: '' // Effective from date for new/edited structure
     });
     // Generate salary form
     const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -2588,6 +2871,7 @@ function SalaryManagement() {
                     hra: parseFloat(structureForm.hra) || 0,
                     other_allowances: parseFloat(structureForm.other_allowances) || 0,
                     fixed_deductions: parseFloat(structureForm.fixed_deductions) || 0,
+                    effective_from_date: structureForm.effective_from_date || undefined
                 }),
             });
             if (!response.ok) {
@@ -2596,6 +2880,7 @@ function SalaryManagement() {
             }
             alert('Salary structure saved successfully!');
             setShowStructureModal(false);
+            setSelectedTeacherForEdit(null);
             setStructureForm({
                 teacher_id: '',
                 base_salary: '',
@@ -2603,7 +2888,8 @@ function SalaryManagement() {
                 other_allowances: '',
                 fixed_deductions: '',
                 salary_cycle: 'monthly',
-                attendance_based_deduction: false
+                attendance_based_deduction: false,
+                effective_from_date: ''
             });
             loadData();
         }
@@ -2642,7 +2928,12 @@ function SalaryManagement() {
             alert(error.message || 'Failed to generate salary');
         }
     };
+    const [rejectModalOpen, setRejectModalOpen] = useState(false);
+    const [selectedRecordForReject, setSelectedRecordForReject] = useState(null);
+    const [rejectionReason, setRejectionReason] = useState('');
     const handleApprove = async (recordId) => {
+        if (!confirm('Are you sure you want to approve this salary?'))
+            return;
         try {
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
@@ -2655,39 +2946,48 @@ function SalaryManagement() {
             });
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.error || 'Failed to approve');
+                throw new Error(error.error || 'Failed to approve salary');
             }
-            alert('Salary approved successfully!');
+            alert('Salary approved successfully! Clerk can now process payment.');
             loadData();
         }
         catch (error) {
-            alert(error.message || 'Failed to approve');
+            alert(error.message || 'Failed to approve salary');
         }
     };
-    const handleMarkPaid = async (recordId) => {
+    const handleReject = async () => {
+        if (!selectedRecordForReject)
+            return;
+        if (!rejectionReason.trim() || rejectionReason.trim().length < 5) {
+            alert('Please provide a rejection reason (minimum 5 characters)');
+            return;
+        }
         try {
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
                 return;
-            const response = await fetch(`${API_URL}/salary/records/${recordId}/mark-paid`, {
+            const response = await fetch(`${API_URL}/salary/records/${selectedRecordForReject.id}/reject`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                    payment_date: new Date().toISOString().split('T')[0]
+                    rejection_reason: rejectionReason.trim()
                 }),
             });
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.error || 'Failed to mark as paid');
+                throw new Error(error.error || 'Failed to reject salary');
             }
-            alert('Salary marked as paid!');
+            alert('Salary rejected. Clerk can regenerate after corrections.');
+            setRejectModalOpen(false);
+            setSelectedRecordForReject(null);
+            setRejectionReason('');
             loadData();
         }
         catch (error) {
-            alert(error.message || 'Failed to mark as paid');
+            alert(error.message || 'Failed to reject salary');
         }
     };
     if (loading)
@@ -2708,8 +3008,10 @@ function SalaryManagement() {
                                         other_allowances: '',
                                         fixed_deductions: '',
                                         salary_cycle: 'monthly',
-                                        attendance_based_deduction: false
+                                        attendance_based_deduction: false,
+                                        effective_from_date: ''
                                     });
+                                    setSelectedTeacherForEdit(null);
                                     setShowStructureModal(true);
                                 }, className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "+ Set Salary Structure" })] }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Base Salary" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "HRA" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Allowances" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Deductions" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Attendance Deduction" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: salaryStructures.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 7, className: "px-6 py-4 text-center text-gray-500", children: "No salary structures set. Click \"Set Salary Structure\" to get started." }) })) : (salaryStructures.map((structure) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: structure.teacher?.full_name || 'Unknown' }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", structure.base_salary.toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", structure.hra.toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", structure.other_allowances.toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", structure.fixed_deductions.toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: structure.attendance_based_deduction ? '✅ Enabled' : '❌ Disabled' }), _jsx("td", { className: "px-6 py-4", children: _jsx("button", { onClick: () => {
                                                         setStructureForm({
@@ -2719,14 +3021,38 @@ function SalaryManagement() {
                                                             other_allowances: structure.other_allowances.toString(),
                                                             fixed_deductions: structure.fixed_deductions.toString(),
                                                             salary_cycle: structure.salary_cycle,
-                                                            attendance_based_deduction: structure.attendance_based_deduction
+                                                            attendance_based_deduction: structure.attendance_based_deduction,
+                                                            effective_from_date: '' // Will be set by user
                                                         });
+                                                        setSelectedTeacherForEdit(structure);
                                                         setShowStructureModal(true);
-                                                    }, className: "text-blue-600 hover:text-blue-900", children: "Edit" }) })] }, structure.id)))) })] }) })] })), activeTab === 'generate' && (_jsx("div", { children: _jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Generate Monthly Salary" }), _jsxs("form", { onSubmit: handleGenerateSalary, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Teacher *" }), _jsxs("select", { value: generateForm.teacher_id, onChange: (e) => setGenerateForm({ ...generateForm, teacher_id: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, children: [_jsx("option", { value: "", children: "Select Teacher" }), teachers.map((teacher) => (_jsx("option", { value: teacher.id, children: teacher.full_name }, teacher.id)))] })] }), _jsxs("div", { className: "grid grid-cols-2 gap-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Month *" }), _jsx("select", { value: generateForm.month, onChange: (e) => setGenerateForm({ ...generateForm, month: parseInt(e.target.value) }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, children: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (_jsx("option", { value: m, children: new Date(2000, m - 1).toLocaleString('default', { month: 'long' }) }, m))) })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Year *" }), _jsx("input", { type: "number", value: generateForm.year, onChange: (e) => setGenerateForm({ ...generateForm, year: parseInt(e.target.value) }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, min: "2000", max: "2100" })] })] }), _jsx("button", { type: "submit", className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Generate Salary" })] })] }) })), activeTab === 'pending' && (_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Pending Salary Approvals" }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Month/Year" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Gross" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Deductions" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Net" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Status" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: salaryRecords.filter((r) => r.status === 'pending' || r.status === 'approved').length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 7, className: "px-6 py-4 text-center text-gray-500", children: "No pending salaries" }) })) : (salaryRecords.filter((r) => r.status === 'pending' || r.status === 'approved').map((record) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: record.teacher?.full_name || 'Unknown' }), _jsxs("td", { className: "px-6 py-4", children: [new Date(2000, record.month - 1).toLocaleString('default', { month: 'long' }), " ", record.year] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", record.gross_salary.toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", record.total_deductions.toLocaleString()] }), _jsxs("td", { className: "px-6 py-4 font-semibold", children: ["\u20B9", record.net_salary.toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: _jsx("span", { className: `px-2 py-1 rounded text-xs ${record.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                    }, className: "text-blue-600 hover:text-blue-900", children: "Edit" }) })] }, structure.id)))) })] }) })] })), activeTab === 'generate' && (_jsx("div", { children: _jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Generate Monthly Salary" }), _jsxs("form", { onSubmit: handleGenerateSalary, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Teacher *" }), _jsxs("select", { value: generateForm.teacher_id, onChange: (e) => setGenerateForm({ ...generateForm, teacher_id: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, children: [_jsx("option", { value: "", children: "Select Teacher" }), teachers.map((teacher) => (_jsx("option", { value: teacher.id, children: teacher.full_name }, teacher.id)))] })] }), _jsxs("div", { className: "grid grid-cols-2 gap-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Month *" }), _jsx("select", { value: generateForm.month, onChange: (e) => setGenerateForm({ ...generateForm, month: parseInt(e.target.value) }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, children: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (_jsx("option", { value: m, children: new Date(2000, m - 1).toLocaleString('default', { month: 'long' }) }, m))) })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Year *" }), _jsx("input", { type: "number", value: generateForm.year, onChange: (e) => setGenerateForm({ ...generateForm, year: parseInt(e.target.value) }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, min: "2000", max: "2100" })] })] }), _jsx("button", { type: "submit", className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Generate Salary" })] })] }) })), activeTab === 'pending' && (_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Pending Salary Approvals" }), _jsx("p", { className: "text-sm text-gray-600 mb-4", children: "Review and approve or reject salary records. Only approved salaries can be paid by the clerk." }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Month/Year" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Gross" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Deductions" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Net" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Generated By" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: salaryRecords.filter((r) => r.status === 'pending').length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 7, className: "px-6 py-4 text-center text-gray-500", children: "No pending salaries awaiting approval" }) })) : (salaryRecords.filter((r) => r.status === 'pending').map((record) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: record.teacher?.full_name || 'Unknown' }), _jsxs("td", { className: "px-6 py-4", children: [new Date(2000, record.month - 1).toLocaleString('default', { month: 'long' }), " ", record.year] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(record.gross_salary || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(record.total_deductions || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4 font-semibold", children: ["\u20B9", parseFloat(record.net_salary || 0).toLocaleString()] }), _jsx("td", { className: "px-6 py-4 text-sm text-gray-600", children: record.generated_by_profile?.full_name || 'System' }), _jsx("td", { className: "px-6 py-4", children: _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: () => handleApprove(record.id), className: "text-green-600 hover:text-green-900 font-medium", children: "Approve" }), _jsx("button", { onClick: () => {
+                                                                setSelectedRecordForReject(record);
+                                                                setRejectModalOpen(true);
+                                                            }, className: "text-red-600 hover:text-red-900 font-medium", children: "Reject" })] }) })] }, record.id)))) })] }) })] })), rejectModalOpen && selectedRecordForReject && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Reject Salary" }), _jsxs("p", { className: "text-sm text-gray-600 mb-4", children: ["Rejecting salary for ", _jsx("strong", { children: selectedRecordForReject.teacher?.full_name }), " - ", new Date(2000, selectedRecordForReject.month - 1).toLocaleString('default', { month: 'long' }), " ", selectedRecordForReject.year] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Rejection Reason * (Minimum 5 characters)" }), _jsx("textarea", { value: rejectionReason, onChange: (e) => setRejectionReason(e.target.value), className: "w-full border border-gray-300 rounded-lg px-3 py-2", rows: 4, placeholder: "Enter reason for rejection...", required: true, minLength: 5, maxLength: 500 }), _jsxs("p", { className: "text-xs text-gray-500 mt-1", children: ["This reason will be visible to the clerk for corrections. (", rejectionReason.length, "/500)"] })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: handleReject, disabled: !rejectionReason.trim() || rejectionReason.trim().length < 5, className: `flex-1 px-4 py-2 rounded-lg ${!rejectionReason.trim() || rejectionReason.trim().length < 5
+                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                        : 'bg-red-600 text-white hover:bg-red-700'}`, children: "Reject Salary" }), _jsx("button", { onClick: () => {
+                                        setRejectModalOpen(false);
+                                        setSelectedRecordForReject(null);
+                                        setRejectionReason('');
+                                    }, className: "flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300", children: "Cancel" })] })] }) })), activeTab === 'records' && (_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "All Salary Records" }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Month/Year" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Gross" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Deductions" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Net" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Status" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Payment Date" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: salaryRecords.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 7, className: "px-6 py-4 text-center text-gray-500", children: "No salary records found" }) })) : (salaryRecords.map((record) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: record.teacher?.full_name || 'Unknown' }), _jsxs("td", { className: "px-6 py-4", children: [new Date(2000, record.month - 1).toLocaleString('default', { month: 'long' }), " ", record.year] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", record.gross_salary.toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", record.total_deductions.toLocaleString()] }), _jsxs("td", { className: "px-6 py-4 font-semibold", children: ["\u20B9", record.net_salary.toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: _jsx("span", { className: `px-2 py-1 rounded text-xs ${record.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                                         record.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                                            'bg-blue-100 text-blue-800'}`, children: record.status }) }), _jsxs("td", { className: "px-6 py-4", children: [record.status === 'pending' && (_jsx("button", { onClick: () => handleApprove(record.id), className: "text-green-600 hover:text-green-900 mr-3", children: "Approve" })), record.status === 'approved' && (_jsx("button", { onClick: () => handleMarkPaid(record.id), className: "text-blue-600 hover:text-blue-900", children: "Mark as Paid" }))] })] }, record.id)))) })] }) })] })), activeTab === 'records' && (_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "All Salary Records" }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Month/Year" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Gross" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Deductions" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Net" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Status" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Payment Date" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: salaryRecords.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 7, className: "px-6 py-4 text-center text-gray-500", children: "No salary records found" }) })) : (salaryRecords.map((record) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: record.teacher?.full_name || 'Unknown' }), _jsxs("td", { className: "px-6 py-4", children: [new Date(2000, record.month - 1).toLocaleString('default', { month: 'long' }), " ", record.year] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", record.gross_salary.toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", record.total_deductions.toLocaleString()] }), _jsxs("td", { className: "px-6 py-4 font-semibold", children: ["\u20B9", record.net_salary.toLocaleString()] }), _jsx("td", { className: "px-6 py-4", children: _jsx("span", { className: `px-2 py-1 rounded text-xs ${record.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                                        record.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                                            'bg-blue-100 text-blue-800'}`, children: record.status }) }), _jsx("td", { className: "px-6 py-4", children: record.payment_date ? new Date(record.payment_date).toLocaleDateString() : '-' })] }, record.id)))) })] }) })] })), activeTab === 'reports' && (_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Salary Reports & Analytics" }), _jsxs("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6 mb-6", children: [_jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h4", { className: "text-lg font-semibold mb-4", children: "Monthly Summary" }), _jsxs("div", { className: "space-y-2", children: [_jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Total Paid:" }), _jsxs("span", { className: "font-semibold text-green-600", children: ["\u20B9", (salaryRecords.filter((r) => r.status === 'paid').reduce((sum, r) => sum + parseFloat(r.net_salary || 0), 0)).toLocaleString()] })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Total Pending:" }), _jsxs("span", { className: "font-semibold text-yellow-600", children: ["\u20B9", (salaryRecords.filter((r) => r.status === 'pending').reduce((sum, r) => sum + parseFloat(r.net_salary || 0), 0)).toLocaleString()] })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Total Approved:" }), _jsxs("span", { className: "font-semibold text-blue-600", children: ["\u20B9", (salaryRecords.filter((r) => r.status === 'approved').reduce((sum, r) => sum + parseFloat(r.net_salary || 0), 0)).toLocaleString()] })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Total Attendance Deduction:" }), _jsxs("span", { className: "font-semibold text-red-600", children: ["\u20B9", (salaryRecords.reduce((sum, r) => sum + parseFloat(r.attendance_deduction || 0), 0)).toLocaleString()] })] })] })] }), _jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h4", { className: "text-lg font-semibold mb-4", children: "Statistics" }), _jsxs("div", { className: "space-y-2", children: [_jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Total Records:" }), _jsx("span", { className: "font-semibold", children: salaryRecords.length })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Paid Records:" }), _jsx("span", { className: "font-semibold", children: salaryRecords.filter((r) => r.status === 'paid').length })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Pending Records:" }), _jsx("span", { className: "font-semibold", children: salaryRecords.filter((r) => r.status === 'pending').length })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Approved Records:" }), _jsx("span", { className: "font-semibold", children: salaryRecords.filter((r) => r.status === 'approved').length })] })] })] })] })] })), showStructureModal && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Set Salary Structure" }), _jsxs("form", { onSubmit: handleSaveStructure, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Teacher *" }), _jsxs("select", { value: structureForm.teacher_id, onChange: (e) => setStructureForm({ ...structureForm, teacher_id: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, children: [_jsx("option", { value: "", children: "Select Teacher" }), teachers.map((teacher) => (_jsx("option", { value: teacher.id, children: teacher.full_name }, teacher.id)))] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Base Salary (\u20B9) *" }), _jsx("input", { type: "number", value: structureForm.base_salary, onChange: (e) => setStructureForm({ ...structureForm, base_salary: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, min: "0", step: "0.01" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "HRA (\u20B9)" }), _jsx("input", { type: "number", value: structureForm.hra, onChange: (e) => setStructureForm({ ...structureForm, hra: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", min: "0", step: "0.01" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Other Allowances (\u20B9)" }), _jsx("input", { type: "number", value: structureForm.other_allowances, onChange: (e) => setStructureForm({ ...structureForm, other_allowances: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", min: "0", step: "0.01" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Fixed Deductions (\u20B9)" }), _jsx("input", { type: "number", value: structureForm.fixed_deductions, onChange: (e) => setStructureForm({ ...structureForm, fixed_deductions: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", min: "0", step: "0.01" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Salary Cycle" }), _jsxs("select", { value: structureForm.salary_cycle, onChange: (e) => setStructureForm({ ...structureForm, salary_cycle: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", children: [_jsx("option", { value: "monthly", children: "Monthly" }), _jsx("option", { value: "weekly", children: "Weekly" }), _jsx("option", { value: "biweekly", children: "Bi-weekly" })] })] }), _jsx("div", { children: _jsxs("label", { className: "flex items-center space-x-2", children: [_jsx("input", { type: "checkbox", checked: structureForm.attendance_based_deduction, onChange: (e) => setStructureForm({ ...structureForm, attendance_based_deduction: e.target.checked }), className: "rounded" }), _jsx("span", { className: "text-sm font-medium", children: "Enable Attendance-Based Deduction" })] }) }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { type: "submit", className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Save Structure" }), _jsx("button", { type: "button", onClick: () => setShowStructureModal(false), className: "flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300", children: "Cancel" })] })] })] }) }))] }));
+                                                            'bg-blue-100 text-blue-800'}`, children: record.status }) }), _jsx("td", { className: "px-6 py-4", children: record.payment_date ? new Date(record.payment_date).toLocaleDateString() : '-' })] }, record.id)))) })] }) })] })), activeTab === 'reports' && (_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Salary Reports & Analytics" }), _jsxs("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6 mb-6", children: [_jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h4", { className: "text-lg font-semibold mb-4", children: "Monthly Summary" }), _jsxs("div", { className: "space-y-2", children: [_jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Total Paid:" }), _jsxs("span", { className: "font-semibold text-green-600", children: ["\u20B9", (salaryRecords.filter((r) => r.status === 'paid').reduce((sum, r) => sum + parseFloat(r.net_salary || 0), 0)).toLocaleString()] })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Total Pending:" }), _jsxs("span", { className: "font-semibold text-yellow-600", children: ["\u20B9", (salaryRecords.filter((r) => r.status === 'pending').reduce((sum, r) => sum + parseFloat(r.net_salary || 0), 0)).toLocaleString()] })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Total Approved:" }), _jsxs("span", { className: "font-semibold text-blue-600", children: ["\u20B9", (salaryRecords.filter((r) => r.status === 'approved').reduce((sum, r) => sum + parseFloat(r.net_salary || 0), 0)).toLocaleString()] })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Total Attendance Deduction:" }), _jsxs("span", { className: "font-semibold text-red-600", children: ["\u20B9", (salaryRecords.reduce((sum, r) => sum + parseFloat(r.attendance_deduction || 0), 0)).toLocaleString()] })] })] })] }), _jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h4", { className: "text-lg font-semibold mb-4", children: "Statistics" }), _jsxs("div", { className: "space-y-2", children: [_jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Total Records:" }), _jsx("span", { className: "font-semibold", children: salaryRecords.length })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Paid Records:" }), _jsx("span", { className: "font-semibold", children: salaryRecords.filter((r) => r.status === 'paid').length })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Pending Records:" }), _jsx("span", { className: "font-semibold", children: salaryRecords.filter((r) => r.status === 'pending').length })] }), _jsxs("div", { className: "flex justify-between", children: [_jsx("span", { className: "text-gray-600", children: "Approved Records:" }), _jsx("span", { className: "font-semibold", children: salaryRecords.filter((r) => r.status === 'approved').length })] })] })] })] })] })), showStructureModal && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: selectedTeacherForEdit ? 'Edit Salary Structure' : 'Set Salary Structure' }), _jsxs("form", { onSubmit: handleSaveStructure, className: "space-y-4", children: [_jsxs("div", { className: "mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg", children: [_jsxs("label", { className: "block text-sm font-medium text-gray-700 mb-2", children: ["Effective From Date ", selectedTeacherForEdit ? '*' : ''] }), _jsx("input", { type: "date", required: !!selectedTeacherForEdit, value: structureForm.effective_from_date || new Date().toISOString().split('T')[0], onChange: (e) => setStructureForm({ ...structureForm, effective_from_date: e.target.value }), className: "w-full px-3 py-2 border border-gray-300 rounded-md" }), _jsx("p", { className: "text-xs text-gray-600 mt-1", children: selectedTeacherForEdit
+                                                ? 'The new salary structure will be effective from this date. Previous salary structure remains unchanged for all months before this date.'
+                                                : 'The salary structure will be effective from this date. Defaults to today if not specified.' })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Teacher *" }), _jsxs("select", { value: structureForm.teacher_id, onChange: (e) => setStructureForm({ ...structureForm, teacher_id: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, children: [_jsx("option", { value: "", children: "Select Teacher" }), teachers.map((teacher) => (_jsx("option", { value: teacher.id, children: teacher.full_name }, teacher.id)))] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Base Salary (\u20B9) *" }), _jsx("input", { type: "number", value: structureForm.base_salary, onChange: (e) => setStructureForm({ ...structureForm, base_salary: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, min: "0", step: "0.01" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "HRA (\u20B9)" }), _jsx("input", { type: "number", value: structureForm.hra, onChange: (e) => setStructureForm({ ...structureForm, hra: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", min: "0", step: "0.01" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Other Allowances (\u20B9)" }), _jsx("input", { type: "number", value: structureForm.other_allowances, onChange: (e) => setStructureForm({ ...structureForm, other_allowances: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", min: "0", step: "0.01" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Fixed Deductions (\u20B9)" }), _jsx("input", { type: "number", value: structureForm.fixed_deductions, onChange: (e) => setStructureForm({ ...structureForm, fixed_deductions: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", min: "0", step: "0.01" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Salary Cycle" }), _jsxs("select", { value: structureForm.salary_cycle, onChange: (e) => setStructureForm({ ...structureForm, salary_cycle: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", children: [_jsx("option", { value: "monthly", children: "Monthly" }), _jsx("option", { value: "weekly", children: "Weekly" }), _jsx("option", { value: "biweekly", children: "Bi-weekly" })] })] }), _jsx("div", { children: _jsxs("label", { className: "flex items-center space-x-2", children: [_jsx("input", { type: "checkbox", checked: structureForm.attendance_based_deduction, onChange: (e) => setStructureForm({ ...structureForm, attendance_based_deduction: e.target.checked }), className: "rounded" }), _jsx("span", { className: "text-sm font-medium", children: "Enable Attendance-Based Deduction" })] }) }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { type: "submit", className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Save Structure" }), _jsx("button", { type: "button", onClick: () => {
+                                                setShowStructureModal(false);
+                                                setSelectedTeacherForEdit(null);
+                                                setStructureForm({
+                                                    teacher_id: '',
+                                                    base_salary: '',
+                                                    hra: '',
+                                                    other_allowances: '',
+                                                    fixed_deductions: '',
+                                                    salary_cycle: 'monthly',
+                                                    attendance_based_deduction: false,
+                                                    effective_from_date: ''
+                                                });
+                                            }, className: "flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300", children: "Cancel" })] })] })] }) }))] }));
 }
 function FeeManagement({ userRole = 'principal' }) {
     const [activeTab, setActiveTab] = useState('class-fees');
@@ -2795,20 +3121,6 @@ function FeeManagement({ userRole = 'principal' }) {
         notes: ''
     });
     const [feeVersions, setFeeVersions] = useState([]);
-    // Fee Overrides
-    const [feeOverrides, setFeeOverrides] = useState([]);
-    const [showOverrideModal, setShowOverrideModal] = useState(false);
-    const [overrideForm, setOverrideForm] = useState({
-        student_id: '',
-        discount_amount: '',
-        custom_fee_amount: '',
-        is_full_free: false,
-        effective_from: new Date().toISOString().split('T')[0],
-        effective_to: '',
-        notes: ''
-    });
-    const [overrideFilterStudent, setOverrideFilterStudent] = useState('');
-    const [overrideModalFilterClass, setOverrideModalFilterClass] = useState('');
     useEffect(() => {
         loadInitialData();
     }, []);
@@ -3194,120 +3506,6 @@ function FeeManagement({ userRole = 'principal' }) {
             alert(error.message || 'Failed to hike fee');
         }
     };
-    const loadFeeOverrides = async () => {
-        setLoading(true);
-        try {
-            const token = (await supabase.auth.getSession()).data.session?.access_token;
-            if (!token)
-                return;
-            // If filtering by student, load that student's overrides
-            // Otherwise, we'll need to load all students' overrides (for now, show message)
-            if (overrideFilterStudent) {
-                const response = await fetch(`${API_URL}/student-fee-overrides/student/${overrideFilterStudent}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    setFeeOverrides(data.overrides || []);
-                }
-            }
-            else {
-                // For "all students", we'd need a different endpoint
-                // For now, show empty and prompt user to select a student
-                setFeeOverrides([]);
-            }
-        }
-        catch (error) {
-            console.error('Error loading fee overrides:', error);
-        }
-        finally {
-            setLoading(false);
-        }
-    };
-    const handleSaveOverride = async (e) => {
-        e.preventDefault();
-        try {
-            const token = (await supabase.auth.getSession()).data.session?.access_token;
-            if (!token)
-                return;
-            if (!overrideForm.student_id) {
-                alert('Please select a student');
-                return;
-            }
-            const payload = {
-                student_id: overrideForm.student_id,
-                effective_from: overrideForm.effective_from,
-                notes: overrideForm.notes || null
-            };
-            // If full free, set that flag
-            if (overrideForm.is_full_free) {
-                payload.is_full_free = true;
-                payload.fee_category_id = null; // null means applies to all fees
-            }
-            else {
-                // Fee category is always null - applies to all fees
-                payload.fee_category_id = null;
-                if (overrideForm.custom_fee_amount) {
-                    payload.custom_fee_amount = parseFloat(overrideForm.custom_fee_amount);
-                }
-                else if (overrideForm.discount_amount) {
-                    payload.discount_amount = parseFloat(overrideForm.discount_amount);
-                }
-            }
-            if (overrideForm.effective_to) {
-                payload.effective_to = overrideForm.effective_to;
-            }
-            const response = await fetch(`${API_URL}/student-fee-overrides`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify(payload)
-            });
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to save fee override');
-            }
-            alert('Fee override saved successfully!');
-            setShowOverrideModal(false);
-            setOverrideForm({
-                student_id: '',
-                discount_amount: '',
-                custom_fee_amount: '',
-                is_full_free: false,
-                effective_from: new Date().toISOString().split('T')[0],
-                effective_to: '',
-                notes: ''
-            });
-            loadFeeOverrides();
-        }
-        catch (error) {
-            alert(error.message || 'Failed to save fee override');
-        }
-    };
-    const handleDeleteOverride = async (overrideId) => {
-        if (!confirm('Are you sure you want to deactivate this fee override?'))
-            return;
-        try {
-            const token = (await supabase.auth.getSession()).data.session?.access_token;
-            if (!token)
-                return;
-            const response = await fetch(`${API_URL}/student-fee-overrides/${overrideId}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to delete fee override');
-            }
-            alert('Fee override deactivated successfully!');
-            loadFeeOverrides();
-        }
-        catch (error) {
-            alert(error.message || 'Failed to delete fee override');
-        }
-    };
     if (loading) {
         return (_jsx("div", { className: "p-6", children: _jsx("div", { className: "flex items-center justify-center h-64", children: _jsx("div", { className: "text-2xl font-bold text-gray-600", children: "Loading..." }) }) }));
     }
@@ -3317,7 +3515,6 @@ function FeeManagement({ userRole = 'principal' }) {
                                 { id: 'custom-fees', label: 'Custom Fees' },
                                 { id: 'transport', label: 'Transport' },
                                 { id: 'hikes', label: 'Fee Hikes' },
-                                { id: 'overrides', label: 'Fee Overrides' }
                             ]),
                             { id: 'tracking', label: 'Fee Tracking' }
                         ].map((tab) => (_jsx("button", { onClick: () => setActiveTab(tab.id), className: `px-6 py-4 text-sm font-medium border-b-2 ${activeTab === tab.id
@@ -3384,62 +3581,7 @@ function FeeManagement({ userRole = 'principal' }) {
                                                 setShowHikeModal(false);
                                                 setSelectedFeeForHike(null);
                                                 setFeeVersions([]);
-                                            }, className: "px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50", children: "Cancel" }), _jsx("button", { type: "submit", className: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700", children: "Apply Fee Hike" })] })] })] }) })), activeTab === 'overrides' && !isClerk && (_jsxs("div", { className: "bg-white rounded-lg shadow p-6", children: [_jsxs("div", { className: "flex justify-between items-center mb-4", children: [_jsx("h3", { className: "text-xl font-bold", children: "Student Fee Overrides" }), _jsx("button", { onClick: () => {
-                                    setOverrideForm({
-                                        student_id: overrideFilterStudent || '',
-                                        discount_amount: '',
-                                        custom_fee_amount: '',
-                                        is_full_free: false,
-                                        effective_from: new Date().toISOString().split('T')[0],
-                                        effective_to: '',
-                                        notes: ''
-                                    });
-                                    setShowOverrideModal(true);
-                                }, className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "+ Add Fee Override" })] }), _jsx("p", { className: "text-gray-600 mb-6", children: "Manage student-specific fee overrides: discounts, custom fees, and full free scholarships." }), _jsxs("div", { className: "mb-4 grid grid-cols-2 gap-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Filter by Class" }), _jsxs("select", { value: overrideFilterStudent ? students.find(s => s.id === overrideFilterStudent)?.class_group_id || '' : '', onChange: (e) => {
-                                            const classId = e.target.value;
-                                            setOverrideFilterStudent(''); // Reset student filter when class changes
-                                            // Filter students by class for the dropdown
-                                        }, className: "w-full border border-gray-300 rounded-lg px-4 py-2", children: [_jsx("option", { value: "", children: "All Classes" }), classGroups.map((classGroup) => (_jsx("option", { value: classGroup.id, children: classGroup.name }, classGroup.id)))] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Filter by Student" }), _jsxs("select", { value: overrideFilterStudent, onChange: (e) => {
-                                            setOverrideFilterStudent(e.target.value);
-                                            loadFeeOverrides();
-                                        }, className: "w-full border border-gray-300 rounded-lg px-4 py-2", children: [_jsx("option", { value: "", children: "All Students" }), students.map((student) => (_jsxs("option", { value: student.id, children: [student.profile?.full_name, " (", student.roll_number, ") - ", classGroups.find(cg => cg.id === student.class_group_id)?.name || ''] }, student.id)))] })] })] }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Student" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Type" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Discount" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Custom Fee" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Full Free" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Effective From" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Effective To" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: feeOverrides.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 8, className: "px-6 py-4 text-center text-gray-500", children: overrideFilterStudent
-                                                ? 'No fee overrides found for this student. Click "Add Fee Override" to create one.'
-                                                : 'Please select a student to view their fee overrides, or click "Add Fee Override" to create a new one.' }) })) : (feeOverrides.map((override) => (_jsxs("tr", { children: [_jsxs("td", { className: "px-6 py-4", children: [override.students?.profile?.full_name || '-', _jsx("div", { className: "text-xs text-gray-500", children: override.students?.roll_number || '' })] }), _jsx("td", { className: "px-6 py-4", children: override.is_full_free ? (_jsx("span", { className: "px-2 py-1 rounded text-xs bg-purple-100 text-purple-800", children: "Full Free" })) : override.custom_fee_amount ? (_jsx("span", { className: "px-2 py-1 rounded text-xs bg-blue-100 text-blue-800", children: "Custom Fee" })) : override.discount_amount > 0 ? (_jsx("span", { className: "px-2 py-1 rounded text-xs bg-green-100 text-green-800", children: "Discount" })) : (_jsx("span", { className: "text-gray-400", children: "-" })) }), _jsx("td", { className: "px-6 py-4", children: override.discount_amount > 0 ? `₹${parseFloat(override.discount_amount || 0).toLocaleString()}` : '-' }), _jsx("td", { className: "px-6 py-4", children: override.custom_fee_amount ? `₹${parseFloat(override.custom_fee_amount || 0).toLocaleString()}` : '-' }), _jsx("td", { className: "px-6 py-4", children: override.is_full_free ? '✅ Yes' : '❌ No' }), _jsx("td", { className: "px-6 py-4", children: new Date(override.effective_from).toLocaleDateString() }), _jsx("td", { className: "px-6 py-4", children: override.effective_to ? new Date(override.effective_to).toLocaleDateString() : 'Active' }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("button", { onClick: () => handleDeleteOverride(override.id), className: "text-red-600 hover:text-red-800", children: "Deactivate" }) })] }, override.id)))) })] }) })] })), showOverrideModal && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Add Fee Override" }), _jsxs("form", { onSubmit: handleSaveOverride, children: [_jsxs("div", { className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Filter by Class" }), _jsxs("select", { value: overrideModalFilterClass, onChange: (e) => {
-                                                        setOverrideModalFilterClass(e.target.value);
-                                                        setOverrideForm({ ...overrideForm, student_id: '' }); // Reset student when class changes
-                                                    }, className: "w-full border border-gray-300 rounded-lg px-4 py-2 mb-2", children: [_jsx("option", { value: "", children: "All Classes" }), classGroups.map((classGroup) => (_jsx("option", { value: classGroup.id, children: classGroup.name }, classGroup.id)))] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Student *" }), _jsxs("select", { value: overrideForm.student_id, onChange: (e) => setOverrideForm({ ...overrideForm, student_id: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-4 py-2", required: true, children: [_jsx("option", { value: "", children: "Select Student" }), students
-                                                            .filter((student) => !overrideModalFilterClass || student.class_group_id === overrideModalFilterClass)
-                                                            .map((student) => (_jsxs("option", { value: student.id, children: [student.profile?.full_name, " (", student.roll_number, ") - ", classGroups.find(cg => cg.id === student.class_group_id)?.name || ''] }, student.id)))] })] }), _jsx("div", { children: _jsxs("label", { className: "flex items-center space-x-2 mb-2", children: [_jsx("input", { type: "checkbox", checked: overrideForm.is_full_free, onChange: (e) => {
-                                                            setOverrideForm({
-                                                                ...overrideForm,
-                                                                is_full_free: e.target.checked,
-                                                                discount_amount: '',
-                                                                custom_fee_amount: ''
-                                                            });
-                                                        }, className: "rounded" }), _jsx("span", { className: "text-sm font-medium", children: "Full Free Scholarship (All fees = 0)" })] }) }), !overrideForm.is_full_free && (_jsx(_Fragment, { children: _jsxs("div", { className: "grid grid-cols-2 gap-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Discount Amount (\u20B9)" }), _jsx("input", { type: "number", step: "0.01", min: "0", value: overrideForm.discount_amount, onChange: (e) => {
-                                                                    setOverrideForm({
-                                                                        ...overrideForm,
-                                                                        discount_amount: e.target.value,
-                                                                        custom_fee_amount: '' // Clear custom fee if discount is set
-                                                                    });
-                                                                }, className: "w-full border border-gray-300 rounded-lg px-4 py-2", disabled: !!overrideForm.custom_fee_amount }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Amount to subtract from default fee" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Custom Fee Amount (\u20B9)" }), _jsx("input", { type: "number", step: "0.01", min: "0", value: overrideForm.custom_fee_amount, onChange: (e) => {
-                                                                    setOverrideForm({
-                                                                        ...overrideForm,
-                                                                        custom_fee_amount: e.target.value,
-                                                                        discount_amount: '' // Clear discount if custom fee is set
-                                                                    });
-                                                                }, className: "w-full border border-gray-300 rounded-lg px-4 py-2", disabled: !!overrideForm.discount_amount }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Override default fee completely" })] })] }) })), _jsxs("div", { className: "grid grid-cols-2 gap-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Effective From *" }), _jsx("input", { type: "date", value: overrideForm.effective_from, onChange: (e) => setOverrideForm({ ...overrideForm, effective_from: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-4 py-2", required: true })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Effective To (Optional)" }), _jsx("input", { type: "date", value: overrideForm.effective_to, onChange: (e) => setOverrideForm({ ...overrideForm, effective_to: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-4 py-2" }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Leave empty for indefinite" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Notes" }), _jsx("textarea", { value: overrideForm.notes, onChange: (e) => setOverrideForm({ ...overrideForm, notes: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-4 py-2", rows: 3 })] })] }), _jsxs("div", { className: "flex gap-4 mt-6", children: [_jsx("button", { type: "submit", className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Save Override" }), _jsx("button", { type: "button", onClick: () => {
-                                                setShowOverrideModal(false);
-                                                setOverrideForm({
-                                                    student_id: '',
-                                                    discount_amount: '',
-                                                    custom_fee_amount: '',
-                                                    is_full_free: false,
-                                                    effective_from: new Date().toISOString().split('T')[0],
-                                                    effective_to: '',
-                                                    notes: ''
-                                                });
-                                            }, className: "flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300", children: "Cancel" })] })] })] }) }))] }));
+                                            }, className: "px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50", children: "Cancel" }), _jsx("button", { type: "submit", className: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700", children: "Apply Fee Hike" })] })] })] }) }))] }));
 }
 // Export FeeManagement for use in ClerkDashboard
 export { FeeManagement };

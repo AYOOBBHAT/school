@@ -134,18 +134,46 @@ export default function TeacherDashboard() {
 
       if (!userId) return;
 
-      const response = await fetch(`${API_URL}/teacher-assignments/teacher/${userId}`, {
+      // Load teaching assignments for classes/marks view
+      const teachingResponse = await fetch(`${API_URL}/teacher-assignments/teacher/${userId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to load assignments');
+      if (teachingResponse.ok) {
+        const teachingData = await teachingResponse.json();
+        // For attendance view, load attendance assignments instead
+        if (currentView === 'attendance') {
+          const attendanceResponse = await fetch(`${API_URL}/teacher-attendance-assignments/teacher/${userId}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          
+          if (attendanceResponse.ok) {
+            const attendanceData = await attendanceResponse.json();
+            // Convert attendance assignments to assignment format for compatibility
+            const attendanceAssignments = (attendanceData.assignments || []).map((aa: any) => ({
+              id: aa.id,
+              class_group_id: aa.class_group_id,
+              section_id: aa.section_id,
+              class_groups: aa.class_group || { name: 'N/A' },
+              sections: aa.section || null,
+              subjects: { name: 'Attendance', code: '' } // Dummy subject for display
+            }));
+            setAssignments(attendanceAssignments);
+          } else {
+            setAssignments([]);
+          }
+        } else {
+          // For classes/marks view, use teaching assignments
+          setAssignments(teachingData.assignments || []);
+        }
+      } else {
+        setAssignments([]);
       }
-
-      const data = await response.json();
-      setAssignments(data.assignments || []);
+      
       setLoading(false);
     } catch (error) {
       console.error('Error loading assignments:', error);
@@ -490,6 +518,11 @@ export default function TeacherDashboard() {
   }, [selectedSubject]);
 
   useEffect(() => {
+    // Reload assignments when view changes (to switch between teaching and attendance)
+    loadAssignments();
+  }, [currentView]);
+
+  useEffect(() => {
     if (selectedAssignment && currentView === 'attendance') {
       loadAttendanceForDate(selectedAssignment, attendanceDate, students);
     }
@@ -714,25 +747,38 @@ export default function TeacherDashboard() {
           {currentView === 'attendance' && (
             <div>
               <h2 className="text-3xl font-bold mb-6">Mark Attendance</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Select a class you are assigned to mark attendance for. Only classes assigned by the principal are shown.
+              </p>
               
               {!selectedAssignment && (
                 <div className="bg-white rounded-lg shadow-md p-6 mb-6">
                   <p className="text-gray-600 mb-4">Select a class to mark attendance:</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {assignments.map((assignment) => (
-                      <button
-                        key={assignment.id}
-                        onClick={() => loadStudents(assignment)}
-                        className="bg-blue-50 hover:bg-blue-100 p-4 rounded-lg text-left transition"
-                      >
-                        <div className="font-semibold">{assignment.class_groups.name}</div>
-                        {assignment.sections && (
-                          <div className="text-sm text-gray-600">Section: {assignment.sections.name}</div>
-                        )}
-                        <div className="text-blue-600">{assignment.subjects.name}</div>
-                      </button>
-                    ))}
-                  </div>
+                  {assignments.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <p className="mb-2">No attendance classes assigned.</p>
+                      <p className="text-sm">Please contact the principal to assign you to mark attendance for classes.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {assignments.map((assignment) => (
+                        <button
+                          key={assignment.id}
+                          onClick={() => loadStudents(assignment)}
+                          className="bg-teal-50 hover:bg-teal-100 p-4 rounded-lg text-left transition border-2 border-teal-200"
+                        >
+                          <div className="font-semibold text-teal-800">{assignment.class_groups.name}</div>
+                          {assignment.sections && (
+                            <div className="text-sm text-gray-600">Section: {assignment.sections.name}</div>
+                          )}
+                          {!assignment.sections && (
+                            <div className="text-sm text-gray-500">All Sections</div>
+                          )}
+                          <div className="text-teal-600 mt-2">📅 Attendance Class</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1062,23 +1108,23 @@ export default function TeacherDashboard() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <div className="text-sm text-gray-600">Base Salary</div>
-                          <div className="text-lg font-semibold">₹{salaryStructure.base_salary.toLocaleString()}</div>
+                          <div className="text-lg font-semibold">₹{parseFloat(salaryStructure.base_salary || 0).toLocaleString()}</div>
                         </div>
                         <div>
                           <div className="text-sm text-gray-600">HRA (House Rent Allowance)</div>
-                          <div className="text-lg font-semibold">₹{salaryStructure.hra.toLocaleString()}</div>
+                          <div className="text-lg font-semibold">₹{parseFloat(salaryStructure.hra || 0).toLocaleString()}</div>
                         </div>
                         <div>
                           <div className="text-sm text-gray-600">Other Allowances</div>
-                          <div className="text-lg font-semibold">₹{salaryStructure.other_allowances.toLocaleString()}</div>
+                          <div className="text-lg font-semibold">₹{parseFloat(salaryStructure.other_allowances || 0).toLocaleString()}</div>
                         </div>
                         <div>
                           <div className="text-sm text-gray-600">Fixed Deductions</div>
-                          <div className="text-lg font-semibold text-red-600">₹{salaryStructure.fixed_deductions.toLocaleString()}</div>
+                          <div className="text-lg font-semibold text-red-600">₹{parseFloat(salaryStructure.fixed_deductions || 0).toLocaleString()}</div>
                         </div>
                         <div>
                           <div className="text-sm text-gray-600">Salary Cycle</div>
-                          <div className="text-lg font-semibold capitalize">{salaryStructure.salary_cycle}</div>
+                          <div className="text-lg font-semibold capitalize">{salaryStructure.salary_cycle || 'monthly'}</div>
                         </div>
                         <div>
                           <div className="text-sm text-gray-600">Attendance-Based Deduction</div>
@@ -1119,6 +1165,7 @@ export default function TeacherDashboard() {
                               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Salary</th>
                               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment Date</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
@@ -1148,18 +1195,108 @@ export default function TeacherDashboard() {
                                     <span className={`px-2 py-1 rounded text-xs ${
                                       record.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                       record.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                      'bg-blue-100 text-blue-800'
+                                      record.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                      record.status === 'paid' ? 'bg-blue-100 text-blue-800' :
+                                      'bg-gray-100 text-gray-800'
                                     }`}>
-                                      {record.status}
+                                      {record.status === 'pending' ? 'Pending Approval' :
+                                       record.status === 'approved' ? 'Approved' :
+                                       record.status === 'rejected' ? 'Rejected' :
+                                       record.status === 'paid' ? 'Paid' :
+                                       record.status}
                                     </span>
+                                    {record.status === 'rejected' && record.rejection_reason && (
+                                      <div className="text-xs text-red-600 mt-1 max-w-xs">
+                                        Reason: {record.rejection_reason}
+                                      </div>
+                                    )}
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap">
                                     {record.payment_date ? (
-                                      <span className="text-sm">
-                                        {new Date(record.payment_date).toLocaleDateString()}
-                                      </span>
+                                      <div>
+                                        <span className="text-sm">
+                                          {new Date(record.payment_date).toLocaleDateString()}
+                                        </span>
+                                        {record.payment_mode && (
+                                          <div className="text-xs text-gray-500 capitalize">
+                                            {record.payment_mode}
+                                          </div>
+                                        )}
+                                      </div>
                                     ) : (
                                       <span className="text-gray-400">-</span>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    {record.status === 'paid' && (
+                                      <button
+                                        onClick={() => {
+                                          // Show salary slip modal
+                                          const slipWindow = window.open('', '_blank');
+                                          if (slipWindow) {
+                                            slipWindow.document.write(`
+                                              <html>
+                                                <head>
+                                                  <title>Salary Slip - ${new Date(2000, record.month - 1).toLocaleString('default', { month: 'long' })} ${record.year}</title>
+                                                  <style>
+                                                    body { font-family: Arial, sans-serif; padding: 20px; }
+                                                    .header { text-align: center; margin-bottom: 30px; }
+                                                    .details { margin: 20px 0; }
+                                                    .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+                                                    .label { font-weight: bold; }
+                                                    .amount { text-align: right; }
+                                                    .total { font-size: 18px; font-weight: bold; margin-top: 20px; padding-top: 20px; border-top: 2px solid #333; }
+                                                  </style>
+                                                </head>
+                                                <body>
+                                                  <div class="header">
+                                                    <h1>Salary Slip</h1>
+                                                    <p>${new Date(2000, record.month - 1).toLocaleString('default', { month: 'long' })} ${record.year}</p>
+                                                  </div>
+                                                  <div class="details">
+                                                    <div class="row">
+                                                      <span class="label">Employee:</span>
+                                                      <span>${profile?.full_name || 'Teacher'}</span>
+                                                    </div>
+                                                    <div class="row">
+                                                      <span class="label">Gross Salary:</span>
+                                                      <span class="amount">₹${parseFloat(record.gross_salary || 0).toLocaleString()}</span>
+                                                    </div>
+                                                    <div class="row">
+                                                      <span class="label">Total Deductions:</span>
+                                                      <span class="amount">₹${parseFloat(record.total_deductions || 0).toLocaleString()}</span>
+                                                    </div>
+                                                    ${record.attendance_deduction > 0 ? `
+                                                    <div class="row">
+                                                      <span class="label">Attendance Deduction:</span>
+                                                      <span class="amount">₹${parseFloat(record.attendance_deduction || 0).toLocaleString()}</span>
+                                                    </div>
+                                                    ` : ''}
+                                                    <div class="row total">
+                                                      <span>Net Salary:</span>
+                                                      <span class="amount">₹${parseFloat(record.net_salary || 0).toLocaleString()}</span>
+                                                    </div>
+                                                    ${record.payment_date ? `
+                                                    <div class="row">
+                                                      <span class="label">Payment Date:</span>
+                                                      <span>${new Date(record.payment_date).toLocaleDateString()}</span>
+                                                    </div>
+                                                    <div class="row">
+                                                      <span class="label">Payment Mode:</span>
+                                                      <span>${(record.payment_mode || '').toUpperCase()}</span>
+                                                    </div>
+                                                    ` : ''}
+                                                  </div>
+                                                </body>
+                                              </html>
+                                            `);
+                                            slipWindow.document.close();
+                                          }
+                                        }}
+                                        className="text-blue-600 hover:text-blue-900 font-medium text-sm"
+                                      >
+                                        View Slip
+                                      </button>
                                     )}
                                   </td>
                                 </tr>
@@ -1170,11 +1307,11 @@ export default function TeacherDashboard() {
                     )}
                   </div>
 
-                  {/* Salary Slip Download Info */}
-                  {salaryRecords.length > 0 && (
+                  {/* Salary Slip Info */}
+                  {salaryRecords.some((r: any) => r.status === 'paid') && (
                     <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
                       <p className="text-sm text-blue-800">
-                        💡 <strong>Note:</strong> You can view your salary details above. For official salary slips, please contact your school administration.
+                        💡 <strong>Note:</strong> Click "View Slip" on paid salaries to view your salary slip. You can print it from the browser.
                       </p>
                     </div>
                   )}

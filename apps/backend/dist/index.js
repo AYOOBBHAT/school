@@ -24,7 +24,6 @@ import dashboardRouter from './routes/dashboard.js';
 import salaryRouter from './routes/salary.js';
 import adminRouter from './routes/admin.js';
 import principalUsersRouter from './routes/principal-users.js';
-import studentFeeOverridesRouter from './routes/student-fee-overrides.js';
 import clerkFeesRouter from './routes/clerk-fees.js';
 // Validate required environment variables at startup
 const requiredEnvVars = [
@@ -78,7 +77,6 @@ app.use('/exams', examsRouter);
 app.use('/dashboard', dashboardRouter);
 app.use('/salary', salaryRouter);
 app.use('/principal-users', principalUsersRouter);
-app.use('/student-fee-overrides', studentFeeOverridesRouter);
 app.use('/clerk-fees', clerkFeesRouter);
 const port = Number(process.env.PORT) || 4000;
 const host = process.env.HOST || '0.0.0.0'; // Listen on all network interfaces

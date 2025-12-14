@@ -234,26 +234,30 @@ export async function canMarkAttendance(
     };
   }
   
-  // Check if this is teacher's first class
-  const firstClass = await getTeacherFirstClass(teacherId, date, adminSupabase);
+  // Check if teacher has attendance assignment for this class
+  // Attendance assignments are separate from teaching assignments
+  const { data: attendanceAssignment, error: assignmentError } = await adminSupabase
+    .from('teacher_attendance_assignments')
+    .select('id, class_group_id, section_id')
+    .eq('teacher_id', teacherId)
+    .eq('class_group_id', classGroupId)
+    .eq('section_id', sectionId || null)
+    .eq('is_active', true)
+    .maybeSingle();
   
-  if (!firstClass) {
+  if (assignmentError && assignmentError.code !== 'PGRST116') {
+    console.error('[canMarkAttendance] Error checking attendance assignment:', assignmentError);
+    return { allowed: false, reason: 'Error checking attendance assignment' };
+  }
+  
+  if (!attendanceAssignment) {
     return {
       allowed: false,
-      reason: 'No classes scheduled for you today'
+      reason: 'You are not assigned to mark attendance for this class. Please contact the principal to assign you as an attendance teacher for this class.'
     };
   }
   
-  if (firstClass.class_group_id !== classGroupId || 
-      firstClass.section_id !== (sectionId || null)) {
-    return {
-      allowed: false,
-      reason: `You can only mark attendance for your first class today (${firstClass.class_name}, Period ${firstClass.period_number})`,
-      firstClass
-    };
-  }
-  
-  return { allowed: true, firstClass };
+  return { allowed: true };
 }
 
 /**

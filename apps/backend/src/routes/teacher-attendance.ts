@@ -179,5 +179,104 @@ router.post('/', requireRoles(['principal', 'clerk']), async (req, res) => {
   }
 });
 
+// Bulk mark attendance for a date range (mark all as present by default, then toggle to absent)
+router.post('/bulk', requireRoles(['principal', 'clerk']), async (req, res) => {
+  const { error, value } = Joi.object({
+    teacher_id: Joi.string().uuid().required(),
+    start_date: Joi.string().required(),
+    end_date: Joi.string().required(),
+    absent_dates: Joi.array().items(Joi.string()).default([]), // Array of dates that should be absent
+    present_dates: Joi.array().items(Joi.string()).optional() // Optional: explicitly mark present dates
+  }).validate(req.body);
+  
+  if (error) return res.status(400).json({ error: error.message });
+
+  const { user } = req;
+  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+
+  try {
+    // Verify teacher belongs to the school
+    const { data: teacher, error: teacherError } = await adminSupabase
+      .from('profiles')
+      .select('id, school_id, role')
+      .eq('id', value.teacher_id)
+      .eq('school_id', user.schoolId)
+      .eq('role', 'teacher')
+      .single();
+
+    if (teacherError || !teacher) {
+      return res.status(404).json({ error: 'Teacher not found or access denied' });
+    }
+
+    const startDate = new Date(value.start_date);
+    const endDate = new Date(value.end_date);
+    const absentDatesSet = new Set(value.absent_dates || []);
+    const presentDatesSet = value.present_dates ? new Set(value.present_dates) : null;
+
+    // Generate all dates in range
+    const datesToMark: Array<{ date: string; status: 'present' | 'absent' }> = [];
+    const currentDate = new Date(startDate);
+    
+    while (currentDate <= endDate) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      
+      // Determine status: absent if in absent_dates, otherwise present (unless explicitly in present_dates)
+      let status: 'present' | 'absent' = 'present';
+      if (absentDatesSet.has(dateStr)) {
+        status = 'absent';
+      } else if (presentDatesSet && !presentDatesSet.has(dateStr)) {
+        // If presentDatesSet is provided and date is not in it, skip (don't mark)
+        currentDate.setDate(currentDate.getDate() + 1);
+        continue;
+      }
+      
+      datesToMark.push({ date: dateStr, status });
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Upsert all attendance records
+    const results = [];
+    for (const { date, status } of datesToMark) {
+      const attendanceData: any = {
+        teacher_id: value.teacher_id,
+        date,
+        status,
+        school_id: user.schoolId,
+        marked_by: user.id
+      };
+
+      // Upsert (insert or update if exists)
+      const { data, error: upsertError } = await adminSupabase
+        .from('teacher_attendance')
+        .upsert(attendanceData, {
+          onConflict: 'teacher_id,date'
+        })
+        .select()
+        .single();
+
+      if (upsertError) {
+        console.error(`[teacher-attendance] Error upserting attendance for ${date}:`, upsertError);
+        // Continue with other dates
+      } else {
+        results.push(data);
+      }
+    }
+
+    return res.json({ 
+      message: `Attendance marked for ${results.length} days`,
+      attendance: results
+    });
+  } catch (err: any) {
+    console.error('[teacher-attendance] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
 export default router;
 

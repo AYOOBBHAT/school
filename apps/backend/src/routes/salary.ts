@@ -16,7 +16,8 @@ const salaryStructureSchema = Joi.object({
   other_allowances: Joi.number().min(0).default(0),
   fixed_deductions: Joi.number().min(0).default(0),
   salary_cycle: Joi.string().valid('monthly', 'weekly', 'biweekly').default('monthly'),
-  attendance_based_deduction: Joi.boolean().default(false)
+  attendance_based_deduction: Joi.boolean().default(false),
+  effective_from_date: Joi.date().optional() // When creating/editing, principal can specify effective from date
 });
 
 // Generate Salary Schema
@@ -30,6 +31,19 @@ const generateSalarySchema = Joi.object({
 const updateSalaryRecordSchema = Joi.object({
   status: Joi.string().valid('pending', 'approved', 'paid').optional(),
   payment_date: Joi.date().optional(),
+  notes: Joi.string().allow('', null).optional()
+});
+
+// Reject Salary Schema
+const rejectSalarySchema = Joi.object({
+  rejection_reason: Joi.string().required().min(5).max(500)
+});
+
+// Mark Paid Schema
+const markPaidSchema = Joi.object({
+  payment_date: Joi.date().required(),
+  payment_mode: Joi.string().valid('bank', 'cash', 'upi').required(),
+  payment_proof: Joi.string().allow('', null).optional(), // URL or file path
   notes: Joi.string().allow('', null).optional()
 });
 
@@ -61,58 +75,71 @@ router.post('/structure', requireRoles(['principal', 'clerk']), async (req, res)
       return res.status(404).json({ error: 'Teacher not found or access denied' });
     }
 
-    // Check if structure already exists
-    const { data: existing } = await adminSupabase
-      .from('teacher_salary_structure')
-      .select('id')
-      .eq('teacher_id', value.teacher_id)
-      .single();
+    // Determine effective_from_date for new salary structure
+    const today = new Date().toISOString().split('T')[0];
+    let effectiveFromDate: string;
+    if (value.effective_from_date) {
+      effectiveFromDate = value.effective_from_date;
+    } else {
+      // Default: use today
+      effectiveFromDate = today;
+    }
 
-    let result;
-    if (existing) {
-      // Update existing structure
-      const { data, error: updateError } = await adminSupabase
+    // Check if there's an existing active structure
+    const { data: existingActive } = await adminSupabase
+      .from('teacher_salary_structure')
+      .select('id, effective_from')
+      .eq('teacher_id', value.teacher_id)
+      .eq('school_id', user.schoolId)
+      .eq('is_active', true)
+      .is('effective_to', null)
+      .maybeSingle();
+
+    // If there's an existing active structure, close it (versioning)
+    if (existingActive) {
+      // Calculate the day before the new effective_from_date
+      const effectiveFromDateObj = new Date(effectiveFromDate);
+      effectiveFromDateObj.setDate(effectiveFromDateObj.getDate() - 1);
+      const dayBeforeEffectiveFrom = effectiveFromDateObj.toISOString().split('T')[0];
+
+      // Close old structure
+      const { error: closeError } = await adminSupabase
         .from('teacher_salary_structure')
         .update({
-          base_salary: value.base_salary,
-          hra: value.hra,
-          other_allowances: value.other_allowances,
-          fixed_deductions: value.fixed_deductions,
-          salary_cycle: value.salary_cycle,
-          attendance_based_deduction: value.attendance_based_deduction,
+          effective_to: dayBeforeEffectiveFrom,
+          is_active: false,
           updated_at: new Date().toISOString()
         })
-        .eq('id', existing.id)
-        .select()
-        .single();
+        .eq('id', existingActive.id);
 
-      if (updateError) {
-        console.error('[salary] Error updating structure:', updateError);
-        return res.status(400).json({ error: updateError.message });
+      if (closeError) {
+        console.error('[salary] Error closing old structure:', closeError);
+        return res.status(400).json({ error: closeError.message });
       }
-      result = data;
-    } else {
-      // Create new structure
-      const { data, error: insertError } = await adminSupabase
-        .from('teacher_salary_structure')
-        .insert({
-          teacher_id: value.teacher_id,
-          school_id: user.schoolId,
-          base_salary: value.base_salary,
-          hra: value.hra,
-          other_allowances: value.other_allowances,
-          fixed_deductions: value.fixed_deductions,
-          salary_cycle: value.salary_cycle,
-          attendance_based_deduction: value.attendance_based_deduction
-        })
-        .select()
-        .single();
+    }
 
-      if (insertError) {
-        console.error('[salary] Error creating structure:', insertError);
-        return res.status(400).json({ error: insertError.message });
-      }
-      result = data;
+    // Create new structure with effective_from_date
+    const { data: result, error: insertError } = await adminSupabase
+      .from('teacher_salary_structure')
+      .insert({
+        teacher_id: value.teacher_id,
+        school_id: user.schoolId,
+        base_salary: value.base_salary,
+        hra: value.hra,
+        other_allowances: value.other_allowances,
+        fixed_deductions: value.fixed_deductions,
+        salary_cycle: value.salary_cycle,
+        attendance_based_deduction: value.attendance_based_deduction,
+        effective_from: effectiveFromDate,
+        effective_to: null, // Active until closed by future update
+        is_active: true
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('[salary] Error creating structure:', insertError);
+      return res.status(400).json({ error: insertError.message });
     }
 
     return res.json({ structure: result });
@@ -141,6 +168,10 @@ router.get('/structure/:teacherId', requireRoles(['principal', 'clerk', 'teacher
   const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
+    // Get the active structure for the teacher
+    // If date is provided in query, get structure active for that date; otherwise get currently active
+    const targetDate = req.query.date ? new Date(req.query.date as string).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    
     const { data: structure, error } = await adminSupabase
       .from('teacher_salary_structure')
       .select(`
@@ -153,7 +184,12 @@ router.get('/structure/:teacherId', requireRoles(['principal', 'clerk', 'teacher
       `)
       .eq('teacher_id', teacherId)
       .eq('school_id', user.schoolId)
-      .single();
+      .eq('is_active', true)
+      .lte('effective_from', targetDate)
+      .or(`effective_to.is.null,effective_to.gte.${targetDate}`)
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (error && error.code !== 'PGRST116') { // PGRST116 = not found
       console.error('[salary] Error fetching structure:', error);
@@ -179,6 +215,8 @@ router.get('/structures', requireRoles(['principal', 'clerk']), async (req, res)
   const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
+    // Get only active structures (currently effective)
+    const today = new Date().toISOString().split('T')[0];
     const { data: structures, error } = await adminSupabase
       .from('teacher_salary_structure')
       .select(`
@@ -190,6 +228,9 @@ router.get('/structures', requireRoles(['principal', 'clerk']), async (req, res)
         )
       `)
       .eq('school_id', user.schoolId)
+      .eq('is_active', true)
+      .lte('effective_from', today)
+      .or(`effective_to.is.null,effective_to.gte.${today}`)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -235,7 +276,7 @@ async function calculateAttendanceDeduction(
   return absentDays * perDaySalary;
 }
 
-// Generate Monthly Salary
+// Generate Monthly Salary (Clerk or Principal can generate, but status is always 'pending')
 router.post('/generate', requireRoles(['principal', 'clerk']), async (req, res) => {
   const { error, value } = generateSalarySchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
@@ -263,13 +304,21 @@ router.post('/generate', requireRoles(['principal', 'clerk']), async (req, res) 
       return res.status(404).json({ error: 'Teacher not found or access denied' });
     }
 
-    // Get salary structure
+    // Get salary structure active for the salary month/year
+    // Use the first day of the month for the target date
+    const targetDate = new Date(value.year, value.month - 1, 1).toISOString().split('T')[0];
+    
     const { data: structure, error: structureError } = await adminSupabase
       .from('teacher_salary_structure')
       .select('*')
       .eq('teacher_id', value.teacher_id)
       .eq('school_id', user.schoolId)
-      .single();
+      .eq('is_active', true)
+      .lte('effective_from', targetDate)
+      .or(`effective_to.is.null,effective_to.gte.${targetDate}`)
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (structureError || !structure) {
       return res.status(400).json({ error: 'Salary structure not found. Please set salary structure first.' });
@@ -309,7 +358,8 @@ router.post('/generate', requireRoles(['principal', 'clerk']), async (req, res) 
     // Calculate net salary
     const netSalary = grossSalary - totalDeductions;
 
-    // Create salary record
+    // Create salary record with status 'pending' (requires principal approval)
+    // Log who generated it for audit
     const { data: salaryRecord, error: insertError } = await adminSupabase
       .from('teacher_salary_records')
       .insert({
@@ -322,7 +372,8 @@ router.post('/generate', requireRoles(['principal', 'clerk']), async (req, res) 
         total_deductions: totalDeductions,
         attendance_deduction: attendanceDeduction,
         net_salary: netSalary,
-        status: 'pending'
+        status: 'pending', // Always pending - requires principal approval
+        generated_by: user.id // Audit: who generated this salary
       })
       .select(`
         *,
@@ -372,6 +423,14 @@ router.get('/records', requireRoles(['principal', 'clerk', 'teacher']), async (r
         approved_by_profile:profiles!teacher_salary_records_approved_by_fkey(
           id,
           full_name
+        ),
+        generated_by_profile:profiles!teacher_salary_records_generated_by_fkey(
+          id,
+          full_name
+        ),
+        paid_by_profile:profiles!teacher_salary_records_paid_by_fkey(
+          id,
+          full_name
         )
       `)
       .eq('school_id', user.schoolId);
@@ -385,7 +444,11 @@ router.get('/records', requireRoles(['principal', 'clerk', 'teacher']), async (r
 
     if (month) query = query.eq('month', parseInt(month as string));
     if (year) query = query.eq('year', parseInt(year as string));
-    if (status) query = query.eq('status', status as string);
+    if (status) {
+      // For clerks, only show approved salaries in payment section (handled in frontend)
+      // But allow viewing all statuses for records tab
+      query = query.eq('status', status as string);
+    }
 
     const { data: records, error } = await query
       .order('year', { ascending: false })
@@ -403,8 +466,8 @@ router.get('/records', requireRoles(['principal', 'clerk', 'teacher']), async (r
   }
 });
 
-// Approve Salary Record
-router.put('/records/:recordId/approve', requireRoles(['principal', 'clerk']), async (req, res) => {
+// Approve Salary Record (Principal only)
+router.put('/records/:recordId/approve', requireRoles(['principal']), async (req, res) => {
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -433,13 +496,14 @@ router.put('/records/:recordId/approve', requireRoles(['principal', 'clerk']), a
       return res.status(400).json({ error: 'Only pending salaries can be approved' });
     }
 
-    // Update record
+    // Update record - Principal approves
     const { data: updated, error: updateError } = await adminSupabase
       .from('teacher_salary_records')
       .update({
         status: 'approved',
         approved_by: user.id,
-        approved_at: new Date().toISOString()
+        approved_at: new Date().toISOString(),
+        rejection_reason: null // Clear any previous rejection reason
       })
       .eq('id', recordId)
       .select(`
@@ -464,9 +528,9 @@ router.put('/records/:recordId/approve', requireRoles(['principal', 'clerk']), a
   }
 });
 
-// Mark Salary as Paid
-router.put('/records/:recordId/mark-paid', requireRoles(['principal', 'clerk']), async (req, res) => {
-  const { error, value } = updateSalaryRecordSchema.validate(req.body);
+// Mark Salary as Paid (Clerk only, and only for approved salaries)
+router.put('/records/:recordId/mark-paid', requireRoles(['clerk']), async (req, res) => {
+  const { error, value } = markPaidSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
   const { user } = req;
@@ -493,15 +557,22 @@ router.put('/records/:recordId/mark-paid', requireRoles(['principal', 'clerk']),
       return res.status(404).json({ error: 'Salary record not found or access denied' });
     }
 
+    // Enforce: Only approved salaries can be paid
     if (record.status !== 'approved') {
-      return res.status(400).json({ error: 'Only approved salaries can be marked as paid' });
+      return res.status(400).json({ 
+        error: `Only approved salaries can be marked as paid. Current status: ${record.status}. Please ensure Principal has approved this salary.` 
+      });
     }
 
-    // Update record
+    // Update record - Clerk marks as paid with payment details
     const updateData: any = {
       status: 'paid',
-      payment_date: value.payment_date || new Date().toISOString().split('T')[0]
+      payment_date: value.payment_date,
+      payment_mode: value.payment_mode,
+      paid_by: user.id, // Audit: who marked as paid
+      paid_at: new Date().toISOString()
     };
+    if (value.payment_proof) updateData.payment_proof = value.payment_proof;
     if (value.notes !== undefined) updateData.notes = value.notes;
 
     const { data: updated, error: updateError } = await adminSupabase

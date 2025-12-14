@@ -16,7 +16,7 @@ export default function ClerkDashboard() {
   const location = useLocation();
   const [profile, setProfile] = useState<any>(null);
   const [checkingRole, setCheckingRole] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'fee-collection'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'fee-collection' | 'salary-payment'>('dashboard');
   const [dashboardStats, setDashboardStats] = useState<any>(null);
   const [loadingStats, setLoadingStats] = useState(false);
 
@@ -215,6 +215,19 @@ export default function ClerkDashboard() {
             >
               💰 Fee Collection
             </button>
+            <button
+              onClick={() => {
+                setActiveTab('salary-payment');
+                navigate('/clerk/salary');
+              }}
+              className={`w-full text-left px-4 py-2 rounded-lg transition ${
+                activeTab === 'salary-payment'
+                  ? 'bg-blue-600 text-white'
+                  : 'hover:bg-gray-800 text-gray-300'
+              }`}
+            >
+              💵 Pay Salary
+            </button>
           </nav>
           <button
             onClick={handleLogout}
@@ -351,8 +364,255 @@ export default function ClerkDashboard() {
             </div>
           )}
           {activeTab === 'fee-collection' && <FeeCollection />}
+          
+          {activeTab === 'salary-payment' && <SalaryPaymentSection />}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Salary Payment Section - Clerk can only pay approved salaries
+function SalaryPaymentSection() {
+  const [approvedSalaries, setApprovedSalaries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedSalary, setSelectedSalary] = useState<any>(null);
+  const [paymentForm, setPaymentForm] = useState({
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_mode: 'bank' as 'bank' | 'cash' | 'upi',
+    payment_proof: '',
+    notes: ''
+  });
+
+  useEffect(() => {
+    loadApprovedSalaries();
+  }, []);
+
+  const loadApprovedSalaries = async () => {
+    try {
+      setLoading(true);
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/salary/records?status=approved`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setApprovedSalaries(data.records || []);
+      }
+    } catch (error) {
+      console.error('Error loading approved salaries:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMarkPaid = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSalary) return;
+
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/salary/records/${selectedSalary.id}/mark-paid`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          payment_date: paymentForm.payment_date,
+          payment_mode: paymentForm.payment_mode,
+          payment_proof: paymentForm.payment_proof || null,
+          notes: paymentForm.notes || null
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to mark salary as paid');
+      }
+
+      alert('Salary marked as paid successfully!');
+      setShowPaymentModal(false);
+      setSelectedSalary(null);
+      setPaymentForm({
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_mode: 'bank',
+        payment_proof: '',
+        notes: ''
+      });
+      loadApprovedSalaries();
+    } catch (error: any) {
+      alert(error.message || 'Failed to mark salary as paid');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-8">Loading approved salaries...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-3xl font-bold">Pay Salary</h2>
+          <p className="text-gray-600 mt-2">
+            Only approved salaries can be paid. All salaries shown here have been approved by the Principal.
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Teacher</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month/Year</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gross</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deductions</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Salary</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Approved By</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {approvedSalaries.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                  No approved salaries available for payment
+                </td>
+              </tr>
+            ) : (
+              approvedSalaries.map((salary: any) => (
+                <tr key={salary.id}>
+                  <td className="px-6 py-4">{salary.teacher?.full_name || 'Unknown'}</td>
+                  <td className="px-6 py-4">
+                    {new Date(2000, salary.month - 1).toLocaleString('default', { month: 'long' })} {salary.year}
+                  </td>
+                  <td className="px-6 py-4">₹{parseFloat(salary.gross_salary || 0).toLocaleString()}</td>
+                  <td className="px-6 py-4">₹{parseFloat(salary.total_deductions || 0).toLocaleString()}</td>
+                  <td className="px-6 py-4 font-semibold text-green-600">
+                    ₹{parseFloat(salary.net_salary || 0).toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">
+                    {salary.approved_by_profile?.full_name || 'Principal'}
+                    {salary.approved_at && (
+                      <div className="text-xs text-gray-500">
+                        {new Date(salary.approved_at).toLocaleDateString()}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <button
+                      onClick={() => {
+                        setSelectedSalary(salary);
+                        setShowPaymentModal(true);
+                      }}
+                      className="text-blue-600 hover:text-blue-900 font-medium"
+                    >
+                      Mark as Paid
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Payment Modal */}
+      {showPaymentModal && selectedSalary && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4">Mark Salary as Paid</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Recording payment for <strong>{selectedSalary.teacher?.full_name}</strong> - {new Date(2000, selectedSalary.month - 1).toLocaleString('default', { month: 'long' })} {selectedSalary.year}
+            </p>
+            <p className="text-sm font-semibold mb-4">
+              Net Salary: ₹{parseFloat(selectedSalary.net_salary || 0).toLocaleString()}
+            </p>
+            <form onSubmit={handleMarkPaid} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Payment Date *</label>
+                <input
+                  type="date"
+                  required
+                  value={paymentForm.payment_date}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Payment Mode *</label>
+                <select
+                  required
+                  value={paymentForm.payment_mode}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, payment_mode: e.target.value as any })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                >
+                  <option value="bank">Bank Transfer</option>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Payment Proof (Optional)</label>
+                <input
+                  type="text"
+                  value={paymentForm.payment_proof}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, payment_proof: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  placeholder="URL or file path to payment proof"
+                />
+                <p className="text-xs text-gray-500 mt-1">Upload proof document and paste URL here, or leave empty</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Notes (Optional)</label>
+                <textarea
+                  value={paymentForm.notes}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  rows={3}
+                  placeholder="Additional notes about this payment"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                >
+                  Mark as Paid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPaymentModal(false);
+                    setSelectedSalary(null);
+                    setPaymentForm({
+                      payment_date: new Date().toISOString().split('T')[0],
+                      payment_mode: 'bank',
+                      payment_proof: '',
+                      notes: ''
+                    });
+                  }}
+                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
