@@ -433,6 +433,7 @@ export default function App() {
       <Route path="/clerk" element={<ClerkDashboard />} />
       <Route path="/clerk/fees" element={<ClerkDashboard />} />
       <Route path="/clerk/payments" element={<ClerkDashboard />} />
+      <Route path="/clerk/salary" element={<ClerkDashboard />} />
       <Route path="/clerk/marks" element={<ClerkDashboard />} />
       <Route path="/teacher/classes" element={<TeacherDashboard />} />
       <Route path="/teacher" element={<TeacherDashboard />} />
