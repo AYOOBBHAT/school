@@ -47,8 +47,18 @@ const markPaidSchema = Joi.object({
   notes: Joi.string().allow('', null).optional()
 });
 
-// Create or Update Teacher Salary Structure
-router.post('/structure', requireRoles(['principal', 'clerk']), async (req, res) => {
+// Record Payment Schema (Simplified System)
+const recordPaymentSchema = Joi.object({
+  teacher_id: Joi.string().uuid().required(),
+  payment_date: Joi.date().required(),
+  amount: Joi.number().min(0.01).required(),
+  payment_mode: Joi.string().valid('bank', 'cash', 'upi').required(),
+  payment_proof: Joi.string().allow('', null).optional(),
+  notes: Joi.string().allow('', null).optional()
+});
+
+// Create or Update Teacher Salary Structure (Principal only)
+router.post('/structure', requireRoles(['principal']), async (req, res) => {
   const { error, value } = salaryStructureSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
@@ -656,6 +666,254 @@ router.get('/reports', requireRoles(['principal', 'clerk']), async (req, res) =>
         totalRecords: records?.length || 0
       }
     });
+  } catch (err: any) {
+    console.error('[salary] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// Simplified Salary Payment System Routes
+// ============================================================================
+
+// Record Salary Payment (Clerk only - supports full, partial, or advance payments)
+router.post('/payments', requireRoles(['clerk']), async (req, res) => {
+  const { error, value } = recordPaymentSchema.validate(req.body);
+  if (error) return res.status(400).json({ error: error.message });
+
+  const { user } = req;
+  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+
+  try {
+    // Verify teacher belongs to the school
+    const { data: teacher, error: teacherError } = await adminSupabase
+      .from('profiles')
+      .select('id, school_id, role')
+      .eq('id', value.teacher_id)
+      .eq('school_id', user.schoolId)
+      .eq('role', 'teacher')
+      .single();
+
+    if (teacherError || !teacher) {
+      return res.status(404).json({ error: 'Teacher not found or access denied' });
+    }
+
+    // Record the payment
+    const { data: payment, error: insertError } = await adminSupabase
+      .from('teacher_salary_payments')
+      .insert({
+        teacher_id: value.teacher_id,
+        school_id: user.schoolId,
+        payment_date: value.payment_date,
+        amount: value.amount,
+        payment_mode: value.payment_mode,
+        payment_proof: value.payment_proof || null,
+        notes: value.notes || null,
+        paid_by: user.id
+      })
+      .select(`
+        *,
+        teacher:profiles!teacher_salary_payments_teacher_id_fkey(
+          id,
+          full_name,
+          email
+        ),
+        paid_by_profile:profiles!teacher_salary_payments_paid_by_fkey(
+          id,
+          full_name
+        )
+      `)
+      .single();
+
+    if (insertError) {
+      console.error('[salary] Error recording payment:', insertError);
+      return res.status(400).json({ error: insertError.message });
+    }
+
+    return res.json({ payment });
+  } catch (err: any) {
+    console.error('[salary] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// Get Payment History (Principal, Clerk, Teacher - teachers see only their own)
+router.get('/payments', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
+  const { user } = req;
+  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+
+  const { teacher_id, start_date, end_date } = req.query;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+
+  try {
+    let query = adminSupabase
+      .from('teacher_salary_payments')
+      .select(`
+        *,
+        teacher:profiles!teacher_salary_payments_teacher_id_fkey(
+          id,
+          full_name,
+          email
+        ),
+        paid_by_profile:profiles!teacher_salary_payments_paid_by_fkey(
+          id,
+          full_name
+        )
+      `)
+      .eq('school_id', user.schoolId);
+
+    // Teachers can only see their own payments
+    if (user.role === 'teacher') {
+      query = query.eq('teacher_id', user.id);
+    } else if (teacher_id) {
+      query = query.eq('teacher_id', teacher_id as string);
+    }
+
+    if (start_date) {
+      query = query.gte('payment_date', start_date as string);
+    }
+    if (end_date) {
+      query = query.lte('payment_date', end_date as string);
+    }
+
+    const { data: payments, error } = await query
+      .order('payment_date', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[salary] Error fetching payments:', error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.json({ payments: payments || [] });
+  } catch (err: any) {
+    console.error('[salary] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// Get Salary Summary (Principal, Clerk, Teacher - teachers see only their own)
+router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
+  const { user } = req;
+  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+
+  const { teacher_id } = req.query;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+
+  try {
+    // Get teacher IDs to query
+    let teacherIds: string[] = [];
+
+    if (user.role === 'teacher') {
+      teacherIds = [user.id];
+    } else if (teacher_id) {
+      // Verify teacher belongs to school
+      const { data: teacher, error: teacherError } = await adminSupabase
+        .from('profiles')
+        .select('id')
+        .eq('id', teacher_id as string)
+        .eq('school_id', user.schoolId)
+        .eq('role', 'teacher')
+        .single();
+
+      if (teacherError || !teacher) {
+        return res.status(404).json({ error: 'Teacher not found or access denied' });
+      }
+      teacherIds = [teacher_id as string];
+    } else {
+      // Get all teachers in school
+      const { data: teachers, error: teachersError } = await adminSupabase
+        .from('profiles')
+        .select('id')
+        .eq('school_id', user.schoolId)
+        .eq('role', 'teacher');
+
+      if (teachersError) {
+        return res.status(400).json({ error: teachersError.message });
+      }
+      teacherIds = (teachers || []).map((t: any) => t.id);
+    }
+
+    // Calculate summary for each teacher
+    const summaries = await Promise.all(
+      teacherIds.map(async (tid) => {
+        // Get teacher info
+        const { data: teacher } = await adminSupabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('id', tid)
+          .single();
+
+        // Calculate totals using database functions
+        const { data: dueData, error: dueError } = await adminSupabase.rpc('calculate_teacher_salary_due', {
+          p_teacher_id: tid,
+          p_school_id: user.schoolId,
+          p_as_of_date: new Date().toISOString().split('T')[0]
+        });
+        const total_due = parseFloat(String(dueData || 0));
+
+        const { data: paidData, error: paidError } = await adminSupabase.rpc('calculate_teacher_salary_paid', {
+          p_teacher_id: tid,
+          p_school_id: user.schoolId,
+          p_as_of_date: new Date().toISOString().split('T')[0]
+        });
+        const total_paid = parseFloat(String(paidData || 0));
+
+        const pending = total_due - total_paid;
+
+        // Get active salary structure
+        const { data: structure } = await adminSupabase
+          .from('teacher_salary_structure')
+          .select('*')
+          .eq('teacher_id', tid)
+          .eq('school_id', user.schoolId)
+          .eq('is_active', true)
+          .is('effective_to', null)
+          .order('effective_from', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        // Get all salary structures (for history)
+        const { data: structures } = await adminSupabase
+          .from('teacher_salary_structure')
+          .select('*')
+          .eq('teacher_id', tid)
+          .eq('school_id', user.schoolId)
+          .order('effective_from', { ascending: false });
+
+        return {
+          teacher,
+          total_salary_due: total_due,
+          total_salary_paid: total_paid,
+          pending_salary: pending,
+          current_structure: structure,
+          salary_structures: structures || []
+        };
+      })
+    );
+
+    // If single teacher requested, return single object; otherwise return array
+    if (teacher_id || user.role === 'teacher') {
+      return res.json({ summary: summaries[0] || null });
+    }
+
+    return res.json({ summaries });
   } catch (err: any) {
     console.error('[salary] Error:', err);
     return res.status(500).json({ error: err.message || 'Internal server error' });
