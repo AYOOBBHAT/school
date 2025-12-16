@@ -6266,7 +6266,7 @@ function SalaryManagement() {
   const [salaryStructures, setSalaryStructures] = useState<any[]>([]);
   const [salaryRecords, setSalaryRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'structure' | 'generate' | 'pending' | 'records' | 'reports'>('structure');
+  const [activeTab, setActiveTab] = useState<'structure' | 'pending' | 'records' | 'reports'>('structure');
   
   // Structure form
   const [showStructureModal, setShowStructureModal] = useState(false);
@@ -6282,14 +6282,6 @@ function SalaryManagement() {
     effective_from_date: '' // Effective from date for new/edited structure
   });
 
-  // Generate salary form
-  const [showGenerateModal, setShowGenerateModal] = useState(false);
-  const [generateForm, setGenerateForm] = useState({
-    teacher_id: '',
-    month: new Date().getMonth() + 1,
-    year: new Date().getFullYear()
-  });
-
   useEffect(() => {
     loadData();
   }, []);
@@ -6299,10 +6291,9 @@ function SalaryManagement() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const [teachersRes, structuresRes, recordsRes] = await Promise.all([
+      const [teachersRes, structuresRes] = await Promise.all([
         fetch(`${API_URL}/staff-admin`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/salary/structures`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/salary/records`, { headers: { Authorization: `Bearer ${token}` } })
+        fetch(`${API_URL}/salary/structures`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
 
       if (teachersRes.ok) {
@@ -6313,11 +6304,6 @@ function SalaryManagement() {
       if (structuresRes.ok) {
         const data = await structuresRes.json();
         setSalaryStructures(data.structures || []);
-      }
-
-      if (recordsRes.ok) {
-        const data = await recordsRes.json();
-        setSalaryRecords(data.records || []);
       }
     } catch (error) {
       console.error('Error loading salary data:', error);
@@ -6387,39 +6373,6 @@ function SalaryManagement() {
       loadData();
     } catch (error: any) {
       alert(error.message || 'Failed to save structure');
-    }
-  };
-
-  const handleGenerateSalary = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const response = await fetch(`${API_URL}/salary/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(generateForm),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to generate salary');
-      }
-
-      alert('Salary generated successfully!');
-      setShowGenerateModal(false);
-      setGenerateForm({
-        teacher_id: '',
-        month: new Date().getMonth() + 1,
-        year: new Date().getFullYear()
-      });
-      loadData();
-    } catch (error: any) {
-      alert(error.message || 'Failed to generate salary');
     }
   };
 
@@ -6502,7 +6455,6 @@ function SalaryManagement() {
       <div className="flex space-x-2 mb-6 border-b">
         {[
           { id: 'structure', label: 'Salary Structure' },
-          { id: 'generate', label: 'Generate Salary' },
           { id: 'pending', label: 'Pending Salaries' },
           { id: 'records', label: 'All Records' },
           { id: 'reports', label: 'Reports' }
@@ -6606,68 +6558,6 @@ function SalaryManagement() {
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
-
-      {/* Generate Salary Tab */}
-      {activeTab === 'generate' && (
-        <div>
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h3 className="text-xl font-bold mb-4">Generate Monthly Salary</h3>
-            <form onSubmit={handleGenerateSalary} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Teacher *</label>
-                <select
-                  value={generateForm.teacher_id}
-                  onChange={(e) => setGenerateForm({ ...generateForm, teacher_id: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  required
-                >
-                  <option value="">Select Teacher</option>
-                  {teachers.map((teacher) => (
-                    <option key={teacher.id} value={teacher.id}>
-                      {teacher.full_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Month *</label>
-                  <select
-                    value={generateForm.month}
-                    onChange={(e) => setGenerateForm({ ...generateForm, month: parseInt(e.target.value) })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                    required
-                  >
-                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
-                      <option key={m} value={m}>
-                        {new Date(2000, m-1).toLocaleString('default', { month: 'long' })}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Year *</label>
-                  <input
-                    type="number"
-                    value={generateForm.year}
-                    onChange={(e) => setGenerateForm({ ...generateForm, year: parseInt(e.target.value) })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                    required
-                    min="2000"
-                    max="2100"
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-              >
-                Generate Salary
-              </button>
-            </form>
           </div>
         </div>
       )}

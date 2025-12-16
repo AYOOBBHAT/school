@@ -2815,13 +2815,6 @@ function SalaryManagement() {
         attendance_based_deduction: false,
         effective_from_date: '' // Effective from date for new/edited structure
     });
-    // Generate salary form
-    const [showGenerateModal, setShowGenerateModal] = useState(false);
-    const [generateForm, setGenerateForm] = useState({
-        teacher_id: '',
-        month: new Date().getMonth() + 1,
-        year: new Date().getFullYear()
-    });
     useEffect(() => {
         loadData();
     }, []);
@@ -2830,10 +2823,9 @@ function SalaryManagement() {
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
                 return;
-            const [teachersRes, structuresRes, recordsRes] = await Promise.all([
+            const [teachersRes, structuresRes] = await Promise.all([
                 fetch(`${API_URL}/staff-admin`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_URL}/salary/structures`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_URL}/salary/records`, { headers: { Authorization: `Bearer ${token}` } })
+                fetch(`${API_URL}/salary/structures`, { headers: { Authorization: `Bearer ${token}` } })
             ]);
             if (teachersRes.ok) {
                 const data = await teachersRes.json();
@@ -2842,10 +2834,6 @@ function SalaryManagement() {
             if (structuresRes.ok) {
                 const data = await structuresRes.json();
                 setSalaryStructures(data.structures || []);
-            }
-            if (recordsRes.ok) {
-                const data = await recordsRes.json();
-                setSalaryRecords(data.records || []);
             }
         }
         catch (error) {
@@ -2914,37 +2902,6 @@ function SalaryManagement() {
             alert(error.message || 'Failed to save structure');
         }
     };
-    const handleGenerateSalary = async (e) => {
-        e.preventDefault();
-        try {
-            const token = (await supabase.auth.getSession()).data.session?.access_token;
-            if (!token)
-                return;
-            const response = await fetch(`${API_URL}/salary/generate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify(generateForm),
-            });
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to generate salary');
-            }
-            alert('Salary generated successfully!');
-            setShowGenerateModal(false);
-            setGenerateForm({
-                teacher_id: '',
-                month: new Date().getMonth() + 1,
-                year: new Date().getFullYear()
-            });
-            loadData();
-        }
-        catch (error) {
-            alert(error.message || 'Failed to generate salary');
-        }
-    };
     const [rejectModalOpen, setRejectModalOpen] = useState(false);
     const [selectedRecordForReject, setSelectedRecordForReject] = useState(null);
     const [rejectionReason, setRejectionReason] = useState('');
@@ -3011,7 +2968,6 @@ function SalaryManagement() {
         return _jsx("div", { className: "p-6", children: "Loading..." });
     return (_jsxs("div", { className: "p-6", children: [_jsx("div", { className: "flex justify-between items-center mb-6", children: _jsx("h2", { className: "text-3xl font-bold", children: "Salary Management" }) }), _jsx("div", { className: "flex space-x-2 mb-6 border-b", children: [
                     { id: 'structure', label: 'Salary Structure' },
-                    { id: 'generate', label: 'Generate Salary' },
                     { id: 'pending', label: 'Pending Salaries' },
                     { id: 'records', label: 'All Records' },
                     { id: 'reports', label: 'Reports' }
@@ -3043,7 +2999,7 @@ function SalaryManagement() {
                                                         });
                                                         setSelectedTeacherForEdit(structure);
                                                         setShowStructureModal(true);
-                                                    }, className: "text-blue-600 hover:text-blue-900", children: "Edit" }) })] }, structure.id)))) })] }) })] })), activeTab === 'generate' && (_jsx("div", { children: _jsxs("div", { className: "bg-white rounded-lg shadow-md p-6", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Generate Monthly Salary" }), _jsxs("form", { onSubmit: handleGenerateSalary, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Teacher *" }), _jsxs("select", { value: generateForm.teacher_id, onChange: (e) => setGenerateForm({ ...generateForm, teacher_id: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, children: [_jsx("option", { value: "", children: "Select Teacher" }), teachers.map((teacher) => (_jsx("option", { value: teacher.id, children: teacher.full_name }, teacher.id)))] })] }), _jsxs("div", { className: "grid grid-cols-2 gap-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Month *" }), _jsx("select", { value: generateForm.month, onChange: (e) => setGenerateForm({ ...generateForm, month: parseInt(e.target.value) }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, children: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (_jsx("option", { value: m, children: new Date(2000, m - 1).toLocaleString('default', { month: 'long' }) }, m))) })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Year *" }), _jsx("input", { type: "number", value: generateForm.year, onChange: (e) => setGenerateForm({ ...generateForm, year: parseInt(e.target.value) }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", required: true, min: "2000", max: "2100" })] })] }), _jsx("button", { type: "submit", className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Generate Salary" })] })] }) })), activeTab === 'pending' && (_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Pending Salary Approvals" }), _jsx("p", { className: "text-sm text-gray-600 mb-4", children: "Review and approve or reject salary records. Only approved salaries can be paid by the clerk." }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Month/Year" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Gross" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Deductions" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Net" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Generated By" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: salaryRecords.filter((r) => r.status === 'pending').length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 7, className: "px-6 py-4 text-center text-gray-500", children: "No pending salaries awaiting approval" }) })) : (salaryRecords.filter((r) => r.status === 'pending').map((record) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: record.teacher?.full_name || 'Unknown' }), _jsxs("td", { className: "px-6 py-4", children: [new Date(2000, record.month - 1).toLocaleString('default', { month: 'long' }), " ", record.year] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(record.gross_salary || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(record.total_deductions || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4 font-semibold", children: ["\u20B9", parseFloat(record.net_salary || 0).toLocaleString()] }), _jsx("td", { className: "px-6 py-4 text-sm text-gray-600", children: record.generated_by_profile?.full_name || 'System' }), _jsx("td", { className: "px-6 py-4", children: _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: () => handleApprove(record.id), className: "text-green-600 hover:text-green-900 font-medium", children: "Approve" }), _jsx("button", { onClick: () => {
+                                                    }, className: "text-blue-600 hover:text-blue-900", children: "Edit" }) })] }, structure.id)))) })] }) })] })), activeTab === 'pending' && (_jsxs("div", { children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Pending Salary Approvals" }), _jsx("p", { className: "text-sm text-gray-600 mb-4", children: "Review and approve or reject salary records. Only approved salaries can be paid by the clerk." }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Month/Year" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Gross" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Deductions" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Net" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Generated By" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: salaryRecords.filter((r) => r.status === 'pending').length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 7, className: "px-6 py-4 text-center text-gray-500", children: "No pending salaries awaiting approval" }) })) : (salaryRecords.filter((r) => r.status === 'pending').map((record) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: record.teacher?.full_name || 'Unknown' }), _jsxs("td", { className: "px-6 py-4", children: [new Date(2000, record.month - 1).toLocaleString('default', { month: 'long' }), " ", record.year] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(record.gross_salary || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(record.total_deductions || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4 font-semibold", children: ["\u20B9", parseFloat(record.net_salary || 0).toLocaleString()] }), _jsx("td", { className: "px-6 py-4 text-sm text-gray-600", children: record.generated_by_profile?.full_name || 'System' }), _jsx("td", { className: "px-6 py-4", children: _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: () => handleApprove(record.id), className: "text-green-600 hover:text-green-900 font-medium", children: "Approve" }), _jsx("button", { onClick: () => {
                                                                 setSelectedRecordForReject(record);
                                                                 setRejectModalOpen(true);
                                                             }, className: "text-red-600 hover:text-red-900 font-medium", children: "Reject" })] }) })] }, record.id)))) })] }) })] })), rejectModalOpen && selectedRecordForReject && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Reject Salary" }), _jsxs("p", { className: "text-sm text-gray-600 mb-4", children: ["Rejecting salary for ", _jsx("strong", { children: selectedRecordForReject.teacher?.full_name }), " - ", new Date(2000, selectedRecordForReject.month - 1).toLocaleString('default', { month: 'long' }), " ", selectedRecordForReject.year] }), _jsxs("div", { className: "mb-4", children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Rejection Reason * (Minimum 5 characters)" }), _jsx("textarea", { value: rejectionReason, onChange: (e) => setRejectionReason(e.target.value), className: "w-full border border-gray-300 rounded-lg px-3 py-2", rows: 4, placeholder: "Enter reason for rejection...", required: true, minLength: 5, maxLength: 500 }), _jsxs("p", { className: "text-xs text-gray-500 mt-1", children: ["This reason will be visible to the clerk for corrections. (", rejectionReason.length, "/500)"] })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: handleReject, disabled: !rejectionReason.trim() || rejectionReason.trim().length < 5, className: `flex-1 px-4 py-2 rounded-lg ${!rejectionReason.trim() || rejectionReason.trim().length < 5

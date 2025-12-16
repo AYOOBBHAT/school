@@ -256,7 +256,8 @@ where p.role = 'teacher'
 -- Note: Views inherit RLS from underlying tables, but we need to grant access
 grant select on teacher_salary_summary to authenticated;
 
--- Step 11: Add trigger to update updated_at timestamp
+-- Step 11: Add trigger to update updated_at timestamp (drop first if exists)
+drop trigger if exists update_teacher_salary_payments_updated_at on teacher_salary_payments;
 create trigger update_teacher_salary_payments_updated_at
   before update on teacher_salary_payments
   for each row
