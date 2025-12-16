@@ -374,24 +374,25 @@ export default function ClerkDashboard() {
   );
 }
 
-// Salary Payment Section - Clerk can only pay approved salaries
+// Salary Payment Section - Clerk can record payments directly (simplified system)
 function SalaryPaymentSection() {
-  const [approvedSalaries, setApprovedSalaries] = useState<any[]>([]);
+  const [teacherSummaries, setTeacherSummaries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedSalary, setSelectedSalary] = useState<any>(null);
+  const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
   const [paymentForm, setPaymentForm] = useState({
     payment_date: new Date().toISOString().split('T')[0],
+    amount: '',
     payment_mode: 'bank' as 'bank' | 'cash' | 'upi',
     payment_proof: '',
     notes: ''
   });
 
   useEffect(() => {
-    loadApprovedSalaries();
+    loadTeacherSummaries();
   }, []);
 
-  const loadApprovedSalaries = async () => {
+  const loadTeacherSummaries = async () => {
     try {
       setLoading(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
@@ -401,42 +402,60 @@ function SalaryPaymentSection() {
         return;
       }
 
-      const response = await fetch(`${API_URL}/salary/records?status=approved`, {
+      const response = await fetch(`${API_URL}/salary/summary`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       if (response.ok) {
         const data = await response.json();
-        setApprovedSalaries(data.records || []);
+        // Filter to only show teachers with pending salary > 0
+        const summariesWithPending = (data.summaries || []).filter((s: any) => s.pending_salary > 0);
+        setTeacherSummaries(summariesWithPending);
       } else {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to load salaries' }));
-        console.error('Error loading approved salaries:', errorData);
-        setApprovedSalaries([]);
+        const errorData = await response.json().catch(() => ({ error: 'Failed to load salary summaries' }));
+        console.error('Error loading salary summaries:', errorData);
+        setTeacherSummaries([]);
       }
     } catch (error) {
-      console.error('Error loading approved salaries:', error);
-      setApprovedSalaries([]);
+      console.error('Error loading salary summaries:', error);
+      setTeacherSummaries([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleMarkPaid = async (e: React.FormEvent) => {
+  const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSalary) return;
+    if (!selectedTeacher) return;
+
+    // Validate amount
+    const amount = parseFloat(paymentForm.amount);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid payment amount');
+      return;
+    }
+
+    // Check if amount exceeds pending salary
+    if (amount > selectedTeacher.pending_salary) {
+      if (!confirm(`Payment amount (₹${amount.toLocaleString()}) exceeds pending salary (₹${selectedTeacher.pending_salary.toLocaleString()}). This will be recorded as an advance payment. Continue?`)) {
+        return;
+      }
+    }
 
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/salary/records/${selectedSalary.id}/mark-paid`, {
-        method: 'PUT',
+      const response = await fetch(`${API_URL}/salary/payments`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          teacher_id: selectedTeacher.teacher.id,
           payment_date: paymentForm.payment_date,
+          amount: amount,
           payment_mode: paymentForm.payment_mode,
           payment_proof: paymentForm.payment_proof || null,
           notes: paymentForm.notes || null
@@ -445,28 +464,29 @@ function SalaryPaymentSection() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to mark salary as paid');
+        throw new Error(error.error || 'Failed to record payment');
       }
 
-      alert('Salary marked as paid successfully!');
+      alert('Payment recorded successfully!');
       setShowPaymentModal(false);
-      setSelectedSalary(null);
+      setSelectedTeacher(null);
       setPaymentForm({
         payment_date: new Date().toISOString().split('T')[0],
+        amount: '',
         payment_mode: 'bank',
         payment_proof: '',
         notes: ''
       });
-      loadApprovedSalaries();
+      loadTeacherSummaries();
     } catch (error: any) {
-      alert(error.message || 'Failed to mark salary as paid');
+      alert(error.message || 'Failed to record payment');
     }
   };
 
   if (loading) {
     return (
       <div>
-        <div className="text-center py-8">Loading approved salaries...</div>
+        <div className="text-center py-8">Loading teacher salary information...</div>
       </div>
     );
   }
@@ -477,7 +497,7 @@ function SalaryPaymentSection() {
         <div>
           <h2 className="text-3xl font-bold">Pay Salary</h2>
           <p className="text-gray-600 mt-2">
-            Only approved salaries can be paid. All salaries shown here have been approved by the Principal.
+            Record salary payments directly. You can pay full, partial, or advance payments to teachers.
           </p>
         </div>
       </div>
@@ -487,50 +507,46 @@ function SalaryPaymentSection() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Teacher</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month/Year</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gross</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deductions</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Salary</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Approved By</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Due</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Paid</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pending Salary</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {approvedSalaries.length === 0 ? (
+            {teacherSummaries.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
-                  No approved salaries available for payment
+                <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                  No teachers with pending salary. All teachers are up to date with their payments.
                 </td>
               </tr>
             ) : (
-              approvedSalaries.map((salary: any) => (
-                <tr key={salary.id}>
-                  <td className="px-6 py-4">{salary.teacher?.full_name || 'Unknown'}</td>
-                  <td className="px-6 py-4">
-                    {new Date(2000, salary.month - 1).toLocaleString('default', { month: 'long' })} {salary.year}
-                  </td>
-                  <td className="px-6 py-4">₹{parseFloat(salary.gross_salary || 0).toLocaleString()}</td>
-                  <td className="px-6 py-4">₹{parseFloat(salary.total_deductions || 0).toLocaleString()}</td>
-                  <td className="px-6 py-4 font-semibold text-green-600">
-                    ₹{parseFloat(salary.net_salary || 0).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {salary.approved_by_profile?.full_name || 'Principal'}
-                    {salary.approved_at && (
-                      <div className="text-xs text-gray-500">
-                        {new Date(salary.approved_at).toLocaleDateString()}
-                      </div>
-                    )}
+              teacherSummaries.map((summary: any) => (
+                <tr key={summary.teacher.id}>
+                  <td className="px-6 py-4 font-medium">{summary.teacher?.full_name || 'Unknown'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{summary.teacher?.email || '-'}</td>
+                  <td className="px-6 py-4">₹{summary.total_salary_due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-4 text-green-600">₹{summary.total_salary_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-4 font-semibold text-orange-600">
+                    ₹{summary.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="px-6 py-4">
                     <button
                       onClick={() => {
-                        setSelectedSalary(salary);
+                        setSelectedTeacher(summary);
+                        setPaymentForm({
+                          payment_date: new Date().toISOString().split('T')[0],
+                          amount: summary.pending_salary.toFixed(2), // Pre-fill with pending amount
+                          payment_mode: 'bank',
+                          payment_proof: '',
+                          notes: ''
+                        });
                         setShowPaymentModal(true);
                       }}
                       className="text-blue-600 hover:text-blue-900 font-medium"
                     >
-                      Mark as Paid
+                      Record Payment
                     </button>
                   </td>
                 </tr>
@@ -541,17 +557,44 @@ function SalaryPaymentSection() {
       </div>
 
       {/* Payment Modal */}
-      {showPaymentModal && selectedSalary && (
+      {showPaymentModal && selectedTeacher && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Mark Salary as Paid</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Recording payment for <strong>{selectedSalary.teacher?.full_name}</strong> - {new Date(2000, selectedSalary.month - 1).toLocaleString('default', { month: 'long' })} {selectedSalary.year}
+          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Record Salary Payment</h3>
+            <p className="text-sm text-gray-600 mb-2">
+              Teacher: <strong>{selectedTeacher.teacher?.full_name}</strong>
             </p>
-            <p className="text-sm font-semibold mb-4">
-              Net Salary: ₹{parseFloat(selectedSalary.net_salary || 0).toLocaleString()}
-            </p>
-            <form onSubmit={handleMarkPaid} className="space-y-4">
+            <div className="bg-gray-50 p-3 rounded-lg mb-4">
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-gray-600">Total Due:</span>
+                <span className="font-semibold">₹{selectedTeacher.total_salary_due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-gray-600">Total Paid:</span>
+                <span className="text-green-600">₹{selectedTeacher.total_salary_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between text-sm font-semibold pt-2 border-t">
+                <span>Pending:</span>
+                <span className="text-orange-600">₹{selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+            <form onSubmit={handleRecordPayment} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Payment Amount (₹) *</label>
+                <input
+                  type="number"
+                  required
+                  step="0.01"
+                  min="0.01"
+                  value={paymentForm.amount}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  placeholder="Enter payment amount"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  You can pay full, partial, or advance amounts. Pending: ₹{selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Payment Date *</label>
                 <input
@@ -601,15 +644,16 @@ function SalaryPaymentSection() {
                   type="submit"
                   className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                 >
-                  Mark as Paid
+                  Record Payment
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setShowPaymentModal(false);
-                    setSelectedSalary(null);
+                    setSelectedTeacher(null);
                     setPaymentForm({
                       payment_date: new Date().toISOString().split('T')[0],
+                      amount: '',
                       payment_mode: 'bank',
                       payment_proof: '',
                       notes: ''
