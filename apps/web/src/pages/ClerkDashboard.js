@@ -184,22 +184,23 @@ export default function ClerkDashboard() {
                                                                 navigate('/clerk/fees');
                                                             }, className: "p-4 border-2 border-green-500 rounded-lg hover:bg-green-50 transition text-left", children: [_jsx("div", { className: "font-semibold text-lg", children: "\uD83D\uDCCA View Reports" }), _jsx("div", { className: "text-sm text-gray-600 mt-1", children: "View payment history and analytics" })] })] })] })] }))] })), activeTab === 'fee-collection' && _jsx(FeeCollection, {}), activeTab === 'salary-payment' && _jsx(SalaryPaymentSection, {})] }) })] }));
 }
-// Salary Payment Section - Clerk can only pay approved salaries
+// Salary Payment Section - Clerk can record payments directly (simplified system)
 function SalaryPaymentSection() {
-    const [approvedSalaries, setApprovedSalaries] = useState([]);
+    const [teacherSummaries, setTeacherSummaries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
-    const [selectedSalary, setSelectedSalary] = useState(null);
+    const [selectedTeacher, setSelectedTeacher] = useState(null);
     const [paymentForm, setPaymentForm] = useState({
         payment_date: new Date().toISOString().split('T')[0],
+        amount: '',
         payment_mode: 'bank',
         payment_proof: '',
         notes: ''
     });
     useEffect(() => {
-        loadApprovedSalaries();
+        loadTeacherSummaries();
     }, []);
-    const loadApprovedSalaries = async () => {
+    const loadTeacherSummaries = async () => {
         try {
             setLoading(true);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
@@ -208,43 +209,59 @@ function SalaryPaymentSection() {
                 setLoading(false);
                 return;
             }
-            const response = await fetch(`${API_URL}/salary/records?status=approved`, {
+            const response = await fetch(`${API_URL}/salary/summary`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {
                 const data = await response.json();
-                setApprovedSalaries(data.records || []);
+                // Filter to only show teachers with pending salary > 0
+                const summariesWithPending = (data.summaries || []).filter((s) => s.pending_salary > 0);
+                setTeacherSummaries(summariesWithPending);
             }
             else {
-                const errorData = await response.json().catch(() => ({ error: 'Failed to load salaries' }));
-                console.error('Error loading approved salaries:', errorData);
-                setApprovedSalaries([]);
+                const errorData = await response.json().catch(() => ({ error: 'Failed to load salary summaries' }));
+                console.error('Error loading salary summaries:', errorData);
+                setTeacherSummaries([]);
             }
         }
         catch (error) {
-            console.error('Error loading approved salaries:', error);
-            setApprovedSalaries([]);
+            console.error('Error loading salary summaries:', error);
+            setTeacherSummaries([]);
         }
         finally {
             setLoading(false);
         }
     };
-    const handleMarkPaid = async (e) => {
+    const handleRecordPayment = async (e) => {
         e.preventDefault();
-        if (!selectedSalary)
+        if (!selectedTeacher)
             return;
+        // Validate amount
+        const amount = parseFloat(paymentForm.amount);
+        if (isNaN(amount) || amount <= 0) {
+            alert('Please enter a valid payment amount');
+            return;
+        }
+        // Check if amount exceeds pending salary
+        if (amount > selectedTeacher.pending_salary) {
+            if (!confirm(`Payment amount (₹${amount.toLocaleString()}) exceeds pending salary (₹${selectedTeacher.pending_salary.toLocaleString()}). This will be recorded as an advance payment. Continue?`)) {
+                return;
+            }
+        }
         try {
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token)
                 return;
-            const response = await fetch(`${API_URL}/salary/records/${selectedSalary.id}/mark-paid`, {
-                method: 'PUT',
+            const response = await fetch(`${API_URL}/salary/payments`, {
+                method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
+                    teacher_id: selectedTeacher.teacher.id,
                     payment_date: paymentForm.payment_date,
+                    amount: amount,
                     payment_mode: paymentForm.payment_mode,
                     payment_proof: paymentForm.payment_proof || null,
                     notes: paymentForm.notes || null
@@ -252,34 +269,43 @@ function SalaryPaymentSection() {
             });
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.error || 'Failed to mark salary as paid');
+                throw new Error(error.error || 'Failed to record payment');
             }
-            alert('Salary marked as paid successfully!');
+            alert('Payment recorded successfully!');
             setShowPaymentModal(false);
-            setSelectedSalary(null);
+            setSelectedTeacher(null);
             setPaymentForm({
                 payment_date: new Date().toISOString().split('T')[0],
+                amount: '',
                 payment_mode: 'bank',
                 payment_proof: '',
                 notes: ''
             });
-            loadApprovedSalaries();
+            loadTeacherSummaries();
         }
         catch (error) {
-            alert(error.message || 'Failed to mark salary as paid');
+            alert(error.message || 'Failed to record payment');
         }
     };
     if (loading) {
-        return (_jsx("div", { children: _jsx("div", { className: "text-center py-8", children: "Loading approved salaries..." }) }));
+        return (_jsx("div", { children: _jsx("div", { className: "text-center py-8", children: "Loading teacher salary information..." }) }));
     }
-    return (_jsxs("div", { children: [_jsx("div", { className: "flex justify-between items-center mb-6", children: _jsxs("div", { children: [_jsx("h2", { className: "text-3xl font-bold", children: "Pay Salary" }), _jsx("p", { className: "text-gray-600 mt-2", children: "Only approved salaries can be paid. All salaries shown here have been approved by the Principal." })] }) }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Month/Year" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Gross" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Deductions" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Net Salary" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Approved By" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: approvedSalaries.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 7, className: "px-6 py-4 text-center text-gray-500", children: "No approved salaries available for payment" }) })) : (approvedSalaries.map((salary) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4", children: salary.teacher?.full_name || 'Unknown' }), _jsxs("td", { className: "px-6 py-4", children: [new Date(2000, salary.month - 1).toLocaleString('default', { month: 'long' }), " ", salary.year] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(salary.gross_salary || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", parseFloat(salary.total_deductions || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4 font-semibold text-green-600", children: ["\u20B9", parseFloat(salary.net_salary || 0).toLocaleString()] }), _jsxs("td", { className: "px-6 py-4 text-sm text-gray-600", children: [salary.approved_by_profile?.full_name || 'Principal', salary.approved_at && (_jsx("div", { className: "text-xs text-gray-500", children: new Date(salary.approved_at).toLocaleDateString() }))] }), _jsx("td", { className: "px-6 py-4", children: _jsx("button", { onClick: () => {
-                                                setSelectedSalary(salary);
-                                                setShowPaymentModal(true);
-                                            }, className: "text-blue-600 hover:text-blue-900 font-medium", children: "Mark as Paid" }) })] }, salary.id)))) })] }) }), showPaymentModal && selectedSalary && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Mark Salary as Paid" }), _jsxs("p", { className: "text-sm text-gray-600 mb-4", children: ["Recording payment for ", _jsx("strong", { children: selectedSalary.teacher?.full_name }), " - ", new Date(2000, selectedSalary.month - 1).toLocaleString('default', { month: 'long' }), " ", selectedSalary.year] }), _jsxs("p", { className: "text-sm font-semibold mb-4", children: ["Net Salary: \u20B9", parseFloat(selectedSalary.net_salary || 0).toLocaleString()] }), _jsxs("form", { onSubmit: handleMarkPaid, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Date *" }), _jsx("input", { type: "date", required: true, value: paymentForm.payment_date, onChange: (e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Mode *" }), _jsxs("select", { required: true, value: paymentForm.payment_mode, onChange: (e) => setPaymentForm({ ...paymentForm, payment_mode: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", children: [_jsx("option", { value: "bank", children: "Bank Transfer" }), _jsx("option", { value: "cash", children: "Cash" }), _jsx("option", { value: "upi", children: "UPI" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Proof (Optional)" }), _jsx("input", { type: "text", value: paymentForm.payment_proof, onChange: (e) => setPaymentForm({ ...paymentForm, payment_proof: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "URL or file path to payment proof" }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Upload proof document and paste URL here, or leave empty" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Notes (Optional)" }), _jsx("textarea", { value: paymentForm.notes, onChange: (e) => setPaymentForm({ ...paymentForm, notes: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", rows: 3, placeholder: "Additional notes about this payment" })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { type: "submit", className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Mark as Paid" }), _jsx("button", { type: "button", onClick: () => {
-                                                setShowPaymentModal(false);
-                                                setSelectedSalary(null);
+    return (_jsxs("div", { children: [_jsx("div", { className: "flex justify-between items-center mb-6", children: _jsxs("div", { children: [_jsx("h2", { className: "text-3xl font-bold", children: "Pay Salary" }), _jsx("p", { className: "text-gray-600 mt-2", children: "Record salary payments directly. You can pay full, partial, or advance payments to teachers." })] }) }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Email" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Total Due" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Total Paid" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Pending Salary" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: teacherSummaries.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 6, className: "px-6 py-4 text-center text-gray-500", children: "No teachers with pending salary. All teachers are up to date with their payments." }) })) : (teacherSummaries.map((summary) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4 font-medium", children: summary.teacher?.full_name || 'Unknown' }), _jsx("td", { className: "px-6 py-4 text-sm text-gray-600", children: summary.teacher?.email || '-' }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", summary.total_salary_due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] }), _jsxs("td", { className: "px-6 py-4 text-green-600", children: ["\u20B9", summary.total_salary_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] }), _jsxs("td", { className: "px-6 py-4 font-semibold text-orange-600", children: ["\u20B9", summary.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] }), _jsx("td", { className: "px-6 py-4", children: _jsx("button", { onClick: () => {
+                                                setSelectedTeacher(summary);
                                                 setPaymentForm({
                                                     payment_date: new Date().toISOString().split('T')[0],
+                                                    amount: summary.pending_salary.toFixed(2), // Pre-fill with pending amount
+                                                    payment_mode: 'bank',
+                                                    payment_proof: '',
+                                                    notes: ''
+                                                });
+                                                setShowPaymentModal(true);
+                                            }, className: "text-blue-600 hover:text-blue-900 font-medium", children: "Record Payment" }) })] }, summary.teacher.id)))) })] }) }), showPaymentModal && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Record Salary Payment" }), _jsxs("p", { className: "text-sm text-gray-600 mb-2", children: ["Teacher: ", _jsx("strong", { children: selectedTeacher.teacher?.full_name })] }), _jsxs("div", { className: "bg-gray-50 p-3 rounded-lg mb-4", children: [_jsxs("div", { className: "flex justify-between text-sm mb-1", children: [_jsx("span", { className: "text-gray-600", children: "Total Due:" }), _jsxs("span", { className: "font-semibold", children: ["\u20B9", selectedTeacher.total_salary_due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] }), _jsxs("div", { className: "flex justify-between text-sm mb-1", children: [_jsx("span", { className: "text-gray-600", children: "Total Paid:" }), _jsxs("span", { className: "text-green-600", children: ["\u20B9", selectedTeacher.total_salary_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] }), _jsxs("div", { className: "flex justify-between text-sm font-semibold pt-2 border-t", children: [_jsx("span", { children: "Pending:" }), _jsxs("span", { className: "text-orange-600", children: ["\u20B9", selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] })] }), _jsxs("form", { onSubmit: handleRecordPayment, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Amount (\u20B9) *" }), _jsx("input", { type: "number", required: true, step: "0.01", min: "0.01", value: paymentForm.amount, onChange: (e) => setPaymentForm({ ...paymentForm, amount: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "Enter payment amount" }), _jsxs("p", { className: "text-xs text-gray-500 mt-1", children: ["You can pay full, partial, or advance amounts. Pending: \u20B9", selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Date *" }), _jsx("input", { type: "date", required: true, value: paymentForm.payment_date, onChange: (e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Mode *" }), _jsxs("select", { required: true, value: paymentForm.payment_mode, onChange: (e) => setPaymentForm({ ...paymentForm, payment_mode: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", children: [_jsx("option", { value: "bank", children: "Bank Transfer" }), _jsx("option", { value: "cash", children: "Cash" }), _jsx("option", { value: "upi", children: "UPI" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Proof (Optional)" }), _jsx("input", { type: "text", value: paymentForm.payment_proof, onChange: (e) => setPaymentForm({ ...paymentForm, payment_proof: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "URL or file path to payment proof" }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Upload proof document and paste URL here, or leave empty" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Notes (Optional)" }), _jsx("textarea", { value: paymentForm.notes, onChange: (e) => setPaymentForm({ ...paymentForm, notes: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", rows: 3, placeholder: "Additional notes about this payment" })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { type: "submit", className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Record Payment" }), _jsx("button", { type: "button", onClick: () => {
+                                                setShowPaymentModal(false);
+                                                setSelectedTeacher(null);
+                                                setPaymentForm({
+                                                    payment_date: new Date().toISOString().split('T')[0],
+                                                    amount: '',
                                                     payment_mode: 'bank',
                                                     payment_proof: '',
                                                     notes: ''
