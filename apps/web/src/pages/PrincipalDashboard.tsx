@@ -683,7 +683,8 @@ function StaffManagement() {
     full_name: '',
     role: 'teacher' as 'clerk' | 'teacher',
     phone: '',
-    gender: '' as 'male' | 'female' | 'other' | ''
+    gender: '' as 'male' | 'female' | 'other' | '',
+    salary_start_date: '' // Optional: when salary should start (only for teachers)
   });
 
   useEffect(() => {
@@ -1289,7 +1290,8 @@ function StaffManagement() {
           full_name: addStaffForm.full_name,
           role: addStaffForm.role,
           phone: addStaffForm.phone || null,
-          gender: addStaffForm.gender || null
+          gender: addStaffForm.gender || null,
+          salary_start_date: addStaffForm.role === 'teacher' && addStaffForm.salary_start_date ? addStaffForm.salary_start_date : null
         }),
       });
 
@@ -1300,7 +1302,7 @@ function StaffManagement() {
 
       alert(`${addStaffForm.role === 'clerk' ? 'Clerk' : 'Teacher'} added successfully!`);
       setAddStaffModalOpen(false);
-      setAddStaffForm({ email: '', password: '', full_name: '', role: 'teacher', phone: '', gender: '' });
+      setAddStaffForm({ email: '', password: '', full_name: '', role: 'teacher', phone: '', gender: '', salary_start_date: '' });
       loadStaff();
     } catch (error: any) {
       alert(error.message || 'Failed to add staff member');
@@ -2040,6 +2042,21 @@ function StaffManagement() {
                   <option value="other">Other</option>
                 </select>
               </div>
+              {/* Salary Start Date - Only show for teachers */}
+              {addStaffForm.role === 'teacher' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Salary Start Date (Optional)</label>
+                  <input
+                    type="date"
+                    value={addStaffForm.salary_start_date}
+                    onChange={(e) => setAddStaffForm({ ...addStaffForm, salary_start_date: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Specify when the salary should start. This date will be used when setting the salary structure.
+                  </p>
+                </div>
+              )}
               <div className="flex gap-3 mt-6">
                 <button
                   type="submit"
@@ -2051,7 +2068,7 @@ function StaffManagement() {
                   type="button"
                   onClick={() => {
                     setAddStaffModalOpen(false);
-                    setAddStaffForm({ email: '', password: '', full_name: '', role: 'teacher', phone: '', gender: '' });
+                    setAddStaffForm({ email: '', password: '', full_name: '', role: 'teacher', phone: '', gender: '', salary_start_date: '' });
                   }}
                   className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
                 >
@@ -6311,6 +6328,24 @@ function SalaryManagement() {
 
   const handleSaveStructure = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate effective_from_date is provided
+    if (!structureForm.effective_from_date || structureForm.effective_from_date.trim() === '') {
+      alert('Please select an effective from date. The salary structure must have a start date.');
+      return;
+    }
+
+    // Validate date is not in the past when creating new structure (not editing)
+    if (!selectedTeacherForEdit) {
+      const selectedDate = new Date(structureForm.effective_from_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (selectedDate < today) {
+        alert('Effective from date cannot be in the past for new salary structures.');
+        return;
+      }
+    }
+
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
@@ -6327,7 +6362,7 @@ function SalaryManagement() {
           hra: parseFloat(structureForm.hra) || 0,
           other_allowances: parseFloat(structureForm.other_allowances) || 0,
           fixed_deductions: parseFloat(structureForm.fixed_deductions) || 0,
-          effective_from_date: structureForm.effective_from_date || undefined
+          effective_from_date: structureForm.effective_from_date
         }),
       });
 
@@ -6872,22 +6907,23 @@ function SalaryManagement() {
               {selectedTeacherForEdit ? 'Edit Salary Structure' : 'Set Salary Structure'}
             </h3>
             <form onSubmit={handleSaveStructure} className="space-y-4">
-              {/* Effective From Date - Always show, required when editing */}
+              {/* Effective From Date - Always required for both new and edit */}
               <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Effective From Date {selectedTeacherForEdit ? '*' : ''}
+                  Effective From Date *
                 </label>
                 <input
                   type="date"
-                  required={!!selectedTeacherForEdit}
-                  value={structureForm.effective_from_date || new Date().toISOString().split('T')[0]}
+                  required
+                  value={structureForm.effective_from_date || ''}
                   onChange={(e) => setStructureForm({ ...structureForm, effective_from_date: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  min={selectedTeacherForEdit ? undefined : new Date().toISOString().split('T')[0]} // Prevent past dates only for new structures
                 />
                 <p className="text-xs text-gray-600 mt-1">
                   {selectedTeacherForEdit 
                     ? 'The new salary structure will be effective from this date. Previous salary structure remains unchanged for all months before this date.'
-                    : 'The salary structure will be effective from this date. Defaults to today if not specified.'}
+                    : 'The salary structure will be effective from this date. Choose the date from which salary should start.'}
                 </p>
               </div>
               <div>
