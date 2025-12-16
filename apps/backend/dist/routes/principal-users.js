@@ -57,7 +57,8 @@ const addStaffSchema = Joi.object({
     full_name: Joi.string().required(),
     role: Joi.string().valid('clerk', 'teacher').required(),
     phone: Joi.string().allow('', null),
-    gender: Joi.string().valid('male', 'female', 'other').allow('', null)
+    gender: Joi.string().valid('male', 'female', 'other').allow('', null),
+    salary_start_date: Joi.date().optional().allow(null, '') // Optional: when salary should start (only for teachers)
 });
 // Get default fees for a class (for student enrollment UI)
 router.get('/classes/:classId/default-fees', requireRoles(['principal']), async (req, res) => {
@@ -740,9 +741,18 @@ router.post('/staff', requireRoles(['principal']), async (req, res) => {
             await supabase.auth.admin.deleteUser(authData.user.id);
             return res.status(400).json({ error: profileError.message });
         }
+        // For teachers: If salary_start_date is provided, we note it but don't create salary structure yet
+        // The principal will set the salary structure separately with the actual salary amounts
+        // The salary_start_date can be used as the default effective_from_date when setting salary structure
         return res.status(201).json({
             message: `${value.role === 'clerk' ? 'Clerk' : 'Teacher'} added successfully`,
-            user: { id: authData.user.id, email: value.email, full_name: value.full_name, role: value.role }
+            user: {
+                id: authData.user.id,
+                email: value.email,
+                full_name: value.full_name,
+                role: value.role,
+                salary_start_date: value.role === 'teacher' && value.salary_start_date ? value.salary_start_date : undefined
+            }
         });
     }
     catch (err) {

@@ -17,7 +17,7 @@ const salaryStructureSchema = Joi.object({
   fixed_deductions: Joi.number().min(0).default(0),
   salary_cycle: Joi.string().valid('monthly', 'weekly', 'biweekly').default('monthly'),
   attendance_based_deduction: Joi.boolean().default(false),
-  effective_from_date: Joi.date().optional() // When creating/editing, principal can specify effective from date
+  effective_from_date: Joi.date().required() // Required: When creating/editing, principal must specify effective from date
 });
 
 // Generate Salary Schema
@@ -85,38 +85,58 @@ router.post('/structure', requireRoles(['principal']), async (req, res) => {
       return res.status(404).json({ error: 'Teacher not found or access denied' });
     }
 
+    // Validate effective_from_date is provided (already validated by Joi, but double-check)
+    if (!value.effective_from_date) {
+      return res.status(400).json({ error: 'Effective from date is required' });
+    }
+
     // Determine effective_from_date for new salary structure
-    const today = new Date().toISOString().split('T')[0];
-    let effectiveFromDate: string;
-    if (value.effective_from_date) {
-      effectiveFromDate = value.effective_from_date;
-    } else {
-      // Default: use today
-      effectiveFromDate = today;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
+    
+    let effectiveFromDate: string = value.effective_from_date;
+    
+    // Validate date format
+    const effectiveFromDateObj = new Date(effectiveFromDate);
+    if (isNaN(effectiveFromDateObj.getTime())) {
+      return res.status(400).json({ error: 'Invalid effective from date format' });
     }
 
     // Check if there's an existing active structure
     const { data: existingActive } = await adminSupabase
       .from('teacher_salary_structure')
-      .select('id, effective_from')
+      .select('id, effective_from, effective_to')
       .eq('teacher_id', value.teacher_id)
       .eq('school_id', user.schoolId)
       .eq('is_active', true)
       .is('effective_to', null)
       .maybeSingle();
 
-    // If there's an existing active structure, close it (versioning)
+    // Edge case: If there's an existing active structure, validate the new date
     if (existingActive) {
+      const existingEffectiveFrom = new Date(existingActive.effective_from);
+      existingEffectiveFrom.setHours(0, 0, 0, 0);
+      const newEffectiveFrom = new Date(effectiveFromDate);
+      newEffectiveFrom.setHours(0, 0, 0, 0);
+      
+      // New effective date must be after the existing effective date
+      if (newEffectiveFrom <= existingEffectiveFrom) {
+        return res.status(400).json({ 
+          error: `New effective from date must be after the current structure's effective date (${existingActive.effective_from}). The new salary structure should start after the existing one.` 
+        });
+      }
+
       // Calculate the day before the new effective_from_date
-      const effectiveFromDateObj = new Date(effectiveFromDate);
-      effectiveFromDateObj.setDate(effectiveFromDateObj.getDate() - 1);
-      const dayBeforeEffectiveFrom = effectiveFromDateObj.toISOString().split('T')[0];
+      const dayBeforeEffectiveFrom = new Date(newEffectiveFrom);
+      dayBeforeEffectiveFrom.setDate(dayBeforeEffectiveFrom.getDate() - 1);
+      const dayBeforeStr = dayBeforeEffectiveFrom.toISOString().split('T')[0];
 
       // Close old structure
       const { error: closeError } = await adminSupabase
         .from('teacher_salary_structure')
         .update({
-          effective_to: dayBeforeEffectiveFrom,
+          effective_to: dayBeforeStr,
           is_active: false,
           updated_at: new Date().toISOString()
         })
@@ -125,6 +145,18 @@ router.post('/structure', requireRoles(['principal']), async (req, res) => {
       if (closeError) {
         console.error('[salary] Error closing old structure:', closeError);
         return res.status(400).json({ error: closeError.message });
+      }
+    } else {
+      // For new structures (no existing active structure), validate that date is not too far in the past
+      // Allow past dates for initial salary structures but warn if it's too far back (e.g., more than 1 year)
+      const newEffectiveFrom = new Date(effectiveFromDate);
+      newEffectiveFrom.setHours(0, 0, 0, 0);
+      const oneYearAgo = new Date(today);
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      
+      if (newEffectiveFrom < oneYearAgo) {
+        // Allow it but log a warning (might want to notify the principal)
+        console.warn(`[salary] Warning: Creating salary structure with effective date more than 1 year in the past: ${effectiveFromDate}`);
       }
     }
 
