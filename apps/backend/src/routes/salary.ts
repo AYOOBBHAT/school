@@ -1072,7 +1072,7 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
         return b.month - a.month;
       });
       
-      const totalUnpaid = months.reduce((sum, m) => sum + parseFloat(m.net_salary || 0), 0);
+      const totalUnpaid = months.reduce((sum, m) => sum + parseFloat(m.pending_amount || 0), 0);
       const oldestMonth = sortedMonths.length > 0 
         ? sortedMonths[sortedMonths.length - 1] 
         : null;
@@ -1108,11 +1108,10 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
           period_label: m.period_label,
           payment_status: m.payment_status,
           net_salary: parseFloat(m.net_salary || 0),
-          salary_not_generated: m.salary_not_generated,
+          paid_amount: parseFloat(m.paid_amount || 0),
+          pending_amount: parseFloat(m.pending_amount || 0),
           days_since_period_start: m.days_since_period_start,
-          salary_record_id: m.salary_record_id,
-          payment_date: m.payment_date,
-          approved_at: m.approved_at
+          payment_date: m.payment_date
         }))
       };
     });
