@@ -952,5 +952,205 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
   }
 });
 
+// ============================================
+// Get Unpaid Teacher Salaries (Month-wise)
+// ============================================
+// Shows all unpaid salary months for teachers, including months without salary records
+// Accessible to Principal and Clerk
+router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => {
+  const { user } = req;
+  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+
+  try {
+    const { teacher_id, time_scope, page = 1, limit = 20 } = req.query;
+    
+    // Validate time scope
+    const validTimeScopes = ['last_month', 'last_2_months', 'last_3_months', 'last_6_months', 'last_12_months', 'current_academic_year'];
+    const timeScope = (time_scope as string) || 'last_12_months';
+    
+    if (!validTimeScopes.includes(timeScope)) {
+      return res.status(400).json({ error: 'Invalid time scope' });
+    }
+
+    // Calculate date range based on time scope
+    const today = new Date();
+    let startDate: Date;
+    let endDate: Date = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    switch (timeScope) {
+      case 'last_month':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        break;
+      case 'last_2_months':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+        break;
+      case 'last_3_months':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+        break;
+      case 'last_6_months':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+        break;
+      case 'last_12_months':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 12, 1);
+        break;
+      case 'current_academic_year':
+        // Assume academic year starts in April (month 3)
+        const currentMonth = today.getMonth();
+        const academicYearStart = currentMonth >= 3 
+          ? new Date(today.getFullYear(), 3, 1)  // April of current year
+          : new Date(today.getFullYear() - 1, 3, 1); // April of previous year
+        startDate = academicYearStart;
+        break;
+      default:
+        startDate = new Date(today.getFullYear(), today.getMonth() - 12, 1);
+    }
+
+    // Build query for unpaid salary months
+    let unpaidMonthsQuery = adminSupabase
+      .from('teacher_unpaid_salary_months')
+      .select('*')
+      .eq('school_id', user.schoolId)
+      .eq('is_unpaid', true)
+      .gte('period_start', startDate.toISOString().split('T')[0])
+      .lte('period_start', endDate.toISOString().split('T')[0])
+      .order('teacher_id', { ascending: true })
+      .order('year', { ascending: false })
+      .order('month', { ascending: false });
+
+    // Filter by teacher if provided
+    if (teacher_id) {
+      unpaidMonthsQuery = unpaidMonthsQuery.eq('teacher_id', teacher_id as string);
+    }
+
+    const { data: unpaidMonths, error: unpaidMonthsError } = await unpaidMonthsQuery;
+
+    if (unpaidMonthsError) {
+      console.error('[salary/unpaid] Error fetching unpaid months:', unpaidMonthsError);
+      return res.status(500).json({ error: unpaidMonthsError.message });
+    }
+
+    // Get summary of unpaid teachers
+    let summaryQuery = adminSupabase
+      .from('unpaid_teachers_summary')
+      .select('*')
+      .eq('school_id', user.schoolId)
+      .order('total_unpaid_amount', { ascending: false });
+
+    if (teacher_id) {
+      summaryQuery = summaryQuery.eq('teacher_id', teacher_id as string);
+    }
+
+    const { data: unpaidTeachersSummary, error: summaryError } = await summaryQuery;
+
+    if (summaryError) {
+      console.error('[salary/unpaid] Error fetching summary:', summaryError);
+      return res.status(500).json({ error: summaryError.message });
+    }
+
+    // Group unpaid months by teacher
+    const teacherMonthsMap = new Map<string, any[]>();
+    (unpaidMonths || []).forEach((month: any) => {
+      if (!teacherMonthsMap.has(month.teacher_id)) {
+        teacherMonthsMap.set(month.teacher_id, []);
+      }
+      teacherMonthsMap.get(month.teacher_id)!.push(month);
+    });
+
+    // Build response with teacher details and month-wise breakdown
+    const teachersList = Array.from(teacherMonthsMap.entries()).map(([teacherId, months]) => {
+      const summary = (unpaidTeachersSummary || []).find((s: any) => s.teacher_id === teacherId);
+      
+      // Sort months by year and month (descending - newest first)
+      const sortedMonths = [...months].sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      });
+      
+      const totalUnpaid = months.reduce((sum, m) => sum + parseFloat(m.net_salary || 0), 0);
+      const oldestMonth = sortedMonths.length > 0 
+        ? sortedMonths[sortedMonths.length - 1] 
+        : null;
+      const latestMonth = sortedMonths.length > 0 
+        ? sortedMonths[0] 
+        : null;
+
+      return {
+        teacher_id: teacherId,
+        teacher_name: months[0]?.teacher_name || summary?.teacher_name || 'Unknown',
+        teacher_email: months[0]?.teacher_email || summary?.teacher_email || '',
+        unpaid_months_count: months.length,
+        total_unpaid_amount: totalUnpaid,
+        max_days_unpaid: oldestMonth ? oldestMonth.days_since_period_start : 0,
+        oldest_unpaid_month: oldestMonth ? {
+          month: oldestMonth.month,
+          year: oldestMonth.year,
+          period_label: oldestMonth.period_label,
+          period_start: oldestMonth.period_start,
+          days_since_period_start: oldestMonth.days_since_period_start
+        } : null,
+        latest_unpaid_month: latestMonth ? {
+          month: latestMonth.month,
+          year: latestMonth.year,
+          period_label: latestMonth.period_label,
+          period_start: latestMonth.period_start,
+          days_since_period_start: latestMonth.days_since_period_start
+        } : null,
+        unpaid_months: sortedMonths.map((m: any) => ({
+          month: m.month,
+          year: m.year,
+          period_start: m.period_start,
+          period_label: m.period_label,
+          payment_status: m.payment_status,
+          net_salary: parseFloat(m.net_salary || 0),
+          salary_not_generated: m.salary_not_generated,
+          days_since_period_start: m.days_since_period_start,
+          salary_record_id: m.salary_record_id,
+          payment_date: m.payment_date,
+          approved_at: m.approved_at
+        }))
+      };
+    });
+
+    // Calculate totals
+    const totalTeachers = teachersList.length;
+    const totalUnpaidAmount = teachersList.reduce((sum, t) => sum + t.total_unpaid_amount, 0);
+    const totalUnpaidMonths = teachersList.reduce((sum, t) => sum + t.unpaid_months_count, 0);
+
+    // Pagination
+    const pageNum = parseInt(page as string) || 1;
+    const limitNum = parseInt(limit as string) || 20;
+    const startIndex = (pageNum - 1) * limitNum;
+    const endIndex = startIndex + limitNum;
+    const paginatedTeachers = teachersList.slice(startIndex, endIndex);
+
+    return res.json({
+      summary: {
+        total_teachers: totalTeachers,
+        total_unpaid_amount: totalUnpaidAmount,
+        total_unpaid_months: totalUnpaidMonths,
+        time_scope: timeScope,
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0]
+      },
+      teachers: paginatedTeachers,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: teachersList.length,
+        total_pages: Math.ceil(teachersList.length / limitNum)
+      }
+    });
+  } catch (err: any) {
+    console.error('[salary/unpaid] Error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to get unpaid teacher salaries' });
+  }
+});
+
 export default router;
 
