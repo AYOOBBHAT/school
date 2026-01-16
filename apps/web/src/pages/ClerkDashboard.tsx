@@ -377,7 +377,9 @@ export default function ClerkDashboard() {
 // Salary Payment Section - Clerk can record payments directly (simplified system)
 function SalaryPaymentSection() {
   const [teacherSummaries, setTeacherSummaries] = useState<any[]>([]);
+  const [unpaidTeachers, setUnpaidTeachers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedTeachers, setExpandedTeachers] = useState<Set<string>>(new Set());
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
   const [paymentForm, setPaymentForm] = useState({
@@ -389,10 +391,10 @@ function SalaryPaymentSection() {
   });
 
   useEffect(() => {
-    loadTeacherSummaries();
+    loadUnpaidSalaries();
   }, []);
 
-  const loadTeacherSummaries = async () => {
+  const loadUnpaidSalaries = async () => {
     try {
       setLoading(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
@@ -402,26 +404,49 @@ function SalaryPaymentSection() {
         return;
       }
 
-      const response = await fetch(`${API_URL}/salary/summary`, {
+      // Load unpaid salaries with month-wise breakdown
+      const unpaidResponse = await fetch(`${API_URL}/salary/unpaid?time_scope=last_12_months`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        // Filter to only show teachers with pending salary > 0
-        const summariesWithPending = (data.summaries || []).filter((s: any) => s.pending_salary > 0);
+      if (unpaidResponse.ok) {
+        const unpaidData = await unpaidResponse.json();
+        setUnpaidTeachers(unpaidData.teachers || []);
+      } else {
+        console.error('Error loading unpaid salaries:', await unpaidResponse.json().catch(() => ({})));
+      }
+
+      // Also load summary for backward compatibility
+      const summaryResponse = await fetch(`${API_URL}/salary/summary`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (summaryResponse.ok) {
+        const summaryData = await summaryResponse.json();
+        const summariesWithPending = (summaryData.summaries || []).filter((s: any) => s.pending_salary > 0);
         setTeacherSummaries(summariesWithPending);
       } else {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to load salary summaries' }));
+        const errorData = await summaryResponse.json().catch(() => ({ error: 'Failed to load salary summaries' }));
         console.error('Error loading salary summaries:', errorData);
         setTeacherSummaries([]);
       }
     } catch (error) {
-      console.error('Error loading salary summaries:', error);
+      console.error('Error loading salary data:', error);
+      setUnpaidTeachers([]);
       setTeacherSummaries([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleTeacherExpansion = (teacherId: string) => {
+    const newExpanded = new Set(expandedTeachers);
+    if (newExpanded.has(teacherId)) {
+      newExpanded.delete(teacherId);
+    } else {
+      newExpanded.add(teacherId);
+    }
+    setExpandedTeachers(newExpanded);
   };
 
   const handleRecordPayment = async (e: React.FormEvent) => {
@@ -477,7 +502,7 @@ function SalaryPaymentSection() {
         payment_proof: '',
         notes: ''
       });
-      loadTeacherSummaries();
+      loadUnpaidSalaries();
     } catch (error: any) {
       alert(error.message || 'Failed to record payment');
     }
@@ -506,51 +531,143 @@ function SalaryPaymentSection() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-8"></th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Teacher</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Due</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Paid</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pending Salary</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unpaid Months</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Unpaid</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {teacherSummaries.length === 0 ? (
+            {unpaidTeachers.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
                   No teachers with pending salary. All teachers are up to date with their payments.
                 </td>
               </tr>
             ) : (
-              teacherSummaries.map((summary: any) => (
-                <tr key={summary.teacher.id}>
-                  <td className="px-6 py-4 font-medium">{summary.teacher?.full_name || 'Unknown'}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{summary.teacher?.email || '-'}</td>
-                  <td className="px-6 py-4">₹{summary.total_salary_due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  <td className="px-6 py-4 text-green-600">₹{summary.total_salary_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  <td className="px-6 py-4 font-semibold text-orange-600">
-                    ₹{summary.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => {
-                        setSelectedTeacher(summary);
-                        setPaymentForm({
-                          payment_date: new Date().toISOString().split('T')[0],
-                          amount: summary.pending_salary.toFixed(2), // Pre-fill with pending amount
-                          payment_mode: 'bank',
-                          payment_proof: '',
-                          notes: ''
-                        });
-                        setShowPaymentModal(true);
-                      }}
-                      className="text-blue-600 hover:text-blue-900 font-medium"
-                    >
-                      Record Payment
-                    </button>
-                  </td>
-                </tr>
-              ))
+              unpaidTeachers.map((teacher: any) => {
+                const isExpanded = expandedTeachers.has(teacher.teacher_id);
+                // Find matching summary for total due/paid info
+                const summary = teacherSummaries.find((s: any) => s.teacher?.id === teacher.teacher_id);
+                
+                return (
+                  <>
+                    <tr key={teacher.teacher_id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        {teacher.unpaid_months_count > 0 && (
+                          <button
+                            onClick={() => toggleTeacherExpansion(teacher.teacher_id)}
+                            className="text-gray-500 hover:text-gray-700"
+                          >
+                            {isExpanded ? (
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            ) : (
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            )}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 font-medium">{teacher.teacher_name || 'Unknown'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{teacher.teacher_email || '-'}</td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                          {teacher.unpaid_months_count} {teacher.unpaid_months_count === 1 ? 'month' : 'months'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-orange-600">
+                        ₹{teacher.total_unpaid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => {
+                            setSelectedTeacher({
+                              teacher: { id: teacher.teacher_id, full_name: teacher.teacher_name, email: teacher.teacher_email },
+                              total_salary_due: summary?.total_salary_due || 0,
+                              total_salary_paid: summary?.total_salary_paid || 0,
+                              pending_salary: teacher.total_unpaid_amount
+                            });
+                            setPaymentForm({
+                              payment_date: new Date().toISOString().split('T')[0],
+                              amount: teacher.total_unpaid_amount.toFixed(2),
+                              payment_mode: 'bank',
+                              payment_proof: '',
+                              notes: ''
+                            });
+                            setShowPaymentModal(true);
+                          }}
+                          className="text-blue-600 hover:text-blue-900 font-medium"
+                        >
+                          Record Payment
+                        </button>
+                      </td>
+                    </tr>
+                    {isExpanded && teacher.unpaid_months && teacher.unpaid_months.length > 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-4 bg-gray-50">
+                          <div className="ml-8">
+                            <h4 className="text-sm font-semibold text-gray-700 mb-3">Monthly Breakdown:</h4>
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-100">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Month</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Status</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Amount</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Days Overdue</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Notes</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {teacher.unpaid_months.map((month: any, idx: number) => (
+                                    <tr key={`${month.year}-${month.month}-${idx}`}>
+                                      <td className="px-4 py-2 text-sm font-medium">{month.period_label}</td>
+                                      <td className="px-4 py-2">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                          month.salary_not_generated 
+                                            ? 'bg-red-100 text-red-800' 
+                                            : month.payment_status === 'partially-paid'
+                                            ? 'bg-yellow-100 text-yellow-800'
+                                            : 'bg-orange-100 text-orange-800'
+                                        }`}>
+                                          {month.salary_not_generated ? 'Not Generated' : month.payment_status}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2 text-sm font-semibold">
+                                        ₹{month.net_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </td>
+                                      <td className="px-4 py-2 text-sm">
+                                        {month.days_since_period_start > 0 ? (
+                                          <span className="text-red-600 font-medium">{month.days_since_period_start} days</span>
+                                        ) : (
+                                          <span className="text-gray-500">-</span>
+                                        )}
+                                      </td>
+                                      <td className="px-4 py-2 text-xs text-gray-500">
+                                        {month.salary_not_generated && (
+                                          <span className="text-red-600">Salary record not generated for this month</span>
+                                        )}
+                                        {month.payment_date && (
+                                          <span>Last payment: {new Date(month.payment_date).toLocaleDateString()}</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })
             )}
           </tbody>
         </table>
