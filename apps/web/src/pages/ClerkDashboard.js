@@ -187,7 +187,9 @@ export default function ClerkDashboard() {
 // Salary Payment Section - Clerk can record payments directly (simplified system)
 function SalaryPaymentSection() {
     const [teacherSummaries, setTeacherSummaries] = useState([]);
+    const [unpaidTeachers, setUnpaidTeachers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [expandedTeachers, setExpandedTeachers] = useState(new Set());
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [selectedTeacher, setSelectedTeacher] = useState(null);
     const [paymentForm, setPaymentForm] = useState({
@@ -198,9 +200,9 @@ function SalaryPaymentSection() {
         notes: ''
     });
     useEffect(() => {
-        loadTeacherSummaries();
+        loadUnpaidSalaries();
     }, []);
-    const loadTeacherSummaries = async () => {
+    const loadUnpaidSalaries = async () => {
         try {
             setLoading(true);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
@@ -209,28 +211,50 @@ function SalaryPaymentSection() {
                 setLoading(false);
                 return;
             }
-            const response = await fetch(`${API_URL}/salary/summary`, {
+            // Load unpaid salaries with month-wise breakdown
+            const unpaidResponse = await fetch(`${API_URL}/salary/unpaid?time_scope=last_12_months`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (response.ok) {
-                const data = await response.json();
-                // Filter to only show teachers with pending salary > 0
-                const summariesWithPending = (data.summaries || []).filter((s) => s.pending_salary > 0);
+            if (unpaidResponse.ok) {
+                const unpaidData = await unpaidResponse.json();
+                setUnpaidTeachers(unpaidData.teachers || []);
+            }
+            else {
+                console.error('Error loading unpaid salaries:', await unpaidResponse.json().catch(() => ({})));
+            }
+            // Also load summary for backward compatibility
+            const summaryResponse = await fetch(`${API_URL}/salary/summary`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (summaryResponse.ok) {
+                const summaryData = await summaryResponse.json();
+                const summariesWithPending = (summaryData.summaries || []).filter((s) => s.pending_salary > 0);
                 setTeacherSummaries(summariesWithPending);
             }
             else {
-                const errorData = await response.json().catch(() => ({ error: 'Failed to load salary summaries' }));
+                const errorData = await summaryResponse.json().catch(() => ({ error: 'Failed to load salary summaries' }));
                 console.error('Error loading salary summaries:', errorData);
                 setTeacherSummaries([]);
             }
         }
         catch (error) {
-            console.error('Error loading salary summaries:', error);
+            console.error('Error loading salary data:', error);
+            setUnpaidTeachers([]);
             setTeacherSummaries([]);
         }
         finally {
             setLoading(false);
         }
+    };
+    const toggleTeacherExpansion = (teacherId) => {
+        const newExpanded = new Set(expandedTeachers);
+        if (newExpanded.has(teacherId)) {
+            newExpanded.delete(teacherId);
+        }
+        else {
+            newExpanded.add(teacherId);
+        }
+        setExpandedTeachers(newExpanded);
     };
     const handleRecordPayment = async (e) => {
         e.preventDefault();
@@ -281,7 +305,7 @@ function SalaryPaymentSection() {
                 payment_proof: '',
                 notes: ''
             });
-            loadTeacherSummaries();
+            loadUnpaidSalaries();
         }
         catch (error) {
             alert(error.message || 'Failed to record payment');
@@ -290,17 +314,31 @@ function SalaryPaymentSection() {
     if (loading) {
         return (_jsx("div", { children: _jsx("div", { className: "text-center py-8", children: "Loading teacher salary information..." }) }));
     }
-    return (_jsxs("div", { children: [_jsx("div", { className: "flex justify-between items-center mb-6", children: _jsxs("div", { children: [_jsx("h2", { className: "text-3xl font-bold", children: "Pay Salary" }), _jsx("p", { className: "text-gray-600 mt-2", children: "Record salary payments directly. You can pay full, partial, or advance payments to teachers." })] }) }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Email" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Total Due" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Total Paid" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Pending Salary" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: teacherSummaries.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 6, className: "px-6 py-4 text-center text-gray-500", children: "No teachers with pending salary. All teachers are up to date with their payments." }) })) : (teacherSummaries.map((summary) => (_jsxs("tr", { children: [_jsx("td", { className: "px-6 py-4 font-medium", children: summary.teacher?.full_name || 'Unknown' }), _jsx("td", { className: "px-6 py-4 text-sm text-gray-600", children: summary.teacher?.email || '-' }), _jsxs("td", { className: "px-6 py-4", children: ["\u20B9", summary.total_salary_due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] }), _jsxs("td", { className: "px-6 py-4 text-green-600", children: ["\u20B9", summary.total_salary_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] }), _jsxs("td", { className: "px-6 py-4 font-semibold text-orange-600", children: ["\u20B9", summary.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] }), _jsx("td", { className: "px-6 py-4", children: _jsx("button", { onClick: () => {
-                                                setSelectedTeacher(summary);
-                                                setPaymentForm({
-                                                    payment_date: new Date().toISOString().split('T')[0],
-                                                    amount: summary.pending_salary.toFixed(2), // Pre-fill with pending amount
-                                                    payment_mode: 'bank',
-                                                    payment_proof: '',
-                                                    notes: ''
-                                                });
-                                                setShowPaymentModal(true);
-                                            }, className: "text-blue-600 hover:text-blue-900 font-medium", children: "Record Payment" }) })] }, summary.teacher.id)))) })] }) }), showPaymentModal && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Record Salary Payment" }), _jsxs("p", { className: "text-sm text-gray-600 mb-2", children: ["Teacher: ", _jsx("strong", { children: selectedTeacher.teacher?.full_name })] }), _jsxs("div", { className: "bg-gray-50 p-3 rounded-lg mb-4", children: [_jsxs("div", { className: "flex justify-between text-sm mb-1", children: [_jsx("span", { className: "text-gray-600", children: "Total Due:" }), _jsxs("span", { className: "font-semibold", children: ["\u20B9", selectedTeacher.total_salary_due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] }), _jsxs("div", { className: "flex justify-between text-sm mb-1", children: [_jsx("span", { className: "text-gray-600", children: "Total Paid:" }), _jsxs("span", { className: "text-green-600", children: ["\u20B9", selectedTeacher.total_salary_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] }), _jsxs("div", { className: "flex justify-between text-sm font-semibold pt-2 border-t", children: [_jsx("span", { children: "Pending:" }), _jsxs("span", { className: "text-orange-600", children: ["\u20B9", selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] })] }), _jsxs("form", { onSubmit: handleRecordPayment, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Amount (\u20B9) *" }), _jsx("input", { type: "number", required: true, step: "0.01", min: "0.01", value: paymentForm.amount, onChange: (e) => setPaymentForm({ ...paymentForm, amount: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "Enter payment amount" }), _jsxs("p", { className: "text-xs text-gray-500 mt-1", children: ["You can pay full, partial, or advance amounts. Pending: \u20B9", selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Date *" }), _jsx("input", { type: "date", required: true, value: paymentForm.payment_date, onChange: (e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Mode *" }), _jsxs("select", { required: true, value: paymentForm.payment_mode, onChange: (e) => setPaymentForm({ ...paymentForm, payment_mode: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", children: [_jsx("option", { value: "bank", children: "Bank Transfer" }), _jsx("option", { value: "cash", children: "Cash" }), _jsx("option", { value: "upi", children: "UPI" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Proof (Optional)" }), _jsx("input", { type: "text", value: paymentForm.payment_proof, onChange: (e) => setPaymentForm({ ...paymentForm, payment_proof: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "URL or file path to payment proof" }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Upload proof document and paste URL here, or leave empty" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Notes (Optional)" }), _jsx("textarea", { value: paymentForm.notes, onChange: (e) => setPaymentForm({ ...paymentForm, notes: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", rows: 3, placeholder: "Additional notes about this payment" })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { type: "submit", className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Record Payment" }), _jsx("button", { type: "button", onClick: () => {
+    return (_jsxs("div", { children: [_jsx("div", { className: "flex justify-between items-center mb-6", children: _jsxs("div", { children: [_jsx("h2", { className: "text-3xl font-bold", children: "Pay Salary" }), _jsx("p", { className: "text-gray-600 mt-2", children: "Record salary payments directly. You can pay full, partial, or advance payments to teachers." })] }) }), _jsx("div", { className: "bg-white rounded-lg shadow-md overflow-hidden", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-50", children: _jsxs("tr", { children: [_jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-8" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Teacher" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Email" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Unpaid Months" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Total Unpaid" }), _jsx("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase", children: "Actions" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: unpaidTeachers.length === 0 ? (_jsx("tr", { children: _jsx("td", { colSpan: 6, className: "px-6 py-4 text-center text-gray-500", children: "No teachers with pending salary. All teachers are up to date with their payments." }) })) : (unpaidTeachers.map((teacher) => {
+                                const isExpanded = expandedTeachers.has(teacher.teacher_id);
+                                // Find matching summary for total due/paid info
+                                const summary = teacherSummaries.find((s) => s.teacher?.id === teacher.teacher_id);
+                                return (_jsxs(_Fragment, { children: [_jsxs("tr", { className: "hover:bg-gray-50", children: [_jsx("td", { className: "px-6 py-4", children: teacher.unpaid_months_count > 0 && (_jsx("button", { onClick: () => toggleTeacherExpansion(teacher.teacher_id), className: "text-gray-500 hover:text-gray-700", children: isExpanded ? (_jsx("svg", { className: "w-5 h-5", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M19 9l-7 7-7-7" }) })) : (_jsx("svg", { className: "w-5 h-5", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", children: _jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M9 5l7 7-7 7" }) })) })) }), _jsx("td", { className: "px-6 py-4 font-medium", children: teacher.teacher_name || 'Unknown' }), _jsx("td", { className: "px-6 py-4 text-sm text-gray-600", children: teacher.teacher_email || '-' }), _jsx("td", { className: "px-6 py-4", children: _jsxs("span", { className: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800", children: [teacher.unpaid_months_count, " ", teacher.unpaid_months_count === 1 ? 'month' : 'months'] }) }), _jsxs("td", { className: "px-6 py-4 font-semibold text-orange-600", children: ["\u20B9", teacher.total_unpaid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] }), _jsx("td", { className: "px-6 py-4", children: _jsx("button", { onClick: () => {
+                                                            setSelectedTeacher({
+                                                                teacher: { id: teacher.teacher_id, full_name: teacher.teacher_name, email: teacher.teacher_email },
+                                                                total_salary_due: summary?.total_salary_due || 0,
+                                                                total_salary_paid: summary?.total_salary_paid || 0,
+                                                                pending_salary: teacher.total_unpaid_amount
+                                                            });
+                                                            setPaymentForm({
+                                                                payment_date: new Date().toISOString().split('T')[0],
+                                                                amount: teacher.total_unpaid_amount.toFixed(2),
+                                                                payment_mode: 'bank',
+                                                                payment_proof: '',
+                                                                notes: ''
+                                                            });
+                                                            setShowPaymentModal(true);
+                                                        }, className: "text-blue-600 hover:text-blue-900 font-medium", children: "Record Payment" }) })] }, teacher.teacher_id), isExpanded && teacher.unpaid_months && teacher.unpaid_months.length > 0 && (_jsx("tr", { children: _jsx("td", { colSpan: 6, className: "px-6 py-4 bg-gray-50", children: _jsxs("div", { className: "ml-8", children: [_jsx("h4", { className: "text-sm font-semibold text-gray-700 mb-3", children: "Monthly Breakdown:" }), _jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "min-w-full divide-y divide-gray-200", children: [_jsx("thead", { className: "bg-gray-100", children: _jsxs("tr", { children: [_jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase", children: "Month" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase", children: "Status" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase", children: "Amount" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase", children: "Days Overdue" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase", children: "Notes" })] }) }), _jsx("tbody", { className: "bg-white divide-y divide-gray-200", children: teacher.unpaid_months.map((month, idx) => (_jsxs("tr", { children: [_jsx("td", { className: "px-4 py-2 text-sm font-medium", children: month.period_label }), _jsx("td", { className: "px-4 py-2", children: _jsx("span", { className: `inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${month.salary_not_generated
+                                                                                            ? 'bg-red-100 text-red-800'
+                                                                                            : month.payment_status === 'partially-paid'
+                                                                                                ? 'bg-yellow-100 text-yellow-800'
+                                                                                                : 'bg-orange-100 text-orange-800'}`, children: month.salary_not_generated ? 'Not Generated' : month.payment_status }) }), _jsxs("td", { className: "px-4 py-2 text-sm font-semibold", children: ["\u20B9", month.net_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] }), _jsx("td", { className: "px-4 py-2 text-sm", children: month.days_since_period_start > 0 ? (_jsxs("span", { className: "text-red-600 font-medium", children: [month.days_since_period_start, " days"] })) : (_jsx("span", { className: "text-gray-500", children: "-" })) }), _jsxs("td", { className: "px-4 py-2 text-xs text-gray-500", children: [month.salary_not_generated && (_jsx("span", { className: "text-red-600", children: "Salary record not generated for this month" })), month.payment_date && (_jsxs("span", { children: ["Last payment: ", new Date(month.payment_date).toLocaleDateString()] }))] })] }, `${month.year}-${month.month}-${idx}`))) })] }) })] }) }) }))] }));
+                            })) })] }) }), showPaymentModal && selectedTeacher && (_jsx("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50", children: _jsxs("div", { className: "bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto", children: [_jsx("h3", { className: "text-xl font-bold mb-4", children: "Record Salary Payment" }), _jsxs("p", { className: "text-sm text-gray-600 mb-2", children: ["Teacher: ", _jsx("strong", { children: selectedTeacher.teacher?.full_name })] }), _jsxs("div", { className: "bg-gray-50 p-3 rounded-lg mb-4", children: [_jsxs("div", { className: "flex justify-between text-sm mb-1", children: [_jsx("span", { className: "text-gray-600", children: "Total Due:" }), _jsxs("span", { className: "font-semibold", children: ["\u20B9", selectedTeacher.total_salary_due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] }), _jsxs("div", { className: "flex justify-between text-sm mb-1", children: [_jsx("span", { className: "text-gray-600", children: "Total Paid:" }), _jsxs("span", { className: "text-green-600", children: ["\u20B9", selectedTeacher.total_salary_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] }), _jsxs("div", { className: "flex justify-between text-sm font-semibold pt-2 border-t", children: [_jsx("span", { children: "Pending:" }), _jsxs("span", { className: "text-orange-600", children: ["\u20B9", selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] })] }), _jsxs("form", { onSubmit: handleRecordPayment, className: "space-y-4", children: [_jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Amount (\u20B9) *" }), _jsx("input", { type: "number", required: true, step: "0.01", min: "0.01", value: paymentForm.amount, onChange: (e) => setPaymentForm({ ...paymentForm, amount: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "Enter payment amount" }), _jsxs("p", { className: "text-xs text-gray-500 mt-1", children: ["You can pay full, partial, or advance amounts. Pending: \u20B9", selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Date *" }), _jsx("input", { type: "date", required: true, value: paymentForm.payment_date, onChange: (e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Mode *" }), _jsxs("select", { required: true, value: paymentForm.payment_mode, onChange: (e) => setPaymentForm({ ...paymentForm, payment_mode: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", children: [_jsx("option", { value: "bank", children: "Bank Transfer" }), _jsx("option", { value: "cash", children: "Cash" }), _jsx("option", { value: "upi", children: "UPI" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Payment Proof (Optional)" }), _jsx("input", { type: "text", value: paymentForm.payment_proof, onChange: (e) => setPaymentForm({ ...paymentForm, payment_proof: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", placeholder: "URL or file path to payment proof" }), _jsx("p", { className: "text-xs text-gray-500 mt-1", children: "Upload proof document and paste URL here, or leave empty" })] }), _jsxs("div", { children: [_jsx("label", { className: "block text-sm font-medium mb-2", children: "Notes (Optional)" }), _jsx("textarea", { value: paymentForm.notes, onChange: (e) => setPaymentForm({ ...paymentForm, notes: e.target.value }), className: "w-full border border-gray-300 rounded-lg px-3 py-2", rows: 3, placeholder: "Additional notes about this payment" })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { type: "submit", className: "flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700", children: "Record Payment" }), _jsx("button", { type: "button", onClick: () => {
                                                 setShowPaymentModal(false);
                                                 setSelectedTeacher(null);
                                                 setPaymentForm({

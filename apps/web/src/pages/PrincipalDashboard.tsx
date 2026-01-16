@@ -6266,7 +6266,9 @@ function SalaryManagement() {
   const [salaryStructures, setSalaryStructures] = useState<any[]>([]);
   const [salaryRecords, setSalaryRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'structure' | 'pending' | 'records' | 'reports'>('structure');
+  const [activeTab, setActiveTab] = useState<'structure' | 'pending' | 'records' | 'reports' | 'unpaid'>('structure');
+  const [unpaidTeachers, setUnpaidTeachers] = useState<any[]>([]);
+  const [expandedTeachers, setExpandedTeachers] = useState<Set<string>>(new Set());
   
   // Structure form
   const [showStructureModal, setShowStructureModal] = useState(false);
@@ -6285,6 +6287,12 @@ function SalaryManagement() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'unpaid') {
+      loadUnpaidSalaries();
+    }
+  }, [activeTab]);
 
   const loadData = async () => {
     try {
@@ -6310,6 +6318,38 @@ function SalaryManagement() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadUnpaidSalaries = async () => {
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/salary/unpaid?time_scope=last_12_months`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUnpaidTeachers(data.teachers || []);
+      } else {
+        console.error('Error loading unpaid salaries:', await response.json().catch(() => ({})));
+        setUnpaidTeachers([]);
+      }
+    } catch (error) {
+      console.error('Error loading unpaid salaries:', error);
+      setUnpaidTeachers([]);
+    }
+  };
+
+  const toggleTeacherExpansion = (teacherId: string) => {
+    const newExpanded = new Set(expandedTeachers);
+    if (newExpanded.has(teacherId)) {
+      newExpanded.delete(teacherId);
+    } else {
+      newExpanded.add(teacherId);
+    }
+    setExpandedTeachers(newExpanded);
   };
 
   const handleSaveStructure = async (e: React.FormEvent) => {
@@ -6456,6 +6496,7 @@ function SalaryManagement() {
         {[
           { id: 'structure', label: 'Salary Structure' },
           { id: 'pending', label: 'Pending Salaries' },
+          { id: 'unpaid', label: 'Unpaid Salaries' },
           { id: 'records', label: 'All Records' },
           { id: 'reports', label: 'Reports' }
         ].map(tab => (
@@ -6731,6 +6772,147 @@ function SalaryManagement() {
                       </td>
                     </tr>
                   ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Unpaid Salaries Tab */}
+      {activeTab === 'unpaid' && (
+        <div>
+          <h3 className="text-xl font-bold mb-4">Unpaid Teacher Salaries (Month-wise)</h3>
+          <p className="text-gray-600 mb-6">
+            View all unpaid salary months for teachers, including months where salary records were not generated.
+          </p>
+          
+          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-8"></th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Teacher</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unpaid Months</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Unpaid</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Oldest Unpaid</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {unpaidTeachers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                      No teachers with unpaid salaries. All teachers are up to date with their payments.
+                    </td>
+                  </tr>
+                ) : (
+                  unpaidTeachers.map((teacher: any) => {
+                    const isExpanded = expandedTeachers.has(teacher.teacher_id);
+                    
+                    return (
+                      <>
+                        <tr key={teacher.teacher_id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            {teacher.unpaid_months_count > 0 && (
+                              <button
+                                onClick={() => toggleTeacherExpansion(teacher.teacher_id)}
+                                className="text-gray-500 hover:text-gray-700"
+                              >
+                                {isExpanded ? (
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                )}
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 font-medium">{teacher.teacher_name || 'Unknown'}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600">{teacher.teacher_email || '-'}</td>
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                              {teacher.unpaid_months_count} {teacher.unpaid_months_count === 1 ? 'month' : 'months'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-orange-600">
+                            ₹{teacher.total_unpaid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {teacher.oldest_unpaid_month ? (
+                              <div>
+                                <div>{teacher.oldest_unpaid_month.period_label}</div>
+                                <div className="text-xs text-red-600">
+                                  {teacher.oldest_unpaid_month.days_since_period_start} days overdue
+                                </div>
+                              </div>
+                            ) : '-'}
+                          </td>
+                        </tr>
+                        {isExpanded && teacher.unpaid_months && teacher.unpaid_months.length > 0 && (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-4 bg-gray-50">
+                              <div className="ml-8">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Monthly Breakdown:</h4>
+                                <div className="overflow-x-auto">
+                                  <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-100">
+                                      <tr>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Month</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Status</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Amount</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Days Overdue</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Notes</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                      {teacher.unpaid_months.map((month: any, idx: number) => (
+                                        <tr key={`${month.year}-${month.month}-${idx}`}>
+                                          <td className="px-4 py-2 text-sm font-medium">{month.period_label}</td>
+                                          <td className="px-4 py-2">
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                              month.salary_not_generated 
+                                                ? 'bg-red-100 text-red-800' 
+                                                : month.payment_status === 'partially-paid'
+                                                ? 'bg-yellow-100 text-yellow-800'
+                                                : 'bg-orange-100 text-orange-800'
+                                            }`}>
+                                              {month.salary_not_generated ? 'Not Generated' : month.payment_status}
+                                            </span>
+                                          </td>
+                                          <td className="px-4 py-2 text-sm font-semibold">
+                                            ₹{month.net_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                          </td>
+                                          <td className="px-4 py-2 text-sm">
+                                            {month.days_since_period_start > 0 ? (
+                                              <span className="text-red-600 font-medium">{month.days_since_period_start} days</span>
+                                            ) : (
+                                              <span className="text-gray-500">-</span>
+                                            )}
+                                          </td>
+                                          <td className="px-4 py-2 text-xs text-gray-500">
+                                            {month.salary_not_generated && (
+                                              <span className="text-red-600">Salary record not generated for this month</span>
+                                            )}
+                                            {month.payment_date && (
+                                              <span>Last payment: {new Date(month.payment_date).toLocaleDateString()}</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })
                 )}
               </tbody>
             </table>
