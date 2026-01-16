@@ -548,6 +548,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
         id,
         roll_number,
         class_group_id,
+        admission_date,
         profile:profiles!students_profile_id_fkey(
           full_name,
           email,
@@ -701,16 +702,51 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
             const totalFee = allStudentComponents.reduce((sum, c) => sum + parseFloat(c.fee_amount || 0), 0);
             const totalPaid = allStudentComponents.reduce((sum, c) => sum + parseFloat(c.paid_amount || 0), 0);
             const totalPending = studentUnpaidComponents.reduce((sum, c) => sum + parseFloat(c.pending_amount || 0), 0);
-            // Determine payment status based on unpaid components
+            // Determine payment status based on unpaid components AND missing months
+            // CRITICAL: A student is unpaid if:
+            // 1. They have unpaid components (pending_amount > 0), OR
+            // 2. They have months without any components (bills not generated)
             let paymentStatus;
-            if (studentUnpaidComponents.length === 0) {
-                // No unpaid components - student is fully paid
+            // Calculate expected months for this student in the time scope
+            // Get student admission date to determine expected months
+            const studentAdmissionDate = s.admission_date
+                ? new Date(s.admission_date)
+                : new Date(startDate.getFullYear(), 0, 1);
+            // Generate expected months from admission date (or time scope start, whichever is later) to time scope end
+            const expectedMonths = [];
+            const monthStart = new Date(Math.max(studentAdmissionDate.getTime(), startDate.getTime()));
+            const monthEnd = new Date(endDate);
+            let currentMonth = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+            while (currentMonth <= monthEnd) {
+                expectedMonths.push({
+                    year: currentMonth.getFullYear(),
+                    month: currentMonth.getMonth() + 1
+                });
+                currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+            }
+            // Check which expected months have components
+            const monthsWithComponents = new Set();
+            allStudentComponents.forEach((comp) => {
+                const monthKey = `${comp.period_year}-${comp.period_month}`;
+                monthsWithComponents.add(monthKey);
+            });
+            // Check for missing months (months without any components)
+            const missingMonths = expectedMonths.filter(em => {
+                const monthKey = `${em.year}-${em.month}`;
+                return !monthsWithComponents.has(monthKey);
+            });
+            // Determine status
+            if (studentUnpaidComponents.length === 0 && missingMonths.length === 0) {
+                // No unpaid components AND no missing months - student is fully paid
                 paymentStatus = 'paid';
+            }
+            else if (missingMonths.length > 0) {
+                // Has missing months (no bills generated) - student is unpaid
+                // Even if existing components are paid, missing months = unpaid
+                paymentStatus = 'unpaid';
             }
             else {
                 // Has unpaid components - check if any of them have partial payments
-                // If any unpaid component has paid_amount > 0, it's partially-paid
-                // Otherwise, it's unpaid
                 const hasPartialPayment = studentUnpaidComponents.some((c) => parseFloat(c.paid_amount || 0) > 0);
                 paymentStatus = hasPartialPayment ? 'partially-paid' : 'unpaid';
             }
