@@ -462,9 +462,15 @@ function SalaryPaymentSection() {
       return;
     }
 
-    // Check if amount exceeds pending salary
-    if (amount > selectedTeacher.pending_salary) {
-      if (!confirm(`Payment amount (₹${amount.toLocaleString()}) exceeds pending salary (₹${selectedTeacher.pending_salary.toLocaleString()}). This will be recorded as an advance payment. Continue?`)) {
+    // Check if amount exceeds expected salary for the month
+    const expectedSalary = selectedTeacher.selectedMonth?.net_salary || selectedTeacher.pending_salary;
+    if (amount > expectedSalary) {
+      const excess = amount - expectedSalary;
+      if (!confirm(
+        `Payment amount (₹${amount.toLocaleString()}) exceeds expected salary (₹${expectedSalary.toLocaleString()}) for this month.\n\n` +
+        `Excess amount (₹${excess.toLocaleString()}) will be automatically applied as credit to future unpaid months.\n\n` +
+        `Continue?`
+      )) {
         return;
       }
     }
@@ -496,7 +502,21 @@ function SalaryPaymentSection() {
         throw new Error(error.error || 'Failed to record payment');
       }
 
-      alert('Payment recorded successfully!');
+      const result = await response.json();
+      
+      // Show success message with credit information if applicable
+      if (result.excess_amount && result.excess_amount > 0) {
+        const creditInfo = result.credit_applied || {};
+        const message = `Payment recorded successfully!\n\n` +
+          `Excess Amount: ₹${result.excess_amount.toFixed(2)}\n` +
+          `Credit Applied: ₹${(creditInfo.applied_amount || 0).toFixed(2)}\n` +
+          `Months Applied: ${creditInfo.months_applied || 0}\n` +
+          `Remaining Credit: ₹${(creditInfo.remaining_credit || 0).toFixed(2)}`;
+        alert(message);
+      } else {
+        alert('Payment recorded successfully!');
+      }
+      
       setShowPaymentModal(false);
       setSelectedTeacher(null);
       setPaymentForm({
@@ -657,7 +677,13 @@ function SalaryPaymentSection() {
                                       <td className="px-4 py-2 text-sm">
                                         <div className="font-semibold">₹{month.net_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                                         {month.paid_amount > 0 && (
-                                          <div className="text-xs text-green-600">Paid: ₹{month.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                          <div className="text-xs text-green-600">Cash: ₹{month.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                        )}
+                                        {month.credit_applied > 0 && (
+                                          <div className="text-xs text-blue-600">Credit: ₹{month.credit_applied.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                        )}
+                                        {month.effective_paid_amount > 0 && month.effective_paid_amount !== month.paid_amount && (
+                                          <div className="text-xs text-gray-600 font-medium">Total: ₹{month.effective_paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                                         )}
                                         {month.pending_amount > 0 && (
                                           <div className="text-xs text-orange-600">Pending: ₹{month.pending_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
@@ -744,8 +770,20 @@ function SalaryPaymentSection() {
                   </div>
                   {selectedTeacher.selectedMonth.paid_amount > 0 && (
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-600">Already Paid:</span>
+                      <span className="text-gray-600">Cash Paid:</span>
                       <span className="text-green-600">₹{selectedTeacher.selectedMonth.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  {selectedTeacher.selectedMonth.credit_applied > 0 && (
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600">Credit Applied:</span>
+                      <span className="text-blue-600">₹{selectedTeacher.selectedMonth.credit_applied.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  {selectedTeacher.selectedMonth.effective_paid_amount > 0 && selectedTeacher.selectedMonth.effective_paid_amount !== selectedTeacher.selectedMonth.paid_amount && (
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600">Total Paid:</span>
+                      <span className="text-gray-700 font-medium">₹{selectedTeacher.selectedMonth.effective_paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-semibold pt-2 border-t">
@@ -784,7 +822,25 @@ function SalaryPaymentSection() {
                   placeholder="Enter payment amount"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  You can pay full, partial, or advance amounts. Pending: ₹{selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  You can pay full, partial, or advance amounts. 
+                  {selectedTeacher.selectedMonth ? (
+                    <>
+                      Expected: ₹{selectedTeacher.selectedMonth.net_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. 
+                      {selectedTeacher.selectedMonth.pending_amount > 0 && (
+                        <> Pending: ₹{selectedTeacher.selectedMonth.pending_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.</>
+                      )}
+                      {selectedTeacher.selectedMonth.credit_applied > 0 && (
+                        <> Credit applied: ₹{selectedTeacher.selectedMonth.credit_applied.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.</>
+                      )}
+                    </>
+                  ) : (
+                    <> Pending: ₹{selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.</>
+                  )}
+                  {selectedTeacher.selectedMonth && parseFloat(paymentForm.amount) > selectedTeacher.selectedMonth.net_salary && (
+                    <span className="block mt-1 text-blue-600 font-medium">
+                      ⓘ Excess amount will be applied as credit to future months automatically.
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
