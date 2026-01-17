@@ -387,7 +387,9 @@ function SalaryPaymentSection() {
     amount: '',
     payment_mode: 'bank' as 'bank' | 'cash' | 'upi',
     payment_proof: '',
-    notes: ''
+    notes: '',
+    salary_month: new Date().getMonth() + 1,
+    salary_year: new Date().getFullYear()
   });
 
   useEffect(() => {
@@ -483,7 +485,9 @@ function SalaryPaymentSection() {
           amount: amount,
           payment_mode: paymentForm.payment_mode,
           payment_proof: paymentForm.payment_proof || null,
-          notes: paymentForm.notes || null
+          notes: paymentForm.notes || null,
+          salary_month: paymentForm.salary_month,
+          salary_year: paymentForm.salary_year
         }),
       });
 
@@ -500,7 +504,9 @@ function SalaryPaymentSection() {
         amount: '',
         payment_mode: 'bank',
         payment_proof: '',
-        notes: ''
+        notes: '',
+        salary_month: new Date().getMonth() + 1,
+        salary_year: new Date().getFullYear()
       });
       loadUnpaidSalaries();
     } catch (error: any) {
@@ -590,14 +596,21 @@ function SalaryPaymentSection() {
                               teacher: { id: teacher.teacher_id, full_name: teacher.teacher_name, email: teacher.teacher_email },
                               total_salary_due: summary?.total_salary_due || 0,
                               total_salary_paid: summary?.total_salary_paid || 0,
-                              pending_salary: teacher.total_unpaid_amount
+                              pending_salary: teacher.total_unpaid_amount,
+                              unpaid_months: teacher.unpaid_months || []
                             });
+                            // Pre-fill with oldest unpaid month if available
+                            const oldestMonth = teacher.unpaid_months && teacher.unpaid_months.length > 0
+                              ? teacher.unpaid_months[teacher.unpaid_months.length - 1]
+                              : null;
                             setPaymentForm({
                               payment_date: new Date().toISOString().split('T')[0],
-                              amount: teacher.total_unpaid_amount.toFixed(2),
+                              amount: oldestMonth ? oldestMonth.pending_amount.toFixed(2) : teacher.total_unpaid_amount.toFixed(2),
                               payment_mode: 'bank',
                               payment_proof: '',
-                              notes: ''
+                              notes: '',
+                              salary_month: oldestMonth ? oldestMonth.month : new Date().getMonth() + 1,
+                              salary_year: oldestMonth ? oldestMonth.year : new Date().getFullYear()
                             });
                             setShowPaymentModal(true);
                           }}
@@ -621,6 +634,7 @@ function SalaryPaymentSection() {
                                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Amount</th>
                                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Days Overdue</th>
                                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Notes</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Action</th>
                                   </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
@@ -664,6 +678,33 @@ function SalaryPaymentSection() {
                                           <span className="text-orange-600">No payment recorded</span>
                                         )}
                                       </td>
+                                      <td className="px-4 py-2">
+                                        <button
+                                          onClick={() => {
+                                            setSelectedTeacher({
+                                              teacher: { id: teacher.teacher_id, full_name: teacher.teacher_name, email: teacher.teacher_email },
+                                              total_salary_due: summary?.total_salary_due || 0,
+                                              total_salary_paid: summary?.total_salary_paid || 0,
+                                              pending_salary: month.pending_amount,
+                                              unpaid_months: teacher.unpaid_months || [],
+                                              selectedMonth: month
+                                            });
+                                            setPaymentForm({
+                                              payment_date: new Date().toISOString().split('T')[0],
+                                              amount: month.pending_amount > 0 ? month.pending_amount.toFixed(2) : month.net_salary.toFixed(2),
+                                              payment_mode: 'bank',
+                                              payment_proof: '',
+                                              notes: '',
+                                              salary_month: month.month,
+                                              salary_year: month.year
+                                            });
+                                            setShowPaymentModal(true);
+                                          }}
+                                          className="text-xs text-blue-600 hover:text-blue-900 font-medium px-2 py-1 border border-blue-300 rounded hover:bg-blue-50"
+                                        >
+                                          Pay
+                                        </button>
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -689,19 +730,45 @@ function SalaryPaymentSection() {
             <p className="text-sm text-gray-600 mb-2">
               Teacher: <strong>{selectedTeacher.teacher?.full_name}</strong>
             </p>
+            {selectedTeacher.selectedMonth && (
+              <p className="text-sm text-blue-600 mb-2 font-medium">
+                Paying for: {selectedTeacher.selectedMonth.period_label}
+              </p>
+            )}
             <div className="bg-gray-50 p-3 rounded-lg mb-4">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600">Total Due:</span>
-                <span className="font-semibold">₹{selectedTeacher.total_salary_due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600">Total Paid:</span>
-                <span className="text-green-600">₹{selectedTeacher.total_salary_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-              <div className="flex justify-between text-sm font-semibold pt-2 border-t">
-                <span>Pending:</span>
-                <span className="text-orange-600">₹{selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
+              {selectedTeacher.selectedMonth ? (
+                <>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-600">Month Salary:</span>
+                    <span className="font-semibold">₹{selectedTeacher.selectedMonth.net_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  {selectedTeacher.selectedMonth.paid_amount > 0 && (
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600">Already Paid:</span>
+                      <span className="text-green-600">₹{selectedTeacher.selectedMonth.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm font-semibold pt-2 border-t">
+                    <span>Pending for this month:</span>
+                    <span className="text-orange-600">₹{selectedTeacher.selectedMonth.pending_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-600">Total Due:</span>
+                    <span className="font-semibold">₹{selectedTeacher.total_salary_due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-600">Total Paid:</span>
+                    <span className="text-green-600">₹{selectedTeacher.total_salary_paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold pt-2 border-t">
+                    <span>Pending:</span>
+                    <span className="text-orange-600">₹{selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </>
+              )}
             </div>
             <form onSubmit={handleRecordPayment} className="space-y-4">
               <div>
@@ -720,6 +787,38 @@ function SalaryPaymentSection() {
                   You can pay full, partial, or advance amounts. Pending: ₹{selectedTeacher.pending_salary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Salary Month *</label>
+                  <select
+                    required
+                    value={paymentForm.salary_month}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, salary_month: parseInt(e.target.value) })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                      <option key={month} value={month}>
+                        {new Date(2000, month - 1).toLocaleString('default', { month: 'long' })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Salary Year *</label>
+                  <select
+                    required
+                    value={paymentForm.salary_year}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, salary_year: parseInt(e.target.value) })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Payment Date *</label>
                 <input
@@ -729,6 +828,7 @@ function SalaryPaymentSection() {
                   onChange={(e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2"
                 />
+                <p className="text-xs text-gray-500 mt-1">Date when the payment was actually made</p>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Payment Mode *</label>
@@ -781,7 +881,9 @@ function SalaryPaymentSection() {
                       amount: '',
                       payment_mode: 'bank',
                       payment_proof: '',
-                      notes: ''
+                      notes: '',
+                      salary_month: new Date().getMonth() + 1,
+                      salary_year: new Date().getFullYear()
                     });
                   }}
                   className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"

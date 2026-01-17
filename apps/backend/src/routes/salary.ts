@@ -54,7 +54,9 @@ const recordPaymentSchema = Joi.object({
   amount: Joi.number().min(0.01).required(),
   payment_mode: Joi.string().valid('bank', 'cash', 'upi').required(),
   payment_proof: Joi.string().allow('', null).optional(),
-  notes: Joi.string().allow('', null).optional()
+  notes: Joi.string().allow('', null).optional(),
+  salary_month: Joi.number().integer().min(1).max(12).required(),
+  salary_year: Joi.number().integer().min(2000).max(2100).required()
 });
 
 // Create or Update Teacher Salary Structure (Principal only)
@@ -747,6 +749,8 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
         payment_mode: value.payment_mode,
         payment_proof: value.payment_proof || null,
         notes: value.notes || null,
+        salary_month: value.salary_month,
+        salary_year: value.salary_year,
         paid_by: user.id
       })
       .select(`

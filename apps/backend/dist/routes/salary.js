@@ -46,7 +46,9 @@ const recordPaymentSchema = Joi.object({
     amount: Joi.number().min(0.01).required(),
     payment_mode: Joi.string().valid('bank', 'cash', 'upi').required(),
     payment_proof: Joi.string().allow('', null).optional(),
-    notes: Joi.string().allow('', null).optional()
+    notes: Joi.string().allow('', null).optional(),
+    salary_month: Joi.number().integer().min(1).max(12).required(),
+    salary_year: Joi.number().integer().min(2000).max(2100).required()
 });
 // Create or Update Teacher Salary Structure (Principal only)
 router.post('/structure', requireRoles(['principal']), async (req, res) => {
@@ -646,6 +648,8 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
             payment_mode: value.payment_mode,
             payment_proof: value.payment_proof || null,
             notes: value.notes || null,
+            salary_month: value.salary_month,
+            salary_year: value.salary_year,
             paid_by: user.id
         })
             .select(`
@@ -930,7 +934,7 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
                     return b.year - a.year;
                 return b.month - a.month;
             });
-            const totalUnpaid = months.reduce((sum, m) => sum + parseFloat(m.net_salary || 0), 0);
+            const totalUnpaid = months.reduce((sum, m) => sum + parseFloat(m.pending_amount || 0), 0);
             const oldestMonth = sortedMonths.length > 0
                 ? sortedMonths[sortedMonths.length - 1]
                 : null;
@@ -965,11 +969,10 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
                     period_label: m.period_label,
                     payment_status: m.payment_status,
                     net_salary: parseFloat(m.net_salary || 0),
-                    salary_not_generated: m.salary_not_generated,
+                    paid_amount: parseFloat(m.paid_amount || 0),
+                    pending_amount: parseFloat(m.pending_amount || 0),
                     days_since_period_start: m.days_since_period_start,
-                    salary_record_id: m.salary_record_id,
-                    payment_date: m.payment_date,
-                    approved_at: m.approved_at
+                    payment_date: m.payment_date
                 }))
             };
         });
