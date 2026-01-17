@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import FeeCollection from '../components/FeeCollection.js';
 import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics';
+import TeacherPaymentHistory from '../components/TeacherPaymentHistory';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
@@ -381,7 +382,9 @@ function SalaryPaymentSection() {
   const [loading, setLoading] = useState(true);
   const [expandedTeachers, setExpandedTeachers] = useState<Set<string>>(new Set());
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPaymentHistoryModal, setShowPaymentHistoryModal] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
+  const [selectedTeacherForHistory, setSelectedTeacherForHistory] = useState<{ id: string; name: string } | null>(null);
   const [paymentForm, setPaymentForm] = useState({
     payment_date: new Date().toISOString().split('T')[0],
     amount: '',
@@ -389,7 +392,8 @@ function SalaryPaymentSection() {
     payment_proof: '',
     notes: '',
     salary_month: new Date().getMonth() + 1,
-    salary_year: new Date().getFullYear()
+    salary_year: new Date().getFullYear(),
+    payment_type: 'salary' as 'salary' | 'advance' | 'adjustment' | 'bonus' | 'loan' | 'other'
   });
 
   useEffect(() => {
@@ -493,7 +497,8 @@ function SalaryPaymentSection() {
           payment_proof: paymentForm.payment_proof || null,
           notes: paymentForm.notes || null,
           salary_month: paymentForm.salary_month,
-          salary_year: paymentForm.salary_year
+          salary_year: paymentForm.salary_year,
+          payment_type: paymentForm.payment_type
         }),
       });
 
@@ -526,7 +531,8 @@ function SalaryPaymentSection() {
         payment_proof: '',
         notes: '',
         salary_month: new Date().getMonth() + 1,
-        salary_year: new Date().getFullYear()
+        salary_year: new Date().getFullYear(),
+        payment_type: 'salary'
       });
       loadUnpaidSalaries();
     } catch (error: any) {
@@ -610,34 +616,49 @@ function SalaryPaymentSection() {
                         ₹{teacher.total_unpaid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-6 py-4">
-                        <button
-                          onClick={() => {
-                            setSelectedTeacher({
-                              teacher: { id: teacher.teacher_id, full_name: teacher.teacher_name, email: teacher.teacher_email },
-                              total_salary_due: summary?.total_salary_due || 0,
-                              total_salary_paid: summary?.total_salary_paid || 0,
-                              pending_salary: teacher.total_unpaid_amount,
-                              unpaid_months: teacher.unpaid_months || []
-                            });
-                            // Pre-fill with oldest unpaid month if available
-                            const oldestMonth = teacher.unpaid_months && teacher.unpaid_months.length > 0
-                              ? teacher.unpaid_months[teacher.unpaid_months.length - 1]
-                              : null;
-                            setPaymentForm({
-                              payment_date: new Date().toISOString().split('T')[0],
-                              amount: oldestMonth ? oldestMonth.pending_amount.toFixed(2) : teacher.total_unpaid_amount.toFixed(2),
-                              payment_mode: 'bank',
-                              payment_proof: '',
-                              notes: '',
-                              salary_month: oldestMonth ? oldestMonth.month : new Date().getMonth() + 1,
-                              salary_year: oldestMonth ? oldestMonth.year : new Date().getFullYear()
-                            });
-                            setShowPaymentModal(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-900 font-medium"
-                        >
-                          Record Payment
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedTeacher({
+                                teacher: { id: teacher.teacher_id, full_name: teacher.teacher_name, email: teacher.teacher_email },
+                                total_salary_due: summary?.total_salary_due || 0,
+                                total_salary_paid: summary?.total_salary_paid || 0,
+                                pending_salary: teacher.total_unpaid_amount,
+                                unpaid_months: teacher.unpaid_months || []
+                              });
+                              // Pre-fill with oldest unpaid month if available
+                              const oldestMonth = teacher.unpaid_months && teacher.unpaid_months.length > 0
+                                ? teacher.unpaid_months[teacher.unpaid_months.length - 1]
+                                : null;
+                              setPaymentForm({
+                                payment_date: new Date().toISOString().split('T')[0],
+                                amount: oldestMonth ? oldestMonth.pending_amount.toFixed(2) : teacher.total_unpaid_amount.toFixed(2),
+                                payment_mode: 'bank',
+                                payment_proof: '',
+                                notes: '',
+                                salary_month: oldestMonth ? oldestMonth.month : new Date().getMonth() + 1,
+                                salary_year: oldestMonth ? oldestMonth.year : new Date().getFullYear(),
+                                payment_type: 'salary'
+                              });
+                              setShowPaymentModal(true);
+                            }}
+                            className="text-blue-600 hover:text-blue-900 font-medium"
+                          >
+                            Record Payment
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedTeacherForHistory({
+                                id: teacher.teacher_id,
+                                name: teacher.teacher_name || 'Unknown'
+                              });
+                              setShowPaymentHistoryModal(true);
+                            }}
+                            className="text-emerald-600 hover:text-emerald-900 font-medium"
+                          >
+                            View History
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {isExpanded && teacher.unpaid_months && teacher.unpaid_months.length > 0 && (
@@ -722,7 +743,8 @@ function SalaryPaymentSection() {
                                               payment_proof: '',
                                               notes: '',
                                               salary_month: month.month,
-                                              salary_year: month.year
+                                              salary_year: month.year,
+                                              payment_type: 'salary'
                                             });
                                             setShowPaymentModal(true);
                                           }}
@@ -886,18 +908,36 @@ function SalaryPaymentSection() {
                 />
                 <p className="text-xs text-gray-500 mt-1">Date when the payment was actually made</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Payment Mode *</label>
-                <select
-                  required
-                  value={paymentForm.payment_mode}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, payment_mode: e.target.value as any })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                >
-                  <option value="bank">Bank Transfer</option>
-                  <option value="cash">Cash</option>
-                  <option value="upi">UPI</option>
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Payment Mode *</label>
+                  <select
+                    required
+                    value={paymentForm.payment_mode}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, payment_mode: e.target.value as any })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    <option value="bank">Bank Transfer</option>
+                    <option value="cash">Cash</option>
+                    <option value="upi">UPI</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Payment Type *</label>
+                  <select
+                    required
+                    value={paymentForm.payment_type}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, payment_type: e.target.value as any })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    <option value="salary">Monthly Salary</option>
+                    <option value="advance">Advance Payment</option>
+                    <option value="adjustment">Adjustment</option>
+                    <option value="bonus">Bonus</option>
+                    <option value="loan">Loan/Extra Payment</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Payment Proof (Optional)</label>
@@ -939,7 +979,8 @@ function SalaryPaymentSection() {
                       payment_proof: '',
                       notes: '',
                       salary_month: new Date().getMonth() + 1,
-                      salary_year: new Date().getFullYear()
+                      salary_year: new Date().getFullYear(),
+                      payment_type: 'salary'
                     });
                   }}
                   className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
@@ -948,6 +989,23 @@ function SalaryPaymentSection() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Payment History Modal */}
+      {showPaymentHistoryModal && selectedTeacherForHistory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-7xl w-full max-h-[90vh] overflow-y-auto">
+            <TeacherPaymentHistory
+              teacherId={selectedTeacherForHistory.id}
+              teacherName={selectedTeacherForHistory.name}
+              onClose={() => {
+                setShowPaymentHistoryModal(false);
+                setSelectedTeacherForHistory(null);
+              }}
+              showHeader={true}
+            />
           </div>
         </div>
       )}

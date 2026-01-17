@@ -48,7 +48,8 @@ const recordPaymentSchema = Joi.object({
     payment_proof: Joi.string().allow('', null).optional(),
     notes: Joi.string().allow('', null).optional(),
     salary_month: Joi.number().integer().min(1).max(12).required(),
-    salary_year: Joi.number().integer().min(2000).max(2100).required()
+    salary_year: Joi.number().integer().min(2000).max(2100).required(),
+    payment_type: Joi.string().valid('salary', 'advance', 'adjustment', 'bonus', 'loan', 'other').optional().default('salary')
 });
 // Create or Update Teacher Salary Structure (Principal only)
 router.post('/structure', requireRoles(['principal']), async (req, res) => {
@@ -637,6 +638,43 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
         if (teacherError || !teacher) {
             return res.status(404).json({ error: 'Teacher not found or access denied' });
         }
+        // Get expected salary for the month
+        const { data: salaryStructure, error: structureError } = await adminSupabase
+            .from('teacher_salary_structure')
+            .select('base_salary, hra, other_allowances, fixed_deductions')
+            .eq('teacher_id', value.teacher_id)
+            .eq('school_id', user.schoolId)
+            .eq('is_active', true)
+            .is('effective_to', null)
+            .order('effective_from', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (structureError) {
+            console.error('[salary] Error fetching salary structure:', structureError);
+            return res.status(400).json({ error: 'Failed to fetch salary structure' });
+        }
+        if (!salaryStructure) {
+            return res.status(400).json({ error: 'Salary structure not found for this teacher' });
+        }
+        const expectedSalary = salaryStructure.base_salary +
+            salaryStructure.hra +
+            salaryStructure.other_allowances -
+            salaryStructure.fixed_deductions;
+        // Get existing payments for this month (to calculate total)
+        const { data: existingPayments, error: paymentsError } = await adminSupabase
+            .from('teacher_salary_payments')
+            .select('amount')
+            .eq('teacher_id', value.teacher_id)
+            .eq('salary_month', value.salary_month)
+            .eq('salary_year', value.salary_year);
+        if (paymentsError) {
+            console.error('[salary] Error fetching existing payments:', paymentsError);
+            return res.status(400).json({ error: 'Failed to fetch existing payments' });
+        }
+        // Calculate total payment for this month (existing + new)
+        const existingTotal = (existingPayments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+        const newTotal = existingTotal + parseFloat(value.amount);
+        const excessAmount = newTotal > expectedSalary ? newTotal - expectedSalary : 0;
         // Record the payment
         const { data: payment, error: insertError } = await adminSupabase
             .from('teacher_salary_payments')
@@ -650,6 +688,7 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
             notes: value.notes || null,
             salary_month: value.salary_month,
             salary_year: value.salary_year,
+            payment_type: value.payment_type || 'salary',
             paid_by: user.id
         })
             .select(`
@@ -669,7 +708,50 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
             console.error('[salary] Error recording payment:', insertError);
             return res.status(400).json({ error: insertError.message });
         }
-        return res.json({ payment });
+        // If there's an excess amount, create credit and apply to future months
+        let creditInfo = null;
+        if (excessAmount > 0) {
+            try {
+                // Call the database function to apply credits
+                const { data: creditResult, error: creditError } = await adminSupabase.rpc('apply_salary_credits_to_future_months', {
+                    p_teacher_id: value.teacher_id,
+                    p_school_id: user.schoolId,
+                    p_new_credit_amount: excessAmount
+                });
+                if (creditError) {
+                    console.error('[salary] Error applying credits:', creditError);
+                    // Don't fail the payment, just log the error
+                    // The credit can be applied manually later if needed
+                }
+                else {
+                    // Update credit record with source payment info
+                    if (creditResult && creditResult.credit_id) {
+                        await adminSupabase
+                            .from('teacher_salary_credits')
+                            .update({
+                            source_payment_id: payment.id,
+                            source_month: value.salary_month,
+                            source_year: value.salary_year,
+                            notes: `Overpayment from ${value.salary_month}/${value.salary_year} payment of ₹${value.amount}. Excess: ₹${excessAmount.toFixed(2)}`
+                        })
+                            .eq('id', creditResult.credit_id);
+                    }
+                    creditInfo = creditResult;
+                }
+            }
+            catch (creditErr) {
+                console.error('[salary] Error in credit application:', creditErr);
+                // Payment is already recorded, so we continue
+            }
+        }
+        return res.json({
+            payment,
+            credit_applied: creditInfo,
+            excess_amount: excessAmount,
+            message: excessAmount > 0
+                ? `Payment recorded. Excess amount of ₹${excessAmount.toFixed(2)} has been applied as credit to future unpaid months.`
+                : 'Payment recorded successfully.'
+        });
     }
     catch (err) {
         console.error('[salary] Error:', err);
@@ -970,6 +1052,8 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
                     payment_status: m.payment_status,
                     net_salary: parseFloat(m.net_salary || 0),
                     paid_amount: parseFloat(m.paid_amount || 0),
+                    credit_applied: parseFloat(m.credit_applied || 0),
+                    effective_paid_amount: parseFloat(m.effective_paid_amount || 0),
                     pending_amount: parseFloat(m.pending_amount || 0),
                     days_since_period_start: m.days_since_period_start,
                     payment_date: m.payment_date
@@ -1007,6 +1091,210 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
     catch (err) {
         console.error('[salary/unpaid] Error:', err);
         return res.status(500).json({ error: err.message || 'Failed to get unpaid teacher salaries' });
+    }
+});
+// ============================================
+// Get Credit Balance
+// ============================================
+// Returns available credit balance for a teacher
+router.get('/credits/:teacherId', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    const { teacherId } = req.params;
+    // Teachers can only see their own credits
+    if (user.role === 'teacher' && user.id !== teacherId) {
+        return res.status(403).json({ error: 'Access denied' });
+    }
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    try {
+        // Verify teacher belongs to the school
+        const { data: teacher, error: teacherError } = await adminSupabase
+            .from('profiles')
+            .select('id, school_id, role')
+            .eq('id', teacherId)
+            .eq('school_id', user.schoolId)
+            .single();
+        if (teacherError || !teacher) {
+            return res.status(404).json({ error: 'Teacher not found or access denied' });
+        }
+        // Get credit balance
+        const { data: creditBalance, error: creditError } = await adminSupabase.rpc('get_teacher_credit_balance', {
+            p_teacher_id: teacherId,
+            p_school_id: user.schoolId
+        });
+        if (creditError) {
+            console.error('[salary/credits] Error fetching credit balance:', creditError);
+            return res.status(400).json({ error: creditError.message });
+        }
+        // Get credit details
+        const { data: credits, error: creditsError } = await adminSupabase
+            .from('teacher_salary_credits')
+            .select(`
+        *,
+        applications:teacher_salary_credit_applications(
+          id,
+          applied_amount,
+          applied_to_month,
+          applied_to_year,
+          created_at
+        )
+      `)
+            .eq('teacher_id', teacherId)
+            .eq('school_id', user.schoolId)
+            .order('created_at', { ascending: false });
+        if (creditsError) {
+            console.error('[salary/credits] Error fetching credit details:', creditsError);
+        }
+        return res.json({
+            teacher_id: teacherId,
+            available_credit: parseFloat(String(creditBalance || 0)),
+            credits: credits || []
+        });
+    }
+    catch (err) {
+        console.error('[salary/credits] Error:', err);
+        return res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+});
+// ============================================
+// Get Comprehensive Payment History
+// ============================================
+// Returns complete payment history with summary, running totals, and all details
+router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
+    const { user } = req;
+    if (!user || !user.schoolId)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    const { teacherId } = req.params;
+    const { start_date, end_date, payment_type, payment_mode, page = '1', limit = '50' } = req.query;
+    // Teachers can only see their own history
+    if (user.role === 'teacher' && user.id !== teacherId) {
+        return res.status(403).json({ error: 'Access denied. You can only view your own payment history.' });
+    }
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    try {
+        // Verify teacher belongs to the school
+        const { data: teacher, error: teacherError } = await adminSupabase
+            .from('profiles')
+            .select('id, full_name, email, school_id, role')
+            .eq('id', teacherId)
+            .eq('school_id', user.schoolId)
+            .eq('role', 'teacher')
+            .single();
+        if (teacherError || !teacher) {
+            return res.status(404).json({ error: 'Teacher not found or access denied' });
+        }
+        // Build query for payment history
+        let query = adminSupabase
+            .from('teacher_payment_history')
+            .select('*')
+            .eq('teacher_id', teacherId)
+            .eq('school_id', user.schoolId);
+        // Apply filters
+        if (start_date) {
+            query = query.gte('payment_date', start_date);
+        }
+        if (end_date) {
+            query = query.lte('payment_date', end_date);
+        }
+        if (payment_type) {
+            query = query.eq('payment_type', payment_type);
+        }
+        if (payment_mode) {
+            query = query.eq('payment_mode', payment_mode);
+        }
+        // Get total count for pagination (using a separate count query)
+        const countQuery = adminSupabase
+            .from('teacher_payment_history')
+            .select('*', { count: 'exact', head: true })
+            .eq('teacher_id', teacherId)
+            .eq('school_id', user.schoolId);
+        if (start_date) {
+            countQuery.gte('payment_date', start_date);
+        }
+        if (end_date) {
+            countQuery.lte('payment_date', end_date);
+        }
+        if (payment_type) {
+            countQuery.eq('payment_type', payment_type);
+        }
+        if (payment_mode) {
+            countQuery.eq('payment_mode', payment_mode);
+        }
+        const { count, error: countError } = await countQuery;
+        if (countError) {
+            console.error('[salary/history] Error counting payments:', countError);
+        }
+        // Apply pagination
+        const pageNum = parseInt(page, 10);
+        const limitNum = parseInt(limit, 10);
+        const offset = (pageNum - 1) * limitNum;
+        const { data: payments, error: paymentsError } = await query
+            .order('payment_date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .range(offset, offset + limitNum - 1);
+        if (paymentsError) {
+            console.error('[salary/history] Error fetching payment history:', paymentsError);
+            return res.status(400).json({ error: paymentsError.message });
+        }
+        // Get payment summary using the database function
+        const { data: summary, error: summaryError } = await adminSupabase.rpc('get_teacher_payment_summary', {
+            p_teacher_id: teacherId,
+            p_school_id: user.schoolId,
+            p_start_date: start_date || null,
+            p_end_date: end_date || null
+        });
+        if (summaryError) {
+            console.error('[salary/history] Error fetching payment summary:', summaryError);
+            // Don't fail the request, just log the error
+        }
+        // Get current pending amount (from unpaid salaries view)
+        let pendingAmount = 0;
+        try {
+            const { data: unpaidData, error: unpaidError } = await adminSupabase
+                .from('teacher_unpaid_salary_months')
+                .select('pending_amount')
+                .eq('teacher_id', teacherId)
+                .eq('school_id', user.schoolId)
+                .eq('payment_status', 'unpaid')
+                .single();
+            if (!unpaidError && unpaidData) {
+                pendingAmount = parseFloat(String(unpaidData.pending_amount || 0));
+            }
+        }
+        catch (err) {
+            // Ignore errors for pending amount calculation
+            console.error('[salary/history] Error fetching pending amount:', err);
+        }
+        return res.json({
+            teacher: {
+                id: teacher.id,
+                full_name: teacher.full_name,
+                email: teacher.email
+            },
+            summary: {
+                ...summary,
+                pending_amount: pendingAmount,
+                total_paid_till_date: parseFloat(String(summary?.total_paid || 0))
+            },
+            payments: payments || [],
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total: count || 0,
+                total_pages: Math.ceil((count || 0) / limitNum)
+            }
+        });
+    }
+    catch (err) {
+        console.error('[salary/history] Error:', err);
+        return res.status(500).json({ error: err.message || 'Internal server error' });
     }
 });
 export default router;

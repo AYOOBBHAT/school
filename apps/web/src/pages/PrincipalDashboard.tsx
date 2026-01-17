@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import { API_URL } from '../utils/api';
 import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics';
+import TeacherPaymentHistory from '../components/TeacherPaymentHistory';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
@@ -638,6 +639,7 @@ function StaffManagement() {
   const [performanceModalOpen, setPerformanceModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [viewAssignmentsModalOpen, setViewAssignmentsModalOpen] = useState(false);
+  const [paymentHistoryModalOpen, setPaymentHistoryModalOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<Profile | null>(null);
   
   // Form states
@@ -1576,6 +1578,17 @@ function StaffManagement() {
                                     <span>👁️</span>
                                     <span>View All Assignments</span>
                                   </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedTeacher(member);
+                                      setPaymentHistoryModalOpen(true);
+                                      setActionMenuOpen({});
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-emerald-50 flex items-center gap-2"
+                                  >
+                                    <span>💰</span>
+                                    <span>Payment History</span>
+                                  </button>
                                   <div className="border-t border-gray-200 my-1"></div>
                                 </>
                               )}
@@ -2315,6 +2328,23 @@ function StaffManagement() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment History Modal */}
+      {paymentHistoryModalOpen && selectedTeacher && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-7xl w-full max-h-[90vh] overflow-y-auto">
+            <TeacherPaymentHistory
+              teacherId={selectedTeacher.id}
+              teacherName={selectedTeacher.full_name || undefined}
+              onClose={() => {
+                setPaymentHistoryModalOpen(false);
+                setSelectedTeacher(null);
+              }}
+              showHeader={true}
+            />
           </div>
         </div>
       )}
