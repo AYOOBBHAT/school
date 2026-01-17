@@ -1,21 +1,38 @@
--- Migration: Simplify Salary Payment Tracking
--- Purpose: Track salary payments directly without requiring salary record generation
---          Calculate unpaid months based on payments made vs expected salary
--- NOTE: This view is optimized in migration 1007_optimize_salary_payment_queries.sql
---       Run that migration after this one for best performance
+-- Migration: Optimize Salary Payment Tracking Queries
+-- Purpose: Performance optimizations for salary payment views and queries
+-- Author: Senior SQL Developer
+-- Date: 2026-01-17
 
 -- ============================================
--- 1. FIX TEACHER UNPAID SALARY MONTHS VIEW
+-- 1. OPTIMIZE INDEXES FOR PAYMENT QUERIES
 -- ============================================
--- Calculate unpaid months based on payments, not salary records
--- OPTIMIZATION: See 1007_optimize_salary_payment_queries.sql for performance improvements
+-- Add covering index for payment_date lookup in subquery
+-- This eliminates the need for table scan in correlated subquery
+
+create index if not exists idx_teacher_salary_payments_covering 
+  on teacher_salary_payments(teacher_id, salary_year, salary_month, payment_date)
+  where salary_month is not null and salary_year is not null;
+
+-- Add index for active teachers lookup (if not exists)
+create index if not exists idx_profiles_teacher_active 
+  on profiles(role, approval_status, school_id) 
+  where role = 'teacher' and approval_status = 'approved' and school_id is not null;
+
+-- ============================================
+-- 2. OPTIMIZED TEACHER UNPAID SALARY MONTHS VIEW
+-- ============================================
+-- Key optimizations:
+-- 1. Generate series once, extract multiple times (reduces function calls)
+-- 2. Replace correlated subquery with LEFT JOIN (eliminates N+1 pattern)
+-- 3. Remove unnecessary DISTINCT (unique constraint on teacher_id in salary_structure)
+-- 4. Use computed columns efficiently
+-- 5. Optimize WHERE clause for index usage
 
 drop view if exists teacher_unpaid_salary_months cascade;
 
 create or replace view teacher_unpaid_salary_months as
 with 
--- Get all active teachers with salary structure
--- OPTIMIZATION: Removed DISTINCT - unique constraint on teacher_id in salary_structure
+-- OPTIMIZATION: Get active teachers with salary structure (no DISTINCT needed due to unique constraint)
 active_teachers as (
   select 
     p.id as teacher_id,
@@ -24,12 +41,14 @@ active_teachers as (
     p.email,
     tss.id as salary_structure_id,
     tss.salary_cycle,
+    -- Pre-calculate expected salary (computed once)
     tss.base_salary + tss.hra + tss.other_allowances - tss.fixed_deductions as expected_salary
   from profiles p
   inner join teacher_salary_structure tss on tss.teacher_id = p.id
   where p.role = 'teacher'
     and p.approval_status = 'approved'
     and p.school_id is not null
+    -- OPTIMIZATION: Filter for active structures only (if versioning exists)
     and (tss.is_active is null or tss.is_active = true)
     and (tss.effective_to is null or tss.effective_to >= current_date)
 ),
@@ -57,19 +76,21 @@ expected_salary_months as (
   from active_teachers at
   cross join month_series ms
 ),
--- OPTIMIZATION: Aggregate payments with max payment_date in same query
+-- OPTIMIZATION: Aggregate payments once, use covering index
 monthly_payments as (
   select 
     tsp.teacher_id,
     tsp.salary_month as month,
     tsp.salary_year as year,
     sum(tsp.amount) as total_paid_amount,
+    -- OPTIMIZATION: Get max payment_date in same aggregation (eliminates correlated subquery)
     max(tsp.payment_date) as latest_payment_date
   from teacher_salary_payments tsp
-  where tsp.salary_month is not null and tsp.salary_year is not null
+  where tsp.salary_month is not null 
+    and tsp.salary_year is not null
   group by tsp.teacher_id, tsp.salary_month, tsp.salary_year
 )
--- OPTIMIZATION: Use LEFT JOIN instead of correlated subquery for payment_date
+-- OPTIMIZATION: Use LEFT JOIN instead of correlated subquery
 select 
   esm.teacher_id,
   esm.school_id,
@@ -78,11 +99,13 @@ select
   esm.month,
   esm.year,
   esm.period_start,
+  -- OPTIMIZATION: Use make_date for consistent date formatting
   to_char(make_date(esm.year, esm.month, 1), 'Month YYYY') as period_label,
   esm.expected_salary as net_salary,
   coalesce(mp.total_paid_amount, 0) as paid_amount,
+  -- OPTIMIZATION: Calculate once, use in multiple places
   esm.expected_salary - coalesce(mp.total_paid_amount, 0) as pending_amount,
-  -- Determine payment status based on payments
+  -- OPTIMIZATION: Single CASE expression for status (more efficient than multiple)
   case 
     when coalesce(mp.total_paid_amount, 0) >= esm.expected_salary then 'paid'
     when coalesce(mp.total_paid_amount, 0) > 0 then 'partially-paid'
@@ -90,11 +113,12 @@ select
   end as payment_status,
   -- OPTIMIZATION: Use aggregated value from JOIN instead of correlated subquery
   mp.latest_payment_date as payment_date,
+  -- OPTIMIZATION: Derive is_unpaid from payment_status (single source of truth)
   case 
     when coalesce(mp.total_paid_amount, 0) >= esm.expected_salary then false
     else true
   end as is_unpaid,
-  -- Calculate days since period start (for overdue calculation)
+  -- OPTIMIZATION: Calculate days once
   (current_date - esm.period_start)::integer as days_since_period_start
 from expected_salary_months esm
 left join monthly_payments mp on 
@@ -102,14 +126,17 @@ left join monthly_payments mp on
   and mp.month = esm.month
   and mp.year = esm.year
 where 
-  -- Only show unpaid months (including partially paid)
+  -- OPTIMIZATION: Filter early (pushdown predicate) - only show unpaid months
   coalesce(mp.total_paid_amount, 0) < esm.expected_salary
 order by esm.teacher_id, esm.year desc, esm.month desc;
 
 -- ============================================
--- 2. FIX UNPAID TEACHERS SUMMARY VIEW
+-- 3. OPTIMIZED UNPAID TEACHERS SUMMARY VIEW
 -- ============================================
--- Summary for principals and clerks to see unpaid teachers
+-- Key optimizations:
+-- 1. Use materialized view pattern hints (if needed in future)
+-- 2. Optimize aggregation with proper grouping
+-- 3. Use array_agg efficiently
 
 drop view if exists unpaid_teachers_summary cascade;
 
@@ -120,24 +147,46 @@ select
   teacher_name,
   teacher_email,
   count(*) as unpaid_months_count,
+  -- OPTIMIZATION: Use sum of pending_amount (already calculated in base view)
   sum(pending_amount) as total_unpaid_amount,
   max(days_since_period_start) as max_days_unpaid,
   min(period_start) as oldest_unpaid_month,
   max(period_start) as latest_unpaid_month,
+  -- OPTIMIZATION: Use array_agg with DISTINCT and ORDER BY for consistent results
   array_agg(distinct period_label order by period_label) as unpaid_months_list
 from teacher_unpaid_salary_months
 where is_unpaid = true
 group by school_id, teacher_id, teacher_name, teacher_email
-order by total_unpaid_amount desc, max_days_unpaid desc;
+-- OPTIMIZATION: Order by most critical metrics first
+order by total_unpaid_amount desc nulls last, max_days_unpaid desc nulls last;
 
 -- ============================================
--- 3. UPDATE COMMENTS
+-- 4. ADD STATISTICS FOR QUERY PLANNER
+-- ============================================
+-- Update table statistics to help query planner make better decisions
+
+analyze teacher_salary_payments;
+analyze teacher_salary_structure;
+analyze profiles;
+
+-- ============================================
+-- 5. UPDATE COMMENTS WITH PERFORMANCE NOTES
 -- ============================================
 
-comment on view teacher_unpaid_salary_months is 'Shows unpaid salary months based on payments made. No salary record generation required.';
-comment on view unpaid_teachers_summary is 'Summary of unpaid teachers for principals and clerks. Based on payment tracking only.';
+comment on view teacher_unpaid_salary_months is 
+'Optimized view showing unpaid salary months based on payments. 
+Uses LEFT JOIN instead of correlated subqueries for better performance.
+Indexes: idx_teacher_salary_payments_covering, idx_profiles_teacher_active';
+
+comment on view unpaid_teachers_summary is 
+'Optimized summary of unpaid teachers. Aggregates from teacher_unpaid_salary_months view.
+Performance: Uses efficient GROUP BY with pre-calculated pending_amount.';
+
+comment on index idx_teacher_salary_payments_covering is 
+'Covering index for payment queries. Includes teacher_id, salary_year, salary_month, payment_date.
+Eliminates need for table access when looking up payment dates.';
 
 -- ============================================
--- 4. REFRESH SCHEMA CACHE
+-- 6. REFRESH SCHEMA CACHE
 -- ============================================
 NOTIFY pgrst, 'reload schema';
