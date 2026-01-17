@@ -1,15 +1,26 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { MyAttendanceScreen, MyMarksScreen, MyFeesScreen } from '../screens/StudentScreens';
+import { MarkAttendanceScreen, EnterMarksScreen } from '../screens/TeacherScreens';
 import { useAuth } from './AuthContext';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { LoadingSpinner } from '../components/LoadingSpinner';
+
+// Lazy load screens for better performance
+const StudentsScreen = lazy(() => import('../screens/PrincipalScreens').then(m => ({ default: m.StudentsScreen })));
+const ClassesScreen = lazy(() => import('../screens/PrincipalScreens').then(m => ({ default: m.ClassesScreen })));
 
 const Stack = createNativeStackNavigator();
-// Billing feature removed in this deployment
-const BILLING_ENABLED = false;
+
+// Loading wrapper for lazy components
+const LazyWrapper = ({ children }: { children: React.ReactNode }) => (
+  <Suspense fallback={<LoadingSpinner message="Loading..." fullScreen />}>
+    {children}
+  </Suspense>
+);
 
 export function AppNavigator() {
   const { user, loading } = useAuth();
@@ -33,12 +44,20 @@ export function AppNavigator() {
   }
 
   return (
-    <Stack.Navigator>
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#fff' },
+        headerTintColor: '#1e293b',
+        headerTitleStyle: { fontWeight: '700' },
+      }}
+    >
       <Stack.Screen
         name="Dashboard"
         component={DashboardScreen}
         options={{ title: 'Dashboard' }}
       />
+      
+      {/* Student Screens */}
       <Stack.Screen
         name="MyAttendance"
         component={MyAttendanceScreen}
@@ -49,47 +68,45 @@ export function AppNavigator() {
         component={MyMarksScreen}
         options={{ title: 'My Marks' }}
       />
-      {BILLING_ENABLED && (
-        <Stack.Screen
-          name="MyFees"
-          component={MyFeesScreen}
-          options={{ title: 'My Fees' }}
-        />
-      )}
       <Stack.Screen
-        name="Students"
-        component={() => <View><Text>Students Management</Text></View>}
-        options={{ title: 'Students' }}
+        name="MyFees"
+        component={MyFeesScreen}
+        options={{ title: 'My Fees' }}
       />
-      <Stack.Screen
-        name="Classes"
-        component={() => <View><Text>Classes Management</Text></View>}
-        options={{ title: 'Classes' }}
-      />
+
+      {/* Teacher Screens */}
       <Stack.Screen
         name="Attendance"
-        component={() => <View><Text>Mark Attendance</Text></View>}
+        component={MarkAttendanceScreen}
         options={{ title: 'Mark Attendance' }}
       />
       <Stack.Screen
         name="Marks"
-        component={() => <View><Text>Enter Marks</Text></View>}
+        component={EnterMarksScreen}
         options={{ title: 'Enter Marks' }}
       />
-      {BILLING_ENABLED && (
-        <>
-          <Stack.Screen
-            name="Fees"
-            component={() => <View><Text>Manage Fees</Text></View>}
-            options={{ title: 'Manage Fees' }}
-          />
-          <Stack.Screen
-            name="Payments"
-            component={() => <View><Text>View Payments</Text></View>}
-            options={{ title: 'Payments' }}
-          />
-        </>
-      )}
+
+      {/* Principal Screens */}
+      <Stack.Screen
+        name="Students"
+        options={{ title: 'Students' }}
+      >
+        {() => (
+          <LazyWrapper>
+            <StudentsScreen />
+          </LazyWrapper>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="Classes"
+        options={{ title: 'Classes' }}
+      >
+        {() => (
+          <LazyWrapper>
+            <ClassesScreen />
+          </LazyWrapper>
+        )}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 }

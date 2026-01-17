@@ -625,6 +625,12 @@ function StaffManagement() {
   const [sections, setSections] = useState<Record<string, Array<{ id: string; name: string }>>>({});
   const [allAssignments, setAllAssignments] = useState<any[]>([]);
   
+  // Search and filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [actionMenuOpen, setActionMenuOpen] = useState<Record<string, boolean>>({});
+  
   // Modal states
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
@@ -1309,149 +1315,305 @@ function StaffManagement() {
     }
   };
 
+  // Filter staff based on search and filters
+  const filteredStaff = staff.filter((member) => {
+    const matchesSearch = 
+      member.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      member.email?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === 'all' || member.role === roleFilter;
+    const matchesStatus = statusFilter === 'all' || member.approval_status === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  const toggleActionMenu = (memberId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setActionMenuOpen(prev => ({
+      ...prev,
+      [memberId]: !prev[memberId]
+    }));
+  };
+
+  // Close action menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setActionMenuOpen({});
+    };
+    if (Object.keys(actionMenuOpen).length > 0) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [actionMenuOpen]);
+
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold">Staff Management</h2>
-        <button
-          onClick={() => setAddStaffModalOpen(true)}
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
-        >
-          ➕ Add Staff
-        </button>
-      </div>
-      
-      {/* View All Assignments Button */}
-      <div className="mb-4">
-        <button
-          onClick={() => {
-            setViewAssignmentsModalOpen(true);
-            setSelectedTeacher(null);
-            loadAllAssignments();
-            loadAttendanceAssignments();
-          }}
-          className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition"
-        >
-          📋 View All Assignments
-        </button>
+    <div className="p-6 bg-gray-50 min-h-screen">
+      {/* Header Section */}
+      <div className="mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900">Staff Management</h2>
+            <p className="text-gray-600 mt-1">Manage your school staff members and their assignments</p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setViewAssignmentsModalOpen(true);
+                setSelectedTeacher(null);
+                loadAllAssignments();
+                loadAttendanceAssignments();
+              }}
+              className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition flex items-center gap-2 shadow-sm"
+            >
+              <span>📋</span>
+              <span className="hidden sm:inline">View All Assignments</span>
+              <span className="sm:hidden">Assignments</span>
+            </button>
+            <button
+              onClick={() => setAddStaffModalOpen(true)}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition flex items-center gap-2 shadow-sm font-semibold"
+            >
+              <span>➕</span>
+              <span>Add Staff</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Search and Filter Bar */}
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search by name or email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
+            </div>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="all">All Roles</option>
+              <option value="teacher">Teachers</option>
+              <option value="clerk">Clerks</option>
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="all">All Status</option>
+              <option value="approved">Approved</option>
+              <option value="pending">Pending</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          {filteredStaff.length !== staff.length && (
+            <div className="mt-3 text-sm text-gray-600">
+              Showing {filteredStaff.length} of {staff.length} staff members
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignments</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Joined</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {staff.map((member) => (
-              <tr key={member.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">{member.full_name || 'N/A'}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-500">{member.email}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                    {member.role}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      member.approval_status === 'approved'
-                        ? 'bg-green-100 text-green-800'
-                        : member.approval_status === 'pending'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}
-                  >
-                    {member.approval_status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="text-sm text-gray-600">
-                    {getTeacherAssignmentsCount(member.id)} {getTeacherAssignmentsCount(member.id) === 1 ? 'assignment' : 'assignments'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(member.created_at).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex flex-wrap gap-2">
-                    {member.role === 'teacher' && (
-                      <>
-                        <button
-                          onClick={() => handleAssignTeacher(member)}
-                          className="text-blue-600 hover:text-blue-900"
-                          title="Assign teaching (class + subject)"
-                        >
-                          📚 Teaching
-                        </button>
-                        <button
-                          onClick={() => handleAssignAttendanceClass(member)}
-                          className="text-teal-600 hover:text-teal-900"
-                          title="Assign attendance class (class only)"
-                        >
-                          📅 Attendance
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedTeacher(member);
-                            setDailyAttendanceModalOpen(true);
-                            loadDailyAttendance(member.id, attendanceMonth, attendanceYear);
-                          }}
-                          className="text-green-600 hover:text-green-900"
-                          title="Mark teacher daily attendance"
-                        >
-                          👤 Mark Teacher Attendance
-                        </button>
-                        <button
-                          onClick={() => handleEvaluatePerformance(member)}
-                          className="text-purple-600 hover:text-purple-900"
-                          title="View performance"
-                        >
-                          📊 Performance
-                        </button>
-                        <button
-                          onClick={() => handleViewAssignments(member)}
-                          className="text-indigo-600 hover:text-indigo-900"
-                          title="View all assignments"
-                        >
-                          👁️ View All
-                        </button>
-                      </>
-                    )}
-                    <button
-                      onClick={() => handleEditTeacher(member)}
-                      className="text-orange-600 hover:text-orange-900"
-                      title="Edit teacher"
-                    >
-                      ✏️ Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeactivateTeacher(member)}
-                      className={`${member.approval_status === 'approved' ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'}`}
-                      title={member.approval_status === 'approved' ? 'Deactivate' : 'Activate'}
-                    >
-                      {member.approval_status === 'approved' ? '🚫 Deactivate' : '✅ Activate'}
-                    </button>
-                  </div>
-                </td>
+      {/* Staff Table */}
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gradient-to-r from-blue-50 to-indigo-50">
+              <tr>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  Staff Member
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  Role & Status
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  Assignments
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  Joined
+                </th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {staff.length === 0 && (
-          <div className="text-center py-12 text-gray-500">No staff members found.</div>
-        )}
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredStaff.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center">
+                      <span className="text-6xl mb-4">👥</span>
+                      <p className="text-gray-500 text-lg font-medium">No staff members found</p>
+                      <p className="text-gray-400 text-sm mt-1">
+                        {searchQuery || roleFilter !== 'all' || statusFilter !== 'all'
+                          ? 'Try adjusting your filters'
+                          : 'Add your first staff member to get started'}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredStaff.map((member) => (
+                  <tr key={member.id} className="hover:bg-blue-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-semibold text-lg">
+                          {member.full_name?.charAt(0).toUpperCase() || '?'}
+                        </div>
+                        <div className="ml-4">
+                          <div className="text-sm font-semibold text-gray-900">{member.full_name || 'N/A'}</div>
+                          <div className="text-sm text-gray-500">{member.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex flex-col gap-2">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 w-fit">
+                          {member.role}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold w-fit ${
+                            member.approval_status === 'approved'
+                              ? 'bg-green-100 text-green-800'
+                              : member.approval_status === 'pending'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}
+                        >
+                          {member.approval_status}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">
+                          {getTeacherAssignmentsCount(member.id)}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          {getTeacherAssignmentsCount(member.id) === 1 ? 'assignment' : 'assignments'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {new Date(member.created_at).toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                      })}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="relative inline-block">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleActionMenu(member.id);
+                          }}
+                          className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition"
+                        >
+                          <span>Actions</span>
+                          <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        {actionMenuOpen[member.id] && (
+                          <div className="absolute right-0 mt-2 w-64 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50" onClick={(e) => e.stopPropagation()}>
+                            <div className="py-1">
+                              {member.role === 'teacher' && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      handleAssignTeacher(member);
+                                      setActionMenuOpen({});
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 flex items-center gap-2"
+                                  >
+                                    <span>📚</span>
+                                    <span>Assign Teaching</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      handleAssignAttendanceClass(member);
+                                      setActionMenuOpen({});
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-teal-50 flex items-center gap-2"
+                                  >
+                                    <span>📅</span>
+                                    <span>Assign Attendance Class</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedTeacher(member);
+                                      setDailyAttendanceModalOpen(true);
+                                      loadDailyAttendance(member.id, attendanceMonth, attendanceYear);
+                                      setActionMenuOpen({});
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-green-50 flex items-center gap-2"
+                                  >
+                                    <span>👤</span>
+                                    <span>Mark Attendance</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      handleEvaluatePerformance(member);
+                                      setActionMenuOpen({});
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 flex items-center gap-2"
+                                  >
+                                    <span>📊</span>
+                                    <span>View Performance</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      handleViewAssignments(member);
+                                      setActionMenuOpen({});
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 flex items-center gap-2"
+                                  >
+                                    <span>👁️</span>
+                                    <span>View All Assignments</span>
+                                  </button>
+                                  <div className="border-t border-gray-200 my-1"></div>
+                                </>
+                              )}
+                              <button
+                                onClick={() => {
+                                  handleEditTeacher(member);
+                                  setActionMenuOpen({});
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-2"
+                              >
+                                <span>✏️</span>
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleDeactivateTeacher(member);
+                                  setActionMenuOpen({});
+                                }}
+                                className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 ${
+                                  member.approval_status === 'approved'
+                                    ? 'text-red-700 hover:bg-red-50'
+                                    : 'text-green-700 hover:bg-green-50'
+                                }`}
+                              >
+                                <span>{member.approval_status === 'approved' ? '🚫' : '✅'}</span>
+                                <span>{member.approval_status === 'approved' ? 'Deactivate' : 'Activate'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Assign Teacher Modal */}
