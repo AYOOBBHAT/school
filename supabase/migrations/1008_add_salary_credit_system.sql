@@ -8,7 +8,7 @@
 -- 2. Partial credit application: If credit is larger than one month's salary, it's split across months
 -- 3. No future unpaid months: Credit is stored and applied when unpaid months appear
 -- 4. Multiple credits: Oldest credits are applied first (FIFO)
--- 5. Credit larger than multiple months: Applied across multiple months until exhausted
+-- 5. Credit larg er than multiple months: Applied across multiple months until exhausted
 -- 6. Existing credits: New credits are added to existing balance
 -- 7. Concurrent payments: Each payment's excess is tracked separately
 -- 8. Credit tracking: Full audit trail of credit creation and application
@@ -382,6 +382,9 @@ order by esm.teacher_id, esm.year desc, esm.month desc;
 -- ============================================
 -- 5. TRIGGER: Auto-update updated_at
 -- ============================================
+
+-- Drop trigger if it exists (for idempotency)
+drop trigger if exists update_teacher_salary_credits_updated_at on teacher_salary_credits;
 
 create trigger update_teacher_salary_credits_updated_at
   before update on teacher_salary_credits

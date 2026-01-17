@@ -56,7 +56,8 @@ const recordPaymentSchema = Joi.object({
   payment_proof: Joi.string().allow('', null).optional(),
   notes: Joi.string().allow('', null).optional(),
   salary_month: Joi.number().integer().min(1).max(12).required(),
-  salary_year: Joi.number().integer().min(2000).max(2100).required()
+  salary_year: Joi.number().integer().min(2000).max(2100).required(),
+  payment_type: Joi.string().valid('salary', 'advance', 'adjustment', 'bonus', 'loan', 'other').optional().default('salary')
 });
 
 // Create or Update Teacher Salary Structure (Principal only)
@@ -796,6 +797,7 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
         notes: value.notes || null,
         salary_month: value.salary_month,
         salary_year: value.salary_year,
+        payment_type: value.payment_type || 'salary',
         paid_by: user.id
       })
       .select(`
@@ -1324,6 +1326,164 @@ router.get('/credits/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     });
   } catch (err: any) {
     console.error('[salary/credits] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// ============================================
+// Get Comprehensive Payment History
+// ============================================
+// Returns complete payment history with summary, running totals, and all details
+router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
+  const { user } = req;
+  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+
+  const { teacherId } = req.params;
+  const { start_date, end_date, payment_type, payment_mode, page = '1', limit = '50' } = req.query;
+
+  // Teachers can only see their own history
+  if (user.role === 'teacher' && user.id !== teacherId) {
+    return res.status(403).json({ error: 'Access denied. You can only view your own payment history.' });
+  }
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+
+  try {
+    // Verify teacher belongs to the school
+    const { data: teacher, error: teacherError } = await adminSupabase
+      .from('profiles')
+      .select('id, full_name, email, school_id, role')
+      .eq('id', teacherId)
+      .eq('school_id', user.schoolId)
+      .eq('role', 'teacher')
+      .single();
+
+    if (teacherError || !teacher) {
+      return res.status(404).json({ error: 'Teacher not found or access denied' });
+    }
+
+    // Build query for payment history
+    let query = adminSupabase
+      .from('teacher_payment_history')
+      .select('*')
+      .eq('teacher_id', teacherId)
+      .eq('school_id', user.schoolId);
+
+    // Apply filters
+    if (start_date) {
+      query = query.gte('payment_date', start_date);
+    }
+    if (end_date) {
+      query = query.lte('payment_date', end_date);
+    }
+    if (payment_type) {
+      query = query.eq('payment_type', payment_type);
+    }
+    if (payment_mode) {
+      query = query.eq('payment_mode', payment_mode);
+    }
+
+    // Get total count for pagination (using a separate count query)
+    const countQuery = adminSupabase
+      .from('teacher_payment_history')
+      .select('*', { count: 'exact', head: true })
+      .eq('teacher_id', teacherId)
+      .eq('school_id', user.schoolId);
+    
+    if (start_date) {
+      countQuery.gte('payment_date', start_date);
+    }
+    if (end_date) {
+      countQuery.lte('payment_date', end_date);
+    }
+    if (payment_type) {
+      countQuery.eq('payment_type', payment_type);
+    }
+    if (payment_mode) {
+      countQuery.eq('payment_mode', payment_mode);
+    }
+
+    const { count, error: countError } = await countQuery;
+    
+    if (countError) {
+      console.error('[salary/history] Error counting payments:', countError);
+    }
+
+    // Apply pagination
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    const { data: payments, error: paymentsError } = await query
+      .order('payment_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limitNum - 1);
+
+    if (paymentsError) {
+      console.error('[salary/history] Error fetching payment history:', paymentsError);
+      return res.status(400).json({ error: paymentsError.message });
+    }
+
+    // Get payment summary using the database function
+    const { data: summary, error: summaryError } = await adminSupabase.rpc(
+      'get_teacher_payment_summary',
+      {
+        p_teacher_id: teacherId,
+        p_school_id: user.schoolId,
+        p_start_date: start_date || null,
+        p_end_date: end_date || null
+      }
+    );
+
+    if (summaryError) {
+      console.error('[salary/history] Error fetching payment summary:', summaryError);
+      // Don't fail the request, just log the error
+    }
+
+    // Get current pending amount (from unpaid salaries view)
+    let pendingAmount = 0;
+    try {
+      const { data: unpaidData, error: unpaidError } = await adminSupabase
+        .from('teacher_unpaid_salary_months')
+        .select('pending_amount')
+        .eq('teacher_id', teacherId)
+        .eq('school_id', user.schoolId)
+        .eq('payment_status', 'unpaid')
+        .single();
+
+      if (!unpaidError && unpaidData) {
+        pendingAmount = parseFloat(String(unpaidData.pending_amount || 0));
+      }
+    } catch (err) {
+      // Ignore errors for pending amount calculation
+      console.error('[salary/history] Error fetching pending amount:', err);
+    }
+
+    return res.json({
+      teacher: {
+        id: teacher.id,
+        full_name: teacher.full_name,
+        email: teacher.email
+      },
+      summary: {
+        ...summary,
+        pending_amount: pendingAmount,
+        total_paid_till_date: parseFloat(String(summary?.total_paid || 0))
+      },
+      payments: payments || [],
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: count || 0,
+        total_pages: Math.ceil((count || 0) / limitNum)
+      }
+    });
+  } catch (err: any) {
+    console.error('[salary/history] Error:', err);
     return res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });

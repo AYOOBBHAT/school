@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import { API_URL } from '../utils/api';
+import TeacherPaymentHistory from '../components/TeacherPaymentHistory';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
@@ -67,6 +68,7 @@ export default function TeacherDashboard() {
   const [salaryStructure, setSalaryStructure] = useState<any>(null);
   const [salaryRecords, setSalaryRecords] = useState<any[]>([]);
   const [loadingSalary, setLoadingSalary] = useState(false);
+  const [showPaymentHistory, setShowPaymentHistory] = useState(false);
 
   // Fee states (read-only)
   const [studentFeeStatus, setStudentFeeStatus] = useState<Record<string, { hasPending: boolean; totalPending: number; studentName?: string; rollNumber?: string }>>({});
@@ -1095,7 +1097,16 @@ export default function TeacherDashboard() {
 
           {currentView === 'salary' && (
             <div>
-              <h2 className="text-3xl font-bold mb-6">My Salary</h2>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold">My Salary</h2>
+                <button
+                  onClick={() => setShowPaymentHistory(true)}
+                  className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition flex items-center gap-2"
+                >
+                  <span>💰</span>
+                  <span>View Payment History</span>
+                </button>
+              </div>
               
               {loadingSalary ? (
                 <div className="text-center py-8">Loading salary information...</div>
@@ -1317,6 +1328,20 @@ export default function TeacherDashboard() {
                   )}
                 </>
               )}
+            </div>
+          )}
+
+          {/* Payment History Modal */}
+          {showPaymentHistory && profile && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg p-6 max-w-7xl w-full max-h-[90vh] overflow-y-auto">
+                <TeacherPaymentHistory
+                  teacherId={profile.id}
+                  teacherName={profile.full_name || undefined}
+                  onClose={() => setShowPaymentHistory(false)}
+                  showHeader={true}
+                />
+              </div>
             </div>
           )}
         </div>
