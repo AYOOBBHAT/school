@@ -4,6 +4,12 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.31.10.67:400
 // Billing disabled in this deployment
 const BILLING_ENABLED = false;
 
+// Log API URL on initialization (for debugging - remove in production)
+if (__DEV__) {
+  console.log('[API Service] API_BASE_URL:', API_BASE_URL);
+  console.log('[API Service] EXPO_PUBLIC_API_URL from env:', process.env.EXPO_PUBLIC_API_URL);
+}
+
 class ApiService {
   private token: string | null = null;
 
@@ -15,27 +21,107 @@ class ApiService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
+    // Normalize API_BASE_URL (remove trailing slash) and endpoint (ensure leading slash)
+    const baseUrl = API_BASE_URL.replace(/\/+$/, '');
+    const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const url = `${baseUrl}${normalizedEndpoint}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
 
-    if (this.token) {
+    // Only add Authorization header if token exists and is not empty
+    if (this.token && this.token.trim()) {
       headers['Authorization'] = `Bearer ${this.token}`;
+      if (__DEV__) {
+        console.log(`[API Request] Adding Bearer token to ${endpoint}. Token length: ${this.token.length}`);
+      }
+    } else {
+      // Log warning if token is missing for protected endpoints (except auth endpoints)
+      if (!endpoint.startsWith('/auth/')) {
+        console.warn(`[API Request] ${endpoint} made without token. Token: ${this.token ? 'exists but empty' : 'null'}`);
+        console.warn(`[API Request] Current token state:`, {
+          token: this.token,
+          tokenType: typeof this.token,
+          tokenLength: this.token?.length || 0
+        });
+      }
+      // Clear any invalid token state
+      if (this.token && !this.token.trim()) {
+        this.token = null;
+      }
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    let response: Response;
+    try {
+      if (__DEV__) {
+        console.log(`[API Request] Making ${options.method || 'GET'} request to: ${url}`);
+        console.log(`[API Request] Headers:`, JSON.stringify(headers, null, 2));
+      }
+      response = await fetch(url, {
+        ...options,
+        headers,
+      });
+      if (__DEV__) {
+        console.log(`[API Request] Response status: ${response.status} ${response.statusText}`);
+      }
+    } catch (networkError: any) {
+      console.error('[API Request] Network error:', networkError);
+      console.error('[API Request] Error details:', {
+        message: networkError.message,
+        name: networkError.name,
+        stack: networkError.stack?.substring(0, 200)
+      });
+      throw new Error(`Network error: ${networkError.message || 'Unable to connect to server'}`);
+    }
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      let error: any;
+      let errorText: string = '';
+      try {
+        errorText = await response.text();
+        error = errorText ? JSON.parse(errorText) : { error: `HTTP ${response.status}` };
+      } catch (parseError) {
+        // Response is not JSON
+        error = { error: `HTTP ${response.status}: ${response.statusText || 'Unknown error'}` };
+        errorText = error.error;
+      }
+      
+      // Log error details for debugging
+      if (__DEV__) {
+        console.error(`[API Request] Error for ${endpoint}:`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: error.error || error.message,
+          errorText: errorText.substring(0, 200) // First 200 chars
+        });
+      }
+      
+      // Handle authentication errors for protected endpoints only
+      // Auth endpoints (like /auth/login) return 401 for invalid credentials, which is different
+      const isAuthEndpoint = endpoint.startsWith('/auth/');
+      
+      if (!isAuthEndpoint && (response.status === 401 || error.error?.toLowerCase().includes('bearer') || error.error?.toLowerCase().includes('token'))) {
+        // Clear token if it's invalid (but not for auth endpoints)
+        this.token = null;
+        throw new Error('Authentication required. Please log in again.');
+      }
+      
+      // For auth endpoints and other errors, use the original error message
+      throw new Error(error.error || error.message || `HTTP ${response.status}`);
     }
 
-    return response.json();
+    // Parse JSON response with better error handling
+    try {
+      const text = await response.text();
+      if (!text) {
+        throw new Error('Empty response from server');
+      }
+      return JSON.parse(text);
+    } catch (parseError: any) {
+      console.error('JSON parse error:', parseError);
+      throw new Error(`Invalid response format: ${parseError.message || 'Could not parse server response'}`);
+    }
   }
 
   // Auth endpoints
@@ -44,7 +130,28 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+    
+    // Debug logging
+    if (__DEV__) {
+      console.log('[API Login] Response received:', {
+        hasUser: !!response.user,
+        hasToken: !!response.token,
+        tokenLength: response.token?.length || 0,
+        tokenPreview: response.token ? `${response.token.substring(0, 20)}...` : 'none'
+      });
+    }
+    
+    if (!response.token) {
+      console.error('[API Login] No token in response!', response);
+      throw new Error('Login response missing token');
+    }
+    
     this.setToken(response.token);
+    
+    if (__DEV__) {
+      console.log('[API Login] Token set in API service. Current token:', this.token ? 'exists' : 'null');
+    }
+    
     return response;
   }
 

@@ -20,9 +20,14 @@ export function LoginScreen({ navigation }: any) {
 
     setLoading(true);
     try {
+      console.log('[LoginScreen] Attempting login for:', email);
       const response = await authService.login(email, password);
+      console.log('[LoginScreen] Login successful, user:', response.user?.email);
       setUser(response.user);
     } catch (error: any) {
+      console.error('[LoginScreen] Login error:', error);
+      console.error('[LoginScreen] Error message:', error.message);
+      console.error('[LoginScreen] Error stack:', error.stack);
       Alert.alert('Login Failed', error.message || 'Invalid credentials');
     } finally {
       setLoading(false);

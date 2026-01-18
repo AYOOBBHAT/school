@@ -1,0 +1,49 @@
+{
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "node": "20.18.0",
+      "pnpm": "10.22.0",
+      "env": {
+        "EXPO_USE_PNPM": "1"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      },
+      "node": "20.18.0",
+      "pnpm": "10.22.0",
+      "env": {
+        "EXPO_USE_PNPM": "1",
+        "EXPO_PUBLIC_API_URL": "https://backend-production-25c8.up.railway.app",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://oqxbgbmlvrzqviurfvpo.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xeGJnYm1sdnJ6cXZpdXJmdnBvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzIxMDEsImV4cCI6MjA3NzgwODEwMX0.7Nsvhus8l11P8QeuxVx_quBRf8fAcQiDXy-QGmyhkQE"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "node": "20.18.0",
+      "pnpm": "10.22.0",
+      "env": {
+        "EXPO_USE_PNPM": "1",
+        "EXPO_PUBLIC_API_URL": "https://backend-production-25c8.up.railway.app",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://oqxbgbmlvrzqviurfvpo.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xeGJnYm1sdnJ6cXZpdXJmdnBvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzIxMDEsImV4cCI6MjA3NzgwODEwMX0.7Nsvhus8l11P8QeuxVx_quBRf8fAcQiDXy-QGmyhkQE"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
