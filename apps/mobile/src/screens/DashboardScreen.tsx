@@ -27,9 +27,20 @@ export function DashboardScreen({ navigation }: any) {
 
     // Ensure token is loaded from storage before making request
     try {
-      await authService.loadStoredAuth();
+      const authLoaded = await authService.loadStoredAuth();
+      if (!authLoaded) {
+        console.warn('[DashboardScreen] No stored auth found, but user is set. This may cause authentication errors.');
+      }
+      
+      // Verify token is set in API service
+      // We can't directly access the token, but we can verify by checking if loadStoredAuth succeeded
+      if (__DEV__) {
+        console.log('[DashboardScreen] Auth loaded, proceeding with dashboard request');
+      }
     } catch (error) {
-      console.error('Error loading stored auth:', error);
+      console.error('[DashboardScreen] Error loading stored auth:', error);
+      // Don't proceed if we can't load auth
+      return;
     }
 
     try {

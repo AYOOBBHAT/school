@@ -15,6 +15,13 @@ class ApiService {
 
   setToken(token: string | null) {
     this.token = token;
+    if (__DEV__) {
+      if (token) {
+        console.log(`[API Service] Token set. Length: ${token.length}, Preview: ${token.substring(0, 20)}...`);
+      } else {
+        console.log('[API Service] Token cleared');
+      }
+    }
   }
 
   private async request<T>(
@@ -108,7 +115,18 @@ class ApiService {
       }
       
       // For auth endpoints and other errors, use the original error message
-      throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      const errorMessage = error.error || error.message || `HTTP ${response.status}`;
+      
+      // Log additional context for debugging
+      if (__DEV__ && isAuthEndpoint && errorMessage.toLowerCase().includes('bearer')) {
+        console.error(`[API Request] Unexpected bearer token error on auth endpoint ${endpoint}:`, {
+          status: response.status,
+          error: errorMessage,
+          url: url
+        });
+      }
+      
+      throw new Error(errorMessage);
     }
 
     // Parse JSON response with better error handling
@@ -126,33 +144,47 @@ class ApiService {
 
   // Auth endpoints
   async login(email: string, password: string): Promise<AuthResponse> {
-    const response = await this.request<{ user: User; token: string }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    
-    // Debug logging
     if (__DEV__) {
-      console.log('[API Login] Response received:', {
-        hasUser: !!response.user,
-        hasToken: !!response.token,
-        tokenLength: response.token?.length || 0,
-        tokenPreview: response.token ? `${response.token.substring(0, 20)}...` : 'none'
+      console.log('[API Login] Starting login request to /auth/login');
+      console.log('[API Login] Current token before login:', this.token ? 'exists' : 'null');
+    }
+    
+    try {
+      const response = await this.request<{ user: User; token: string }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
       });
+      
+      // Debug logging
+      if (__DEV__) {
+        console.log('[API Login] Response received:', {
+          hasUser: !!response.user,
+          hasToken: !!response.token,
+          tokenLength: response.token?.length || 0,
+          tokenPreview: response.token ? `${response.token.substring(0, 20)}...` : 'none'
+        });
+      }
+      
+      if (!response.token) {
+        console.error('[API Login] No token in response!', response);
+        throw new Error('Login response missing token');
+      }
+      
+      this.setToken(response.token);
+      
+      if (__DEV__) {
+        console.log('[API Login] Token set in API service. Current token:', this.token ? 'exists' : 'null');
+      }
+      
+      return response;
+    } catch (error: any) {
+      console.error('[API Login] Login request failed:', {
+        message: error.message,
+        endpoint: '/auth/login',
+        url: `${API_BASE_URL}/auth/login`
+      });
+      throw error;
     }
-    
-    if (!response.token) {
-      console.error('[API Login] No token in response!', response);
-      throw new Error('Login response missing token');
-    }
-    
-    this.setToken(response.token);
-    
-    if (__DEV__) {
-      console.log('[API Login] Token set in API service. Current token:', this.token ? 'exists' : 'null');
-    }
-    
-    return response;
   }
 
   async signupPrincipal(data: {
