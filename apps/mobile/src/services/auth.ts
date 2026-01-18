@@ -126,12 +126,14 @@ export class AuthService {
       throw new Error('Login response missing token');
     }
     
-    await AsyncStorage.setItem(TOKEN_KEY, response.token);
-    await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
-    
-    // Ensure token is set in API service
+    // Set token in API service FIRST before saving to storage
+    // This ensures token is available immediately, even if storage write is delayed
     api.setToken(response.token);
     this.currentUser = response.user;
+    
+    // Then save to AsyncStorage
+    await AsyncStorage.setItem(TOKEN_KEY, response.token);
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
     
     // Verify token was saved
     const savedToken = await AsyncStorage.getItem(TOKEN_KEY);

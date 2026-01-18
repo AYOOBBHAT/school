@@ -54,7 +54,13 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 // Public auth routes (no auth middleware)
 app.use('/auth', authRouter);
 // Protected routes (require auth middleware)
-app.use(authMiddleware);
+// Skip auth middleware for /auth routes
+app.use((req, res, next) => {
+    if (req.path.startsWith('/auth')) {
+        return next();
+    }
+    return authMiddleware(req, res, next);
+});
 // Admin routes (no payment check needed)
 app.use('/admin', adminRouter);
 // All other protected routes (require payment check)

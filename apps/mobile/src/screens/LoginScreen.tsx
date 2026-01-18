@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { authService } from '../services/auth';
+import { api } from '../services/api';
 import { useAuth } from '../navigation/AuthContext';
 
 export function LoginScreen({ navigation }: any) {
@@ -23,6 +24,15 @@ export function LoginScreen({ navigation }: any) {
       console.log('[LoginScreen] Attempting login for:', email);
       const response = await authService.login(email, password);
       console.log('[LoginScreen] Login successful, user:', response.user?.email);
+      
+      // Ensure token is set in API service before navigating (should already be set by saveAuth, but verify)
+      if (response.token) {
+        api.setToken(response.token);
+        console.log('[LoginScreen] Token verified and set in API service before navigation');
+      } else {
+        console.error('[LoginScreen] WARNING: No token in login response!');
+      }
+      
       setUser(response.user);
     } catch (error: any) {
       console.error('[LoginScreen] Login error:', error);
