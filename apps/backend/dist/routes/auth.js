@@ -344,6 +344,82 @@ router.get('/schools', async (req, res) => {
         return res.status(500).json({ error: err.message || 'Internal server error' });
     }
 });
+// Email-based login endpoint for mobile app
+router.post('/login', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required' });
+    }
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    try {
+        // Sign in with Supabase
+        const anonSupabase = createClient(supabaseUrl, supabaseAnonKey);
+        const { data: authData, error: authError } = await anonSupabase.auth.signInWithPassword({
+            email,
+            password
+        });
+        if (authError || !authData.user || !authData.session) {
+            return res.status(401).json({ error: 'Invalid email or password' });
+        }
+        // Get user profile
+        const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: profile, error: profileError } = await adminSupabase
+            .from('profiles')
+            .select('id, role, full_name, email, school_id')
+            .eq('id', authData.user.id)
+            .single();
+        if (profileError || !profile) {
+            // eslint-disable-next-line no-console
+            console.error('[login] Error fetching profile:', profileError);
+            return res.status(400).json({ error: 'User profile not found' });
+        }
+        // Get school name if school_id exists
+        let schoolName;
+        if (profile.school_id) {
+            const { data: school } = await adminSupabase
+                .from('schools')
+                .select('name')
+                .eq('id', profile.school_id)
+                .single();
+            schoolName = school?.name;
+        }
+        // Extract access token from session
+        const token = authData.session.access_token;
+        if (!token) {
+            // eslint-disable-next-line no-console
+            console.error('[login] No access token in session!');
+            return res.status(500).json({ error: 'Failed to generate authentication token' });
+        }
+        // Build user object matching mobile app's User type
+        const user = {
+            id: profile.id,
+            email: profile.email,
+            role: profile.role,
+            full_name: profile.full_name,
+            schoolId: profile.school_id || '',
+            schoolName
+        };
+        // eslint-disable-next-line no-console
+        console.log('[login] Login successful:', {
+            userId: user.id,
+            email: user.email,
+            role: user.role,
+            hasToken: !!token,
+            tokenLength: token.length
+        });
+        return res.json({
+            user,
+            token
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[login] Error:', err);
+        return res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+});
 // Username-based login for students
 router.post('/login-username', async (req, res) => {
     const { username, password, join_code, registration_number } = req.body;

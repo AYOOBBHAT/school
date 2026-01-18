@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../navigation/AuthContext';
 import { api } from '../services/api';
+import { authService } from '../services/auth';
 import { DashboardStats } from '../types';
 
 export function DashboardScreen({ navigation }: any) {
@@ -11,15 +12,40 @@ export function DashboardScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadDashboard();
-  }, []);
+    // Only load dashboard after user is confirmed (avoid race condition with auth loading)
+    if (user) {
+      loadDashboard();
+    }
+  }, [user]);
 
   const loadDashboard = async () => {
+    // Don't load if we don't have a user
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    // Ensure token is loaded from storage before making request
+    try {
+      await authService.loadStoredAuth();
+    } catch (error) {
+      console.error('Error loading stored auth:', error);
+    }
+
     try {
       const data = await api.getDashboard();
       setStats(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading dashboard:', error);
+      // If it's an auth error (missing token, bearer token, authentication required), log the user out
+      const errorMsg = error.message?.toLowerCase() || '';
+      if (errorMsg.includes('authentication') || 
+          errorMsg.includes('bearer') || 
+          errorMsg.includes('missing bearer token') ||
+          errorMsg.includes('token')) {
+        console.log('Authentication error detected, logging out...');
+        await logout();
+      }
     } finally {
       setLoading(false);
     }

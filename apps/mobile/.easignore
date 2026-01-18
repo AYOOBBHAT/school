@@ -1,0 +1,9 @@
+# Exclude npm lockfiles to prevent EAS from using npm instead of pnpm
+# Patterns work from the app directory (apps/mobile)
+package-lock.json
+**/package-lock.json
+npm-shrinkwrap.json
+**/npm-shrinkwrap.json
+# Exclude root package-lock.json specifically
+../../package-lock.json
+../../../package-lock.json
