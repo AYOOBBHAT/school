@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { API_URL } from '../utils/api';
 import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics';
 import TeacherPaymentHistory from '../components/TeacherPaymentHistory';
@@ -8845,7 +8846,18 @@ export default function PrincipalDashboard() {
       <Sidebar currentPath={location.pathname} />
       <div className="ml-64 flex-1">
         {currentView === 'dashboard' && <DashboardOverview />}
-        {currentView === 'staff' && <StaffManagement />}
+        {currentView === 'staff' && (
+          <ErrorBoundary fallback={
+            <div className="p-6">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <h3 className="text-red-800 font-semibold mb-2">Error Loading Staff Page</h3>
+                <p className="text-red-600 text-sm">Please refresh the page or try again later.</p>
+              </div>
+            </div>
+          }>
+            <StaffManagement />
+          </ErrorBoundary>
+        )}
         {currentView === 'classifications' && <ClassificationsManagement />}
         {currentView === 'classes' && <ClassesManagement />}
         {currentView === 'subjects' && <SubjectsManagement />}
