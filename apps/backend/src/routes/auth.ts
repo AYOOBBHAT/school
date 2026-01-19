@@ -446,6 +446,23 @@ router.post('/login', async (req, res) => {
       schoolName = school?.name;
     }
 
+    // Update app_metadata with school_id and role so they become JWT custom claims
+    // This allows RLS policies using auth_claim('school_id') and auth_claim('role') to work
+    if (profile.school_id || profile.role) {
+      const appMetadata: any = {};
+      if (profile.school_id) appMetadata.school_id = profile.school_id;
+      if (profile.role) appMetadata.role = profile.role;
+
+      await adminSupabase.auth.admin.updateUserById(authData.user.id, {
+        app_metadata: appMetadata
+      });
+
+      // Refresh the session to get a new token with updated claims
+      // Note: The current session token won't have the new claims, but subsequent logins will
+      // For immediate effect, we'd need to sign out and sign in again, but that's not ideal
+      // The user will need to log in again for the new claims to take effect
+    }
+
     // Extract access token from session
     const token = authData.session.access_token;
 
