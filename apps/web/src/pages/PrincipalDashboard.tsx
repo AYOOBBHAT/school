@@ -1150,13 +1150,20 @@ function StaffManagement() {
     if (assignForm.class_group_id) {
       loadSections(assignForm.class_group_id);
     }
+    // Always return cleanup function (even if empty) to avoid React error #310
+    return () => {
+      // No cleanup needed
+    };
   }, [assignForm.class_group_id]);
 
   useEffect(() => {
     if (dailyAttendanceModalOpen && selectedTeacher) {
       loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
     }
-    // No cleanup needed - just loading data conditionally
+    // Always return cleanup function (even if empty) to avoid React error #310
+    return () => {
+      // No cleanup needed
+    };
   }, [dailyAttendanceModalOpen, attendanceMonth, attendanceYear, selectedTeacher]);
 
   // Get assignments count for each teacher
@@ -1357,9 +1364,10 @@ function StaffManagement() {
     const handleClickOutside = () => {
       setActionMenuOpen({});
     };
-    if (Object.keys(actionMenuOpen).length > 0) {
-      document.addEventListener('click', handleClickOutside);
-    }
+    
+    // Always add listener, cleanup will remove it
+    document.addEventListener('click', handleClickOutside);
+    
     // Always return cleanup function to avoid React error #310
     return () => {
       document.removeEventListener('click', handleClickOutside);
