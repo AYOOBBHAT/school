@@ -717,6 +717,10 @@ function StaffManagement() {
     loadAllSubjects();
     loadAllAssignments();
     loadAttendanceAssignments();
+    // Always return cleanup function (even if empty) to avoid React error #310
+    return () => {
+      // No cleanup needed
+    };
   }, []);
 
   const loadAllClasses = async () => {
