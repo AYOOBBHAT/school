@@ -1,13 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api.js';
 // Import recharts components
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
 
 interface UnpaidFeeAnalyticsProps {
   userRole: 'clerk' | 'principal';

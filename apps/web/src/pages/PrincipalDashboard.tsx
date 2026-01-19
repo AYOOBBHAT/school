@@ -1,15 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../utils/supabase';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { API_URL } from '../utils/api';
 import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics';
 import TeacherPaymentHistory from '../components/TeacherPaymentHistory';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
 
 interface GenderBreakdown {
   total: number;
@@ -320,12 +315,12 @@ function DashboardOverview() {
           return;
         }
 
-        if (!profile || !profile.school_id) {
+        if (!profile || !('school_id' in profile) || !(profile as any).school_id) {
           console.log('No profile or school_id found');
           return;
         }
 
-        const schoolId = profile.school_id;
+        const schoolId = (profile as any).school_id;
 
         const token = (await supabase.auth.getSession()).data.session?.access_token;
 
@@ -427,7 +422,7 @@ function DashboardOverview() {
               })
             );
             const staffGenders = buildGenderBreakdown(
-              (staffRows.data || []).map((member) => member.gender)
+              (staffRows.data || []).map((member: any) => member.gender)
             );
 
             setStats({
@@ -1363,8 +1358,11 @@ function StaffManagement() {
     };
     if (Object.keys(actionMenuOpen).length > 0) {
       document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
     }
+    // Always return cleanup function to avoid React error #310
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
   }, [actionMenuOpen]);
 
   return (
@@ -8774,13 +8772,19 @@ export default function PrincipalDashboard() {
           } catch (parseError) {
             console.error('[PrincipalDashboard] Error parsing profile response:', parseError);
             // Fallback: try to get profile directly from Supabase
+            const userId = session.data.session?.user?.id;
+            if (!userId) {
+              navigate('/login');
+              return;
+            }
+            
             const { data: profileData } = await supabase
               .from('profiles')
               .select('role, approval_status')
-              .eq('id', session.data.session?.user?.id)
+              .eq('id', userId)
               .single();
             
-            if (profileData && profileData.role === 'principal') {
+            if (profileData && (profileData as any).role === 'principal') {
               // Profile found, allow access
               setCheckingRole(false);
               return;
@@ -8809,13 +8813,19 @@ export default function PrincipalDashboard() {
           console.error('[PrincipalDashboard] Failed to verify role, status:', response.status);
           // Try fallback: check profile directly from Supabase
           try {
+            const userId = session.data.session?.user?.id;
+            if (!userId) {
+              navigate('/login');
+              return;
+            }
+            
             const { data: profileData, error: profileError } = await supabase
               .from('profiles')
               .select('role, approval_status')
-              .eq('id', session.data.session?.user?.id)
+              .eq('id', userId)
               .single();
             
-            if (!profileError && profileData && profileData.role === 'principal') {
+            if (!profileError && profileData && (profileData as any).role === 'principal') {
               // Profile found, allow access
               setCheckingRole(false);
               return;
