@@ -50,17 +50,17 @@ begin
       and c.relrowsecurity = true  -- RLS is enabled
       and not exists (
         -- Check if any SELECT policy exists for this table
+        -- pg_policies is a view that shows policies, but we need to check pg_policy system catalog
         select 1
-        from pg_policies p
-        where p.schemaname = 'public'
-          and p.tablename = t.tablename
-          and p.policyname is not null
+        from pg_policy pol
+        join pg_class pc on pc.oid = pol.polrelid
+        where pc.relname = t.tablename
+          and pc.relnamespace = n.oid
           and (
-            -- SELECT policies
-            p.cmd = 'SELECT' or
-            -- Policies that apply to SELECT (cmd = '*' or cmd = 'r')
-            p.cmd = '*' or
-            p.cmd = 'r'
+            -- SELECT policies (cmd = 'r' in pg_policy)
+            pol.polcmd = 'r' or
+            -- Policies that apply to all commands (cmd = '*')
+            pol.polcmd = '*'
           )
       )
   ) problematic_tables;
@@ -112,12 +112,14 @@ join pg_class c on c.relname = t.tablename
 join pg_namespace n on n.oid = c.relnamespace and n.nspname = t.schemaname
 left join (
   select 
-    tablename,
-    count(*) filter (where cmd = 'SELECT' or cmd = '*' or cmd = 'r') as select_policy_count,
+    pc.relname as tablename,
+    count(*) filter (where pol.polcmd = 'r' or pol.polcmd = '*') as select_policy_count,
     count(*) as total_policy_count
-  from pg_policies
-  where schemaname = 'public'
-  group by tablename
+  from pg_policy pol
+  join pg_class pc on pc.oid = pol.polrelid
+  join pg_namespace pn on pn.oid = pc.relnamespace
+  where pn.nspname = 'public'
+  group by pc.relname
 ) policy_counts on policy_counts.tablename = t.tablename
 where t.schemaname = 'public'
   and c.relkind = 'r'  -- Only regular tables
