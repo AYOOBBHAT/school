@@ -7266,6 +7266,10 @@ function FeeManagement({ userRole = 'principal' }: { userRole?: 'principal' | 'c
       loadTransportData();
       loadCustomFees();
     }
+    // Always return cleanup function (even if empty) to avoid React error #310
+    return () => {
+      // No cleanup needed
+    };
   }, [activeTab]);
 
   const loadInitialData = async () => {
