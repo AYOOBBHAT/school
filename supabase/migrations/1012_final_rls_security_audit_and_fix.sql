@@ -12,14 +12,14 @@
 -- Only enable RLS on tables that actually exist
 
 -- Helper function to enable RLS only if table exists
-create or replace function enable_rls_if_exists(table_name text)
+create or replace function enable_rls_if_exists(p_table_name text)
 returns void language plpgsql as $$
 begin
   if exists (
     select 1 from information_schema.tables 
-    where table_schema = 'public' and table_name = enable_rls_if_exists.table_name
+    where table_schema = 'public' and information_schema.tables.table_name = p_table_name
   ) then
-    execute format('alter table %I enable row level security', table_name);
+    execute format('alter table %I enable row level security', p_table_name);
   end if;
 end;
 $$;
