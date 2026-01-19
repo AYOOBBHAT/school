@@ -816,6 +816,7 @@ function StaffManagement() {
         if (dailyAttendanceModalOpen && selectedTeacher) {
             loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
         }
+        // No cleanup needed - just loading data conditionally
     }, [dailyAttendanceModalOpen, attendanceMonth, attendanceYear, selectedTeacher]);
     // Get assignments count for each teacher
     const getTeacherAssignmentsCount = (teacherId) => {

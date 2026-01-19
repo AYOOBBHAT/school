@@ -1,8 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api';
-const supabase = createClient(import.meta.env.VITE_SUPABASE_URL || '', import.meta.env.VITE_SUPABASE_ANON_KEY || '');
 export default function TeacherPaymentHistory({ teacherId, teacherName, onClose, showHeader = true }) {
     const [payments, setPayments] = useState([]);
     const [summary, setSummary] = useState(null);
