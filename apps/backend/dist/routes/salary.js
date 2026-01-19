@@ -921,13 +921,11 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
 // IMPORTANT: All queries in this endpoint MUST filter by user.schoolId to ensure
 // principals/clerks only see data from their own school
 router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => {
-    const { user } = req;
-    if (!user || !user.schoolId)
+    const { supabase, user } = req;
+    if (!supabase || !user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Use user-context Supabase client to enforce RLS
+    // The views (teacher_unpaid_salary_months, unpaid_teachers_summary) respect RLS from underlying tables
     try {
         const { teacher_id, time_scope, page = 1, limit = 20 } = req.query;
         // Validate time scope
@@ -968,11 +966,11 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
                 startDate = new Date(today.getFullYear(), today.getMonth() - 12, 1);
         }
         // Build query for unpaid salary months
-        // Filtered by school_id to ensure school-level data isolation
-        let unpaidMonthsQuery = adminSupabase
+        // RLS automatically filters by school_id - no need to manually filter
+        // The view respects RLS from underlying tables (profiles, teacher_salary_structure, etc.)
+        let unpaidMonthsQuery = supabase
             .from('teacher_unpaid_salary_months')
             .select('*')
-            .eq('school_id', user.schoolId) // School-level filtering
             .eq('is_unpaid', true)
             .gte('period_start', startDate.toISOString().split('T')[0])
             .lte('period_start', endDate.toISOString().split('T')[0])
@@ -989,11 +987,10 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
             return res.status(500).json({ error: unpaidMonthsError.message });
         }
         // Get summary of unpaid teachers
-        // Filtered by school_id to ensure school-level data isolation
-        let summaryQuery = adminSupabase
+        // RLS automatically filters by school_id - no need to manually filter
+        let summaryQuery = supabase
             .from('unpaid_teachers_summary')
             .select('*')
-            .eq('school_id', user.schoolId) // School-level filtering
             .order('total_unpaid_amount', { ascending: false });
         if (teacher_id) {
             summaryQuery = summaryQuery.eq('teacher_id', teacher_id);
@@ -1169,8 +1166,8 @@ router.get('/credits/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
 // ============================================
 // Returns complete payment history with summary, running totals, and all details
 router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
-    const { user } = req;
-    if (!user || !user.schoolId)
+    const { supabase, user } = req;
+    if (!supabase || !user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { teacherId } = req.params;
     const { start_date, end_date, payment_type, payment_mode, page = '1', limit = '50' } = req.query;
@@ -1178,28 +1175,31 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     if (user.role === 'teacher' && user.id !== teacherId) {
         return res.status(403).json({ error: 'Access denied. You can only view your own payment history.' });
     }
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
-        // Verify teacher belongs to the school
-        const { data: teacher, error: teacherError } = await adminSupabase
+        // Verify teacher belongs to the school using user-context client (RLS enforced)
+        const { data: teacher, error: teacherError } = await supabase
             .from('profiles')
             .select('id, full_name, email, school_id, role')
             .eq('id', teacherId)
-            .eq('school_id', user.schoolId)
             .eq('role', 'teacher')
-            .single();
-        if (teacherError || !teacher) {
-            return res.status(404).json({ error: 'Teacher not found or access denied' });
+            .maybeSingle();
+        if (teacherError) {
+            console.error('[salary/history] Error fetching teacher:', teacherError);
+            return res.status(400).json({ error: teacherError.message });
+        }
+        if (!teacher) {
+            return res.status(404).json({ error: 'Teacher not found' });
+        }
+        // Verify teacher belongs to user's school (RLS should enforce this, but double-check)
+        if (teacher.school_id !== user.schoolId) {
+            return res.status(403).json({ error: 'Access denied. Teacher does not belong to your school.' });
         }
         // Build query for payment history
-        let query = adminSupabase
+        // RLS automatically filters by school_id - no need to manually filter
+        let query = supabase
             .from('teacher_payment_history')
             .select('*')
-            .eq('teacher_id', teacherId)
-            .eq('school_id', user.schoolId);
+            .eq('teacher_id', teacherId);
         // Apply filters
         if (start_date) {
             query = query.gte('payment_date', start_date);
@@ -1214,11 +1214,11 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
             query = query.eq('payment_mode', payment_mode);
         }
         // Get total count for pagination (using a separate count query)
-        const countQuery = adminSupabase
+        // RLS automatically filters by school_id
+        const countQuery = supabase
             .from('teacher_payment_history')
             .select('*', { count: 'exact', head: true })
-            .eq('teacher_id', teacherId)
-            .eq('school_id', user.schoolId);
+            .eq('teacher_id', teacherId);
         if (start_date) {
             countQuery.gte('payment_date', start_date);
         }
@@ -1248,6 +1248,12 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
             return res.status(400).json({ error: paymentsError.message });
         }
         // Get payment summary using the database function
+        // Note: RPC functions may need service role if they're SECURITY DEFINER
+        // For now, we'll use service role only for this RPC call (documented exception)
+        if (!supabaseUrl || !supabaseServiceKey) {
+            return res.status(500).json({ error: 'Server configuration error' });
+        }
+        const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
         const { data: summary, error: summaryError } = await adminSupabase.rpc('get_teacher_payment_summary', {
             p_teacher_id: teacherId,
             p_school_id: user.schoolId,
@@ -1259,15 +1265,15 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
             // Don't fail the request, just log the error
         }
         // Get current pending amount (from unpaid salaries view)
+        // Use user-context client - RLS automatically filters by school_id
         let pendingAmount = 0;
         try {
-            const { data: unpaidData, error: unpaidError } = await adminSupabase
+            const { data: unpaidData, error: unpaidError } = await supabase
                 .from('teacher_unpaid_salary_months')
                 .select('pending_amount')
                 .eq('teacher_id', teacherId)
-                .eq('school_id', user.schoolId)
                 .eq('payment_status', 'unpaid')
-                .single();
+                .maybeSingle();
             if (!unpaidError && unpaidData) {
                 pendingAmount = parseFloat(String(unpaidData.pending_amount || 0));
             }
