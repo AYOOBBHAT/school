@@ -85,3 +85,38 @@ export interface DashboardStats {
   recent_payments?: number;
 }
 
+export interface Exam {
+  id: string;
+  name: string;
+  term: string;
+  start_date: string;
+  end_date: string;
+  school_id: string;
+}
+
+export interface Staff {
+  id: string;
+  profile_id: string;
+  role: 'teacher' | 'clerk';
+  subject_id?: string;
+  profiles?: {
+    id: string;
+    full_name: string;
+    email: string;
+  };
+}
+
+export interface Classification {
+  id: string;
+  type: string;
+  value: string;
+  school_id: string;
+}
+
+export interface TeacherAssignment {
+  id: string;
+  teacher_id: string;
+  class_group_id: string;
+  subject_id: string;
+  section_id?: string;
+}
