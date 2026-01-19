@@ -330,17 +330,23 @@ function DashboardOverview() {
         const token = (await supabase.auth.getSession()).data.session?.access_token;
 
         const loadSchoolInfoFromSupabase = async () => {
-          const { data: school, error: schoolError } = await supabase
-            .from('schools')
-            .select('id, name, join_code, registration_number, address, contact_email, contact_phone, logo_url, created_at')
-            .eq('id', schoolId)
-            .single();
+          try {
+            const { data: school, error: schoolError } = await supabase
+              .from('schools')
+              .select('id, name, join_code, registration_number, address, contact_email, contact_phone, logo_url, created_at')
+              .eq('id', schoolId)
+              .maybeSingle(); // Use maybeSingle() instead of single() to handle no results gracefully
 
-          if (!schoolError && school) {
-            console.log('School data loaded from Supabase fallback:', school);
-            setSchoolInfo(school);
-          } else if (schoolError) {
-            console.error('Error loading school from Supabase:', schoolError);
+            if (!schoolError && school) {
+              console.log('School data loaded from Supabase fallback:', school);
+              setSchoolInfo(school);
+            } else if (schoolError) {
+              console.error('Error loading school from Supabase:', schoolError);
+              // Don't throw, just log - school info is optional
+            }
+          } catch (supabaseError) {
+            console.error('Error in Supabase query:', supabaseError);
+            // Don't throw - school info is optional
           }
         };
 
@@ -354,19 +360,33 @@ function DashboardOverview() {
             const response = await fetch(`${API_URL}/school/info`, {
               headers: {
                 Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
               },
             });
 
             if (response.ok) {
-              const data = await response.json();
-              console.log('School data loaded from API:', data.school);
-              setSchoolInfo(data.school);
+              try {
+                const data = await response.json();
+                // Handle both { school: {...} } and direct school object
+                const schoolData = data.school || data;
+                if (schoolData && typeof schoolData === 'object' && !Array.isArray(schoolData)) {
+                  console.log('School data loaded from API:', schoolData);
+                  setSchoolInfo(schoolData);
+                } else {
+                  console.warn('Unexpected school data format:', data);
+                  await loadSchoolInfoFromSupabase();
+                }
+              } catch (jsonError) {
+                console.error('Error parsing school JSON:', jsonError);
+                await loadSchoolInfoFromSupabase();
+              }
             } else {
               const errorText = await response.text();
-              console.error('Error loading school from API:', errorText);
+              console.error('Error loading school from API:', response.status, errorText);
               await loadSchoolInfoFromSupabase();
             }
-          } catch (apiError) {
+          } catch (apiError: any) {
             console.error('Error loading school from API:', apiError);
             await loadSchoolInfoFromSupabase();
           }

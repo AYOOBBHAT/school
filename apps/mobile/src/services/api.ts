@@ -304,6 +304,132 @@ class ApiService {
     return this.request<{ payments: any[] }>(`/payments${query.toString() ? '?' + query.toString() : ''}`);
   }
 
+  // Unpaid Fee Analytics
+  async getUnpaidFeeAnalytics(params: {
+    class_group_id?: string;
+    time_scope?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    summary: {
+      total_students: number;
+      unpaid_count: number;
+      partially_paid_count: number;
+      paid_count: number;
+      total_unpaid_amount: number;
+    };
+    chart_data: {
+      paid: number;
+      unpaid: number;
+      partially_paid: number;
+    };
+    students: Array<{
+      student_id: string;
+      student_name: string;
+      roll_number: string;
+      class_name: string;
+      parent_name: string;
+      parent_phone: string;
+      parent_address: string;
+      pending_months: number | string;
+      total_pending: number;
+      total_fee: number;
+      total_paid: number;
+      payment_status: 'paid' | 'unpaid' | 'partially-paid';
+      fee_component_breakdown?: Array<{
+        fee_type: string;
+        fee_name: string;
+        total_months_due: number;
+        paid_months: number;
+        pending_months: number;
+        total_fee_amount: number;
+        total_paid_amount: number;
+        total_pending_amount: number;
+      }>;
+    }>;
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      total_pages: number;
+    };
+  }> {
+    const query = new URLSearchParams();
+    if (params.class_group_id) query.append('class_group_id', params.class_group_id);
+    if (params.time_scope) query.append('time_scope', params.time_scope);
+    if (params.page) query.append('page', params.page.toString());
+    if (params.limit) query.append('limit', params.limit.toString());
+    
+    return this.request(`/clerk-fees/analytics/unpaid?${query.toString()}`);
+  }
+
+  // Unpaid Salaries
+  async getUnpaidSalaries(params: {
+    teacher_id?: string;
+    time_scope?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    summary: {
+      total_teachers: number;
+      total_unpaid_amount: number;
+      total_unpaid_months: number;
+      time_scope: string;
+      start_date: string;
+      end_date: string;
+    };
+    teachers: Array<{
+      teacher_id: string;
+      teacher_name: string;
+      teacher_email: string;
+      unpaid_months_count: number;
+      total_unpaid_amount: number;
+      max_days_unpaid: number;
+      oldest_unpaid_month: {
+        month: number;
+        year: number;
+        period_label: string;
+        period_start: string;
+        days_since_period_start: number;
+      } | null;
+      latest_unpaid_month: {
+        month: number;
+        year: number;
+        period_label: string;
+        period_start: string;
+        days_since_period_start: number;
+      } | null;
+      unpaid_months: Array<{
+        month: number;
+        year: number;
+        period_start: string;
+        period_label: string;
+        payment_status: string;
+        net_salary: number;
+        paid_amount: number;
+        credit_applied: number;
+        effective_paid_amount: number;
+        pending_amount: number;
+        days_since_period_start: number;
+        payment_date: string | null;
+      }>;
+    }>;
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      total_pages: number;
+    };
+  }> {
+    const query = new URLSearchParams();
+    if (params.teacher_id) query.append('teacher_id', params.teacher_id);
+    if (params.time_scope) query.append('time_scope', params.time_scope);
+    if (params.page) query.append('page', params.page.toString());
+    if (params.limit) query.append('limit', params.limit.toString());
+    
+    return this.request(`/salary/unpaid?${query.toString()}`);
+  }
+
   // Health check
   async healthCheck(): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>('/health');

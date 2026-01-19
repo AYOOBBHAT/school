@@ -918,6 +918,8 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
 // ============================================
 // Shows all unpaid salary months for teachers, including months without salary records
 // Accessible to Principal and Clerk
+// IMPORTANT: All queries in this endpoint MUST filter by user.schoolId to ensure
+// principals/clerks only see data from their own school
 router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { user } = req;
     if (!user || !user.schoolId)
@@ -966,10 +968,11 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
                 startDate = new Date(today.getFullYear(), today.getMonth() - 12, 1);
         }
         // Build query for unpaid salary months
+        // Filtered by school_id to ensure school-level data isolation
         let unpaidMonthsQuery = adminSupabase
             .from('teacher_unpaid_salary_months')
             .select('*')
-            .eq('school_id', user.schoolId)
+            .eq('school_id', user.schoolId) // School-level filtering
             .eq('is_unpaid', true)
             .gte('period_start', startDate.toISOString().split('T')[0])
             .lte('period_start', endDate.toISOString().split('T')[0])
@@ -986,10 +989,11 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
             return res.status(500).json({ error: unpaidMonthsError.message });
         }
         // Get summary of unpaid teachers
+        // Filtered by school_id to ensure school-level data isolation
         let summaryQuery = adminSupabase
             .from('unpaid_teachers_summary')
             .select('*')
-            .eq('school_id', user.schoolId)
+            .eq('school_id', user.schoolId) // School-level filtering
             .order('total_unpaid_amount', { ascending: false });
         if (teacher_id) {
             summaryQuery = summaryQuery.eq('teacher_id', teacher_id);

@@ -505,6 +505,8 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
     const { user } = req;
     if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
+    // IMPORTANT: All queries in this endpoint MUST filter by user.schoolId to ensure
+    // principals/clerks only see data from their own school
     try {
         const { class_group_id, time_scope, page = 1, limit = 20 } = req.query;
         // Validate time scope
@@ -542,6 +544,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
                 startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
         }
         // Get ALL students first (not just those with unpaid components)
+        // Filtered by school_id to ensure school-level data isolation
         let allStudentsQuery = adminSupabase
             .from('students')
             .select(`
@@ -560,7 +563,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
           name
         )
       `)
-            .eq('school_id', user.schoolId)
+            .eq('school_id', user.schoolId) // School-level filtering
             .eq('status', 'active');
         // Filter by class if provided
         if (class_group_id) {
@@ -588,11 +591,12 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
         const allStudentIds = allStudents.map((s) => s.id);
         // Get ALL components for these students (including paid ones) to correctly determine payment status
         // We'll filter unpaid ones later for the list, but need all to determine if student is paid
+        // Filtered by school_id to ensure school-level data isolation
         let allComponentsQuery = adminSupabase
             .from('monthly_fee_components')
             .select('id, student_id, fee_type, fee_name, fee_category_id, fee_amount, paid_amount, pending_amount, status, period_year, period_month, period_start, period_end')
-            .eq('school_id', user.schoolId)
-            .in('student_id', allStudentIds);
+            .eq('school_id', user.schoolId) // School-level filtering
+            .in('student_id', allStudentIds); // Additional safety: only students from this school
         const { data: allComponents, error: allComponentsError } = await allComponentsQuery;
         if (allComponentsError) {
             console.error('[analytics/unpaid] Error fetching all components:', allComponentsError);
@@ -613,6 +617,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
             return res.status(500).json({ error: studentsError.message || 'Failed to fetch students' });
         }
         // Get guardians for students
+        // Safe: filteredStudentIds are already school-scoped (from students filtered by user.schoolId)
         const filteredStudentIds = (students || []).map((s) => s.id);
         const { data: guardians } = await adminSupabase
             .from('student_guardians')
@@ -624,7 +629,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
           address
         )
       `)
-            .in('student_id', filteredStudentIds);
+            .in('student_id', filteredStudentIds); // Safe: student_ids are already school-scoped
         // Group guardians by student and get first one (primary if is_primary exists, otherwise first)
         const guardianByStudent = new Map();
         (guardians || []).forEach((g) => {

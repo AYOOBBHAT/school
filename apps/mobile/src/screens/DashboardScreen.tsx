@@ -5,6 +5,8 @@ import { useAuth } from '../navigation/AuthContext';
 import { api } from '../services/api';
 import { authService } from '../services/auth';
 import { DashboardStats } from '../types';
+import { UnpaidFeeAnalytics } from '../components/UnpaidFeeAnalytics';
+import { UnpaidSalaries } from '../components/UnpaidSalaries';
 
 export function DashboardScreen({ navigation }: any) {
   const { user, logout } = useAuth();
@@ -158,6 +160,20 @@ export function DashboardScreen({ navigation }: any) {
             </>
           )}
         </View>
+
+        {/* Unpaid Fee Analytics - Only for Principal */}
+        {user?.role === 'principal' && (
+          <View style={styles.analyticsSection}>
+            <UnpaidFeeAnalytics userRole="principal" />
+          </View>
+        )}
+
+        {/* Unpaid Salaries - Only for Principal */}
+        {user?.role === 'principal' && (
+          <View style={styles.analyticsSection}>
+            <UnpaidSalaries userRole="principal" />
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -250,6 +266,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#2563eb',
+  },
+  analyticsSection: {
+    marginTop: 8,
   },
 });
 
