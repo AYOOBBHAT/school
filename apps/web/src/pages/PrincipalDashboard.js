@@ -1,12 +1,11 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../utils/supabase';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { API_URL } from '../utils/api';
 import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics';
 import TeacherPaymentHistory from '../components/TeacherPaymentHistory';
-const supabase = createClient(import.meta.env.VITE_SUPABASE_URL || '', import.meta.env.VITE_SUPABASE_ANON_KEY || '');
 function Sidebar({ currentPath }) {
     const navigate = useNavigate();
     const handleLogout = async () => {
@@ -144,7 +143,7 @@ function DashboardOverview() {
                     console.error('Error loading profile:', profileError);
                     return;
                 }
-                if (!profile || !profile.school_id) {
+                if (!profile || !('school_id' in profile) || !profile.school_id) {
                     console.log('No profile or school_id found');
                     return;
                 }
@@ -978,8 +977,11 @@ function StaffManagement() {
         };
         if (Object.keys(actionMenuOpen).length > 0) {
             document.addEventListener('click', handleClickOutside);
-            return () => document.removeEventListener('click', handleClickOutside);
         }
+        // Always return cleanup function to avoid React error #310
+        return () => {
+            document.removeEventListener('click', handleClickOutside);
+        };
     }, [actionMenuOpen]);
     return (_jsxs("div", { className: "p-6 bg-gray-50 min-h-screen", children: [_jsxs("div", { className: "mb-6", children: [_jsxs("div", { className: "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6", children: [_jsxs("div", { children: [_jsx("h2", { className: "text-3xl font-bold text-gray-900", children: "Staff Management" }), _jsx("p", { className: "text-gray-600 mt-1", children: "Manage your school staff members and their assignments" })] }), _jsxs("div", { className: "flex gap-3", children: [_jsxs("button", { onClick: () => {
                                             setViewAssignmentsModalOpen(true);
@@ -3685,10 +3687,15 @@ export default function PrincipalDashboard() {
                     catch (parseError) {
                         console.error('[PrincipalDashboard] Error parsing profile response:', parseError);
                         // Fallback: try to get profile directly from Supabase
+                        const userId = session.data.session?.user?.id;
+                        if (!userId) {
+                            navigate('/login');
+                            return;
+                        }
                         const { data: profileData } = await supabase
                             .from('profiles')
                             .select('role, approval_status')
-                            .eq('id', session.data.session?.user?.id)
+                            .eq('id', userId)
                             .single();
                         if (profileData && profileData.role === 'principal') {
                             // Profile found, allow access
@@ -3719,10 +3726,15 @@ export default function PrincipalDashboard() {
                     console.error('[PrincipalDashboard] Failed to verify role, status:', response.status);
                     // Try fallback: check profile directly from Supabase
                     try {
+                        const userId = session.data.session?.user?.id;
+                        if (!userId) {
+                            navigate('/login');
+                            return;
+                        }
                         const { data: profileData, error: profileError } = await supabase
                             .from('profiles')
                             .select('role, approval_status')
-                            .eq('id', session.data.session?.user?.id)
+                            .eq('id', userId)
                             .single();
                         if (!profileError && profileData && profileData.role === 'principal') {
                             // Profile found, allow access
