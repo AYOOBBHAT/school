@@ -1,12 +1,23 @@
 import { Router } from 'express';
+import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
 
 const router = Router();
 
+const supabaseUrl = process.env.SUPABASE_URL as string;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+
 // Get school information including join code (for principals)
 router.get('/info', requireRoles(['principal', 'clerk']), async (req, res) => {
-  const { supabase, user } = req;
-  if (!supabase || !user) return res.status(500).json({ error: 'Server misconfigured' });
+  const { user } = req;
+  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+
+  // Use service role key to bypass RLS for consistent access
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     // Validate schoolId
@@ -18,8 +29,8 @@ router.get('/info', requireRoles(['principal', 'clerk']), async (req, res) => {
     console.log('[school/info] Looking for school with id:', user.schoolId);
 
     // Get school info for the user's school
-    // Use maybeSingle() to handle cases where no school is found gracefully
-    const { data: school, error: schoolError } = await supabase
+    // Use service role client to bypass RLS and use maybeSingle() to handle cases where no school is found gracefully
+    const { data: school, error: schoolError } = await adminSupabase
       .from('schools')
       .select('id, name, join_code, registration_number, address, contact_email, contact_phone, logo_url, created_at')
       .eq('id', user.schoolId)
@@ -36,7 +47,7 @@ router.get('/info', requireRoles(['principal', 'clerk']), async (req, res) => {
       console.warn('[school/info] User details:', { userId: user.id, role: user.role, schoolId: user.schoolId });
       
       // Check if any schools exist at all (for debugging)
-      const { data: allSchools, error: checkError } = await supabase
+      const { data: allSchools, error: checkError } = await adminSupabase
         .from('schools')
         .select('id, name')
         .limit(5);
