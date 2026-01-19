@@ -1,36 +1,26 @@
 import { Router } from 'express';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
 
 const router = Router();
 
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
-
 // Get all staff members (teachers, clerks, principals) for the school
 router.get('/', requireRoles(['principal', 'clerk']), async (req, res) => {
-  const { user } = req;
-  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
-
-  // Use service role key to bypass RLS for admin operations
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+  const { user, supabase } = req;
+  if (!user || !supabase) return res.status(500).json({ error: 'Server misconfigured' });
 
   try {
-    // Fetch all staff members (teachers, clerks, and principals)
-    const { data: staff, error } = await adminSupabase
+    // Use user-context Supabase client to enforce RLS
+    // RLS policies ensure users only see staff from their school
+    const { data: staff, error } = await supabase
       .from('profiles')
       .select('id, full_name, email, role, approval_status, phone, created_at, approved_at')
-      .eq('school_id', user.schoolId)
       .in('role', ['teacher', 'clerk', 'principal'])
       .order('created_at', { ascending: false });
 
     if (error) {
       console.error('[staff-admin] Error fetching staff:', error);
-      return res.status(400).json({ error: error.message });
+      console.error('[staff-admin] Error details:', { code: error.code, message: error.message, details: error.details, hint: error.hint });
+      return res.status(400).json({ error: error.message || 'Failed to fetch staff' });
     }
 
     console.log(`[staff-admin] Found ${staff?.length || 0} staff members for school ${user.schoolId}`);
@@ -47,28 +37,23 @@ router.get('/', requireRoles(['principal', 'clerk']), async (req, res) => {
 
 // Update staff member (edit info or deactivate)
 router.put('/:staffId', requireRoles(['principal', 'clerk']), async (req, res) => {
-  const { user } = req;
-  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+  const { user, supabase } = req;
+  if (!user || !supabase) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { staffId } = req.params;
   const { full_name, email, phone, approval_status } = req.body;
 
   try {
-    // Verify staff member belongs to the school
-    const { data: staff, error: staffError } = await adminSupabase
+    // Verify staff member belongs to the school (RLS enforces this)
+    const { data: staff, error: staffError } = await supabase
       .from('profiles')
       .select('id, school_id, role')
       .eq('id', staffId)
-      .eq('school_id', user.schoolId)
       .in('role', ['teacher', 'clerk'])
-      .single();
+      .maybeSingle();
 
     if (staffError || !staff) {
+      console.error('[staff-admin] Error fetching staff:', staffError);
       return res.status(404).json({ error: 'Staff member not found or access denied' });
     }
 
@@ -90,7 +75,7 @@ router.put('/:staffId', requireRoles(['principal', 'clerk']), async (req, res) =
       }
     }
 
-    const { data: updatedStaff, error: updateError } = await adminSupabase
+    const { data: updatedStaff, error: updateError } = await supabase
       .from('profiles')
       .update(updateData)
       .eq('id', staffId)
@@ -112,36 +97,30 @@ router.put('/:staffId', requireRoles(['principal', 'clerk']), async (req, res) =
 
 // Get teacher performance metrics
 router.get('/:teacherId/performance', requireRoles(['principal', 'clerk']), async (req, res) => {
-  const { user } = req;
-  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+  const { user, supabase } = req;
+  if (!user || !supabase) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { teacherId } = req.params;
 
   try {
-    // Verify teacher belongs to the school
-    const { data: teacher, error: teacherError } = await adminSupabase
+    // Verify teacher belongs to the school (RLS enforces this)
+    const { data: teacher, error: teacherError } = await supabase
       .from('profiles')
       .select('id, school_id, role')
       .eq('id', teacherId)
-      .eq('school_id', user.schoolId)
       .eq('role', 'teacher')
-      .single();
+      .maybeSingle();
 
     if (teacherError || !teacher) {
+      console.error('[staff-admin] Error fetching teacher:', teacherError);
       return res.status(404).json({ error: 'Teacher not found or access denied' });
     }
 
-    // Get teacher attendance summary
-    const { data: attendance, error: attendanceError } = await adminSupabase
+    // Get teacher attendance summary (RLS enforces school_id)
+    const { data: attendance, error: attendanceError } = await supabase
       .from('teacher_attendance')
       .select('status, date')
       .eq('teacher_id', teacherId)
-      .eq('school_id', user.schoolId)
       .order('date', { ascending: false })
       .limit(100);
 
@@ -150,21 +129,19 @@ router.get('/:teacherId/performance', requireRoles(['principal', 'clerk']), asyn
     }
 
     // Get marks for classes/subjects assigned to this teacher
-    // First get teacher's assignments
-    const { data: assignments, error: assignmentsError } = await adminSupabase
+    // First get teacher's assignments (RLS enforces school_id)
+    const { data: assignments, error: assignmentsError } = await supabase
       .from('teacher_assignments')
       .select('class_group_id, subject_id')
-      .eq('teacher_id', teacherId)
-      .eq('school_id', user.schoolId);
+      .eq('teacher_id', teacherId);
 
     let marks: any[] = [];
     if (assignments && assignments.length > 0) {
-      // Get marks for assigned subjects
+      // Get marks for assigned subjects (RLS enforces school_id)
       const subjectIds = assignments.map((a: any) => a.subject_id);
-      const { data: marksData, error: marksError } = await adminSupabase
+      const { data: marksData, error: marksError } = await supabase
         .from('marks')
         .select('id, marks_obtained, max_marks, verified_by, subject_id')
-        .eq('school_id', user.schoolId)
         .in('subject_id', subjectIds);
 
       if (marksError) {
@@ -176,10 +153,10 @@ router.get('/:teacherId/performance', requireRoles(['principal', 'clerk']), asyn
 
     // Calculate attendance metrics
     const totalDays = attendance?.length || 0;
-    const presentDays = attendance?.filter(a => a.status === 'present').length || 0;
-    const absentDays = attendance?.filter(a => a.status === 'absent').length || 0;
-    const lateDays = attendance?.filter(a => a.status === 'late').length || 0;
-    const leaveDays = attendance?.filter(a => a.status === 'leave').length || 0;
+    const presentDays = attendance?.filter((a: any) => a.status === 'present').length || 0;
+    const absentDays = attendance?.filter((a: any) => a.status === 'absent').length || 0;
+    const lateDays = attendance?.filter((a: any) => a.status === 'late').length || 0;
+    const leaveDays = attendance?.filter((a: any) => a.status === 'leave').length || 0;
     const attendancePercentage = totalDays > 0 ? ((presentDays + lateDays) / totalDays) * 100 : 0;
 
     // Calculate marks metrics
