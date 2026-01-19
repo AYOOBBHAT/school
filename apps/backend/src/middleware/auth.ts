@@ -62,15 +62,28 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       .from('profiles')
       .select('id, role, school_id')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (profileError || !profile) {
+    if (profileError) {
       console.error('[authMiddleware] Error fetching profile:', profileError);
       return res.status(403).json({ error: 'Profile not found' });
     }
 
+    if (!profile) {
+      console.error('[authMiddleware] Profile not found for user:', user.id);
+      return res.status(403).json({ error: 'Profile not found' });
+    }
+
     if (!profile.role) {
+      console.error('[authMiddleware] Profile missing role:', profile);
       return res.status(403).json({ error: 'Invalid profile data' });
+    }
+
+    // Log school_id for debugging
+    if (!profile.school_id) {
+      console.warn('[authMiddleware] Profile has no school_id:', { userId: user.id, role: profile.role });
+    } else {
+      console.log('[authMiddleware] User authenticated:', { userId: user.id, role: profile.role, schoolId: profile.school_id });
     }
 
     req.user = {
