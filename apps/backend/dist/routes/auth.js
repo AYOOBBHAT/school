@@ -396,12 +396,25 @@ router.post('/login', async (req, res) => {
             await adminSupabase.auth.admin.updateUserById(authData.user.id, {
                 app_metadata: appMetadata
             });
-            // Refresh the session to get a new token with updated claims
-            // Note: The current session token won't have the new claims, but subsequent logins will
-            // For immediate effect, we'd need to sign out and sign in again, but that's not ideal
-            // The user will need to log in again for the new claims to take effect
+            // Sign out and sign in again to get a fresh token with updated claims
+            // This ensures the JWT includes the new app_metadata immediately
+            await anonSupabase.auth.signOut();
+            const { data: refreshedAuthData, error: refreshError } = await anonSupabase.auth.signInWithPassword({
+                email,
+                password
+            });
+            if (refreshError || !refreshedAuthData.session) {
+                // eslint-disable-next-line no-console
+                console.warn('[login] Failed to refresh session with new claims, using original token:', refreshError);
+                // Fall back to original token - user will need to log in again for claims to update
+            }
+            else {
+                // Use the refreshed session with updated claims
+                authData.session = refreshedAuthData.session;
+                authData.user = refreshedAuthData.user;
+            }
         }
-        // Extract access token from session
+        // Extract access token from session (now includes app_metadata if updated)
         const token = authData.session.access_token;
         if (!token) {
             // eslint-disable-next-line no-console
