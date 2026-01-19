@@ -6512,6 +6512,10 @@ function SalaryManagement() {
     if (activeTab === 'unpaid') {
       loadUnpaidSalaries();
     }
+    // Always return cleanup function (even if empty) to avoid React error #310
+    return () => {
+      // No cleanup needed
+    };
   }, [activeTab]);
 
   const loadData = async () => {
