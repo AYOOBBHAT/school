@@ -177,14 +177,32 @@ drop function if exists enable_rls_if_exists(text);
 -- PART D: GRANT PERMISSIONS FOR VIEWS
 -- ============================================
 -- Ensure authenticated users can query views (RLS will still apply)
+-- Only grant permissions on views that exist
 
-grant select on teacher_unpaid_salary_months to authenticated;
-grant select on unpaid_teachers_summary to authenticated;
-grant select on teacher_payment_history to authenticated;
-grant select on unpaid_students_list to authenticated;
-grant select on student_unpaid_months to authenticated;
-grant select on payment_status_distribution to authenticated;
-grant select on current_identity to authenticated;
+-- Helper function to grant select on view only if it exists
+create or replace function grant_select_on_view_if_exists(p_view_name text)
+returns void language plpgsql as $$
+begin
+  if exists (
+    select 1 from information_schema.views 
+    where table_schema = 'public' and information_schema.views.table_name = p_view_name
+  ) then
+    execute format('grant select on %I to authenticated', p_view_name);
+  end if;
+end;
+$$;
+
+-- Grant permissions on all views (only if they exist)
+select grant_select_on_view_if_exists('teacher_unpaid_salary_months');
+select grant_select_on_view_if_exists('unpaid_teachers_summary');
+select grant_select_on_view_if_exists('teacher_payment_history');
+select grant_select_on_view_if_exists('unpaid_students_list');
+select grant_select_on_view_if_exists('student_unpaid_months');
+select grant_select_on_view_if_exists('payment_status_distribution');
+select grant_select_on_view_if_exists('current_identity');
+
+-- Clean up helper function
+drop function if exists grant_select_on_view_if_exists(text);
 
 -- ============================================
 -- PART E: VERIFICATION QUERIES
