@@ -9,81 +9,98 @@
 -- PART A: RLS ENABLEMENT AUDIT
 -- ============================================
 -- Ensure ALL tables with RLS policies have RLS enabled
+-- Only enable RLS on tables that actually exist
+
+-- Helper function to enable RLS only if table exists
+create or replace function enable_rls_if_exists(table_name text)
+returns void language plpgsql as $$
+begin
+  if exists (
+    select 1 from information_schema.tables 
+    where table_schema = 'public' and table_name = enable_rls_if_exists.table_name
+  ) then
+    execute format('alter table %I enable row level security', table_name);
+  end if;
+end;
+$$;
 
 -- Core tables (from schema.sql)
-alter table profiles enable row level security;
-alter table schools enable row level security;
-alter table class_groups enable row level security;
-alter table sections enable row level security;
-alter table subjects enable row level security;
-alter table students enable row level security;
-alter table attendance enable row level security;
-alter table exams enable row level security;
-alter table marks enable row level security;
-alter table fee_structures enable row level security;
-alter table payments enable row level security;
-alter table clerk_logs enable row level security;
-alter table student_guardians enable row level security;
-alter table classification_types enable row level security;
-alter table classification_values enable row level security;
-alter table class_classifications enable row level security;
+select enable_rls_if_exists('profiles');
+select enable_rls_if_exists('schools');
+select enable_rls_if_exists('class_groups');
+select enable_rls_if_exists('sections');
+select enable_rls_if_exists('subjects');
+select enable_rls_if_exists('students');
+select enable_rls_if_exists('attendance');
+select enable_rls_if_exists('exams');
+select enable_rls_if_exists('marks');
+select enable_rls_if_exists('fee_structures');
+select enable_rls_if_exists('payments');
+select enable_rls_if_exists('clerk_logs');
+select enable_rls_if_exists('student_guardians');
+select enable_rls_if_exists('classification_types');
+select enable_rls_if_exists('classification_values');
+select enable_rls_if_exists('class_classifications');
 
 -- Fee management tables
-alter table fee_categories enable row level security;
-alter table class_fee_defaults enable row level security;
-alter table transport_fee_defaults enable row level security;
-alter table optional_fee_definitions enable row level security;
-alter table student_fee_profile enable row level security;
-alter table student_fee_overrides enable row level security;
-alter table student_custom_fees enable row level security;
-alter table student_optional_fees enable row level security;
-alter table scholarships enable row level security;
-alter table fee_bills enable row level security;
-alter table fee_bill_items enable row level security;
-alter table fee_payments enable row level security;
-alter table fine_rules enable row level security;
+select enable_rls_if_exists('fee_categories');
+select enable_rls_if_exists('class_fee_defaults');
+select enable_rls_if_exists('transport_fee_defaults');
+select enable_rls_if_exists('optional_fee_definitions');
+select enable_rls_if_exists('student_fee_profile');
+select enable_rls_if_exists('student_fee_overrides');
+select enable_rls_if_exists('student_custom_fees');
+select enable_rls_if_exists('student_optional_fees');
+select enable_rls_if_exists('scholarships');
+select enable_rls_if_exists('fee_bills');
+select enable_rls_if_exists('fee_bill_items');
+select enable_rls_if_exists('fee_payments');
+select enable_rls_if_exists('fine_rules');
 
 -- Fee versioning tables
-alter table class_fee_versions enable row level security;
-alter table transport_fee_versions enable row level security;
-alter table optional_fee_versions enable row level security;
-alter table student_fee_override_versions enable row level security;
-alter table scholarship_versions enable row level security;
+select enable_rls_if_exists('class_fee_versions');
+select enable_rls_if_exists('transport_fee_versions');
+select enable_rls_if_exists('optional_fee_versions');
+select enable_rls_if_exists('student_fee_override_versions');
+select enable_rls_if_exists('scholarship_versions');
 
 -- Monthly fee tracking
-alter table monthly_fee_components enable row level security;
-alter table monthly_fee_payments enable row level security;
+select enable_rls_if_exists('monthly_fee_components');
+select enable_rls_if_exists('monthly_fee_payments');
 
 -- Student fee cycles
-alter table student_fee_cycles enable row level security;
-alter table fee_bill_periods enable row level security;
+select enable_rls_if_exists('student_fee_cycles');
+select enable_rls_if_exists('fee_bill_periods');
 
 -- Teacher salary tables
-alter table teacher_salary_structure enable row level security;
-alter table teacher_salary_records enable row level security;
-alter table teacher_salary_payments enable row level security;
-alter table teacher_salary_credits enable row level security;
-alter table teacher_salary_credit_applications enable row level security;
+select enable_rls_if_exists('teacher_salary_structure');
+select enable_rls_if_exists('teacher_salary_records');
+select enable_rls_if_exists('teacher_salary_payments');
+select enable_rls_if_exists('teacher_salary_credits');
+select enable_rls_if_exists('teacher_salary_credit_applications');
 
 -- Attendance and timetable
-alter table timetable enable row level security;
-alter table school_holidays enable row level security;
-alter table student_attendance enable row level security;
-alter table class_attendance_lock enable row level security;
-alter table teacher_attendance enable row level security;
+select enable_rls_if_exists('timetable');
+select enable_rls_if_exists('school_holidays');
+select enable_rls_if_exists('student_attendance');
+select enable_rls_if_exists('class_attendance_lock');
+select enable_rls_if_exists('teacher_attendance');
 
 -- Teacher assignments
-alter table teacher_assignments enable row level security;
-alter table teacher_attendance_assignments enable row level security;
-alter table class_subjects enable row level security;
+select enable_rls_if_exists('teacher_assignments');
+select enable_rls_if_exists('teacher_attendance_assignments');
+select enable_rls_if_exists('class_subjects');
 
 -- Exam system
-alter table exam_schedule enable row level security;
-alter table exam_subjects enable row level security;
-alter table exam_classes enable row level security;
+select enable_rls_if_exists('exam_schedule');
+select enable_rls_if_exists('exam_subjects');
+select enable_rls_if_exists('exam_classes');
 
 -- Transport
-alter table transport_routes enable row level security;
+select enable_rls_if_exists('transport_routes');
+
+-- Clean up helper function
+drop function if exists enable_rls_if_exists(text);
 
 -- ============================================
 -- PART B: SECURITY DEFINER FUNCTIONS AUDIT
