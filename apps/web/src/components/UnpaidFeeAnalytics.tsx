@@ -294,6 +294,7 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
                 {ResponsiveContainer ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
+                      {/* @ts-ignore - recharts type compatibility issue with React 18 */}
                       <Pie
                         data={chartData}
                         cx="50%"
@@ -308,7 +309,9 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
+                      {/* @ts-ignore - recharts type compatibility issue with React 18 */}
                       <Tooltip />
+                      {/* @ts-ignore - recharts type compatibility issue with React 18 */}
                       <Legend />
                     </PieChart>
                   </ResponsiveContainer>

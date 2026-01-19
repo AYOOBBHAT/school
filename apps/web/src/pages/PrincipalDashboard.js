@@ -2,6 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { API_URL } from '../utils/api';
 import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics';
 import TeacherPaymentHistory from '../components/TeacherPaymentHistory';
@@ -150,17 +151,24 @@ function DashboardOverview() {
                 const schoolId = profile.school_id;
                 const token = (await supabase.auth.getSession()).data.session?.access_token;
                 const loadSchoolInfoFromSupabase = async () => {
-                    const { data: school, error: schoolError } = await supabase
-                        .from('schools')
-                        .select('id, name, join_code, registration_number, address, contact_email, contact_phone, logo_url, created_at')
-                        .eq('id', schoolId)
-                        .single();
-                    if (!schoolError && school) {
-                        console.log('School data loaded from Supabase fallback:', school);
-                        setSchoolInfo(school);
+                    try {
+                        const { data: school, error: schoolError } = await supabase
+                            .from('schools')
+                            .select('id, name, join_code, registration_number, address, contact_email, contact_phone, logo_url, created_at')
+                            .eq('id', schoolId)
+                            .maybeSingle(); // Use maybeSingle() instead of single() to handle no results gracefully
+                        if (!schoolError && school) {
+                            console.log('School data loaded from Supabase fallback:', school);
+                            setSchoolInfo(school);
+                        }
+                        else if (schoolError) {
+                            console.error('Error loading school from Supabase:', schoolError);
+                            // Don't throw, just log - school info is optional
+                        }
                     }
-                    else if (schoolError) {
-                        console.error('Error loading school from Supabase:', schoolError);
+                    catch (supabaseError) {
+                        console.error('Error in Supabase query:', supabaseError);
+                        // Don't throw - school info is optional
                     }
                 };
                 const loadSchoolInfo = async () => {
@@ -172,16 +180,32 @@ function DashboardOverview() {
                         const response = await fetch(`${API_URL}/school/info`, {
                             headers: {
                                 Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
                             },
                         });
                         if (response.ok) {
-                            const data = await response.json();
-                            console.log('School data loaded from API:', data.school);
-                            setSchoolInfo(data.school);
+                            try {
+                                const data = await response.json();
+                                // Handle both { school: {...} } and direct school object
+                                const schoolData = data.school || data;
+                                if (schoolData && typeof schoolData === 'object' && !Array.isArray(schoolData)) {
+                                    console.log('School data loaded from API:', schoolData);
+                                    setSchoolInfo(schoolData);
+                                }
+                                else {
+                                    console.warn('Unexpected school data format:', data);
+                                    await loadSchoolInfoFromSupabase();
+                                }
+                            }
+                            catch (jsonError) {
+                                console.error('Error parsing school JSON:', jsonError);
+                                await loadSchoolInfoFromSupabase();
+                            }
                         }
                         else {
                             const errorText = await response.text();
-                            console.error('Error loading school from API:', errorText);
+                            console.error('Error loading school from API:', response.status, errorText);
                             await loadSchoolInfoFromSupabase();
                         }
                     }
@@ -3748,5 +3772,5 @@ export default function PrincipalDashboard() {
     if (checkingRole) {
         return (_jsx("div", { className: "min-h-screen bg-gray-50 flex items-center justify-center", children: _jsx("div", { className: "text-center", children: _jsx("div", { className: "text-2xl font-bold text-gray-600", children: "Loading..." }) }) }));
     }
-    return (_jsxs("div", { className: "flex min-h-screen bg-gray-50", children: [_jsx(Sidebar, { currentPath: location.pathname }), _jsxs("div", { className: "ml-64 flex-1", children: [currentView === 'dashboard' && _jsx(DashboardOverview, {}), currentView === 'staff' && _jsx(StaffManagement, {}), currentView === 'classifications' && _jsx(ClassificationsManagement, {}), currentView === 'classes' && _jsx(ClassesManagement, {}), currentView === 'subjects' && _jsx(SubjectsManagement, {}), currentView === 'students' && _jsx(StudentsManagement, {}), currentView === 'exams' && _jsx(ExamsManagement, {}), currentView === 'salary' && _jsx(SalaryManagement, {}), currentView === 'fees' && _jsx(FeeManagement, { userRole: "principal" })] })] }));
+    return (_jsxs("div", { className: "flex min-h-screen bg-gray-50", children: [_jsx(Sidebar, { currentPath: location.pathname }), _jsxs("div", { className: "ml-64 flex-1", children: [currentView === 'dashboard' && _jsx(DashboardOverview, {}), currentView === 'staff' && (_jsx(ErrorBoundary, { fallback: _jsx("div", { className: "p-6", children: _jsxs("div", { className: "bg-red-50 border border-red-200 rounded-lg p-4", children: [_jsx("h3", { className: "text-red-800 font-semibold mb-2", children: "Error Loading Staff Page" }), _jsx("p", { className: "text-red-600 text-sm", children: "Please refresh the page or try again later." })] }) }), children: _jsx(StaffManagement, {}) })), currentView === 'classifications' && _jsx(ClassificationsManagement, {}), currentView === 'classes' && _jsx(ClassesManagement, {}), currentView === 'subjects' && _jsx(SubjectsManagement, {}), currentView === 'students' && _jsx(StudentsManagement, {}), currentView === 'exams' && _jsx(ExamsManagement, {}), currentView === 'salary' && _jsx(SalaryManagement, {}), currentView === 'fees' && _jsx(FeeManagement, { userRole: "principal" })] })] }));
 }
