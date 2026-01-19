@@ -482,6 +482,10 @@ function DashboardOverview() {
     };
 
     loadDashboardData();
+    // Always return cleanup function (even if empty) to avoid React error #310
+    return () => {
+      // No cleanup needed
+    };
   }, []);
 
   if (loading) {
@@ -8867,6 +8871,10 @@ export default function PrincipalDashboard() {
     };
 
     verifyRole();
+    // Always return cleanup function (even if empty) to avoid React error #310
+    return () => {
+      // No cleanup needed
+    };
   }, [navigate]);
 
   useEffect(() => {
@@ -8880,6 +8888,10 @@ export default function PrincipalDashboard() {
     else if (path === '/principal/exams') setCurrentView('exams');
     else if (path === '/principal/salary') setCurrentView('salary');
     else if (path === '/principal/fees') setCurrentView('fees');
+    // Always return cleanup function (even if empty) to avoid React error #310
+    return () => {
+      // No cleanup needed
+    };
   }, [location]);
 
   if (checkingRole) {
