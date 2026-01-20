@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api.js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
 
 export default function Login() {
   const navigate = useNavigate();

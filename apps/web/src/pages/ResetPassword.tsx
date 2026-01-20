@@ -1,12 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api.js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -87,7 +82,9 @@ export default function ResetPassword() {
             student: '/student/home',
             parent: '/parent/home'
           };
-          navigate(redirectMap[profile?.role || 'student'] || '/student/home');
+          
+          const role = profile ? (profile as { role: string }).role : 'student';
+          navigate(redirectMap[role] || '/student/home');
         } catch {
           navigate('/student/home');
         }

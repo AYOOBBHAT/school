@@ -1,11 +1,10 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../utils/supabase';
 import FeeCollection from '../components/FeeCollection.js';
 import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics';
 import TeacherPaymentHistory from '../components/TeacherPaymentHistory';
-const supabase = createClient(import.meta.env.VITE_SUPABASE_URL || '', import.meta.env.VITE_SUPABASE_ANON_KEY || '');
 import { API_URL } from '../utils/api.js';
 export default function ClerkDashboard() {
     const navigate = useNavigate();

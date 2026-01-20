@@ -1,13 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api';
 import TeacherPaymentHistory from '../components/TeacherPaymentHistory';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
 
 interface Assignment {
   id: string;
