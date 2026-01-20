@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import React from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './utils/supabase';
 import Signup from './pages/Signup';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
@@ -11,7 +11,6 @@ import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
 import ClerkDashboard from './pages/ClerkDashboard';
 import AdminDashboard from './pages/AdminDashboard';
-const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
 function Navbar() {
     const handleScrollTo = (e, id) => {
         e.preventDefault();

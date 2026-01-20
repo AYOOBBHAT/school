@@ -1,6 +1,6 @@
 import React from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './utils/supabase';
 import { Button } from '@school/ui';
 import Signup from './pages/Signup';
 import Login from './pages/Login';
@@ -11,8 +11,6 @@ import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
 import ClerkDashboard from './pages/ClerkDashboard';
 import AdminDashboard from './pages/AdminDashboard';
-
-const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 function Navbar() {
   const handleScrollTo = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
