@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api';
 
@@ -64,70 +64,72 @@ export default function TeacherPaymentHistory({
   const [totalCount, setTotalCount] = useState(0);
   const itemsPerPage = 20;
 
-  useEffect(() => {
-    // Guard against unmounted component
-    let isMounted = true;
-    
-    const loadPaymentHistory = async () => {
-      try {
-        if (!isMounted) return;
-        setLoading(true);
-        setError(null);
-        
-        const token = (await supabase.auth.getSession()).data.session?.access_token;
-        if (!token) {
-          if (!isMounted) return;
-          setError('Authentication required');
-          setLoading(false);
-          return;
-        }
+  // Ref to track if component is mounted (for async operations)
+  const isMountedRef = useRef(true);
 
-        const params = new URLSearchParams({
-          page: currentPage.toString(),
-          limit: itemsPerPage.toString()
-        });
-
-        if (startDate) params.append('start_date', startDate);
-        if (endDate) params.append('end_date', endDate);
-        if (paymentTypeFilter !== 'all') params.append('payment_type', paymentTypeFilter);
-        if (paymentModeFilter !== 'all') params.append('payment_mode', paymentModeFilter);
-
-        const response = await fetch(`${API_URL}/salary/history/${teacherId}?${params}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        if (!isMounted) return;
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to load payment history');
-        }
-
-        const data = await response.json();
-        if (!isMounted) return;
-        
-        setPayments(data.payments || []);
-        setSummary(data.summary || null);
-        setTotalPages(data.pagination?.total_pages || 1);
-        setTotalCount(data.pagination?.total || 0);
-      } catch (err: any) {
-        if (!isMounted) return;
-        console.error('Error loading payment history:', err);
-        setError(err.message || 'Failed to load payment history');
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+  // Extract loadPaymentHistory as a useCallback so it can be called from both useEffect and retry button
+  const loadPaymentHistory = useCallback(async () => {
+    try {
+      if (!isMountedRef.current) return;
+      setLoading(true);
+      setError(null);
+      
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) {
+        if (!isMountedRef.current) return;
+        setError('Authentication required');
+        setLoading(false);
+        return;
       }
-    };
 
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: itemsPerPage.toString()
+      });
+
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      if (paymentTypeFilter !== 'all') params.append('payment_type', paymentTypeFilter);
+      if (paymentModeFilter !== 'all') params.append('payment_mode', paymentModeFilter);
+
+      const response = await fetch(`${API_URL}/salary/history/${teacherId}?${params}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!isMountedRef.current) return;
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to load payment history');
+      }
+
+      const data = await response.json();
+      if (!isMountedRef.current) return;
+      
+      setPayments(data.payments || []);
+      setSummary(data.summary || null);
+      setTotalPages(data.pagination?.total_pages || 1);
+      setTotalCount(data.pagination?.total || 0);
+    } catch (err: any) {
+      if (!isMountedRef.current) return;
+      console.error('Error loading payment history:', err);
+      setError(err.message || 'Failed to load payment history');
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [teacherId, currentPage, startDate, endDate, paymentTypeFilter, paymentModeFilter]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
     loadPaymentHistory();
 
     // Always return cleanup function to avoid React error #310
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
     };
-  }, [teacherId, currentPage, startDate, endDate, paymentTypeFilter, paymentModeFilter]);
+  }, [loadPaymentHistory]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
