@@ -1,5 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -340,6 +340,8 @@ function DashboardOverview() {
                         } })] }), _jsx(UnpaidFeeAnalytics, { userRole: "principal" })] }));
 }
 function StaffManagement() {
+    // Ref to track if component is mounted (for async operations)
+    const isMountedRef = useRef(true);
     const [staff, setStaff] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -410,14 +412,15 @@ function StaffManagement() {
         salary_start_date: '' // Optional: when salary should start (only for teachers)
     });
     useEffect(() => {
+        isMountedRef.current = true;
         loadStaff();
         loadAllClasses();
         loadAllSubjects();
         loadAllAssignments();
         loadAttendanceAssignments();
-        // Always return cleanup function (even if empty) to avoid React error #310
+        // Always return cleanup function to avoid React error #310
         return () => {
-            // No cleanup needed
+            isMountedRef.current = false;
         };
     }, []);
     const loadAllClasses = async () => {
@@ -830,7 +833,7 @@ function StaffManagement() {
         }
         // Always return cleanup function (even if empty) to avoid React error #310
         return () => {
-            // No cleanup needed
+            // No cleanup needed - loadDailyAttendance checks isMountedRef
         };
     }, [dailyAttendanceModalOpen, attendanceMonth, attendanceYear, selectedTeacher]);
     // Get assignments count for each teacher
@@ -840,14 +843,18 @@ function StaffManagement() {
     const loadDailyAttendance = async (teacherId, month, year) => {
         try {
             const token = (await supabase.auth.getSession()).data.session?.access_token;
-            if (!token)
+            if (!token || !isMountedRef.current)
                 return;
             // Get first and last day of the month
             const firstDay = new Date(year, month - 1, 1);
             const lastDay = new Date(year, month, 0);
             const response = await fetch(`${API_URL}/teacher-attendance?teacher_id=${teacherId}&start_date=${firstDay.toISOString().split('T')[0]}&end_date=${lastDay.toISOString().split('T')[0]}`, { headers: { Authorization: `Bearer ${token}` } });
+            if (!isMountedRef.current)
+                return;
             if (response.ok) {
                 const data = await response.json();
+                if (!isMountedRef.current)
+                    return;
                 const attendanceMap = {};
                 const daysInMonth = lastDay.getDate();
                 // Initialize all days as present by default
@@ -861,16 +868,22 @@ function StaffManagement() {
                         attendanceMap[record.date] = 'absent';
                     }
                 });
+                if (!isMountedRef.current)
+                    return;
                 setDailyAttendance(attendanceMap);
                 // Calculate stats (consider unmarked days as present)
                 const totalDays = daysInMonth;
                 const absentDays = Object.values(attendanceMap).filter(status => status === 'absent').length;
                 const presentDays = totalDays - absentDays;
-                setAttendanceStats({ totalDays, presentDays, absentDays });
+                if (isMountedRef.current) {
+                    setAttendanceStats({ totalDays, presentDays, absentDays });
+                }
             }
         }
         catch (error) {
-            console.error('Error loading daily attendance:', error);
+            if (isMountedRef.current) {
+                console.error('Error loading daily attendance:', error);
+            }
         }
     };
     const toggleDayAttendance = (dateStr) => {
@@ -997,7 +1010,9 @@ function StaffManagement() {
         return () => {
             document.removeEventListener('click', handleClickOutside);
         };
-    }, [actionMenuOpen]);
+        // Remove actionMenuOpen from dependencies - we want this to run once on mount
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     return (_jsxs("div", { className: "p-6 bg-gray-50 min-h-screen", children: [_jsxs("div", { className: "mb-6", children: [_jsxs("div", { className: "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6", children: [_jsxs("div", { children: [_jsx("h2", { className: "text-3xl font-bold text-gray-900", children: "Staff Management" }), _jsx("p", { className: "text-gray-600 mt-1", children: "Manage your school staff members and their assignments" })] }), _jsxs("div", { className: "flex gap-3", children: [_jsxs("button", { onClick: () => {
                                             setViewAssignmentsModalOpen(true);
                                             setSelectedTeacher(null);
