@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -1168,22 +1168,12 @@ function StaffManagement() {
     };
   }, [assignForm.class_group_id]);
 
-  useEffect(() => {
-    if (dailyAttendanceModalOpen && selectedTeacher) {
-      loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
-    }
-    // Always return cleanup function (even if empty) to avoid React error #310
-    return () => {
-      // No cleanup needed - loadDailyAttendance checks isMountedRef
-    };
-  }, [dailyAttendanceModalOpen, attendanceMonth, attendanceYear, selectedTeacher]);
-
   // Get assignments count for each teacher
   const getTeacherAssignmentsCount = (teacherId: string) => {
     return allAssignments.filter(a => a.teacher_id === teacherId).length;
   };
 
-  const loadDailyAttendance = async (teacherId: string, month: number, year: number) => {
+  const loadDailyAttendance = useCallback(async (teacherId: string, month: number, year: number) => {
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token || !isMountedRef.current) return;
@@ -1236,7 +1226,17 @@ function StaffManagement() {
         console.error('Error loading daily attendance:', error);
       }
     }
-  };
+  }, []); // Empty deps - function uses isMountedRef (stable) and receives all data as parameters
+
+  useEffect(() => {
+    if (dailyAttendanceModalOpen && selectedTeacher) {
+      loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
+    }
+    // Always return cleanup function (even if empty) to avoid React error #310
+    return () => {
+      // No cleanup needed - loadDailyAttendance checks isMountedRef
+    };
+  }, [dailyAttendanceModalOpen, selectedTeacher, loadDailyAttendance, attendanceMonth, attendanceYear]);
 
   const toggleDayAttendance = (dateStr: string) => {
     setDailyAttendance(prev => {

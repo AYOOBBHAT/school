@@ -1,5 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -827,20 +827,11 @@ function StaffManagement() {
             // No cleanup needed
         };
     }, [assignForm.class_group_id]);
-    useEffect(() => {
-        if (dailyAttendanceModalOpen && selectedTeacher) {
-            loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
-        }
-        // Always return cleanup function (even if empty) to avoid React error #310
-        return () => {
-            // No cleanup needed - loadDailyAttendance checks isMountedRef
-        };
-    }, [dailyAttendanceModalOpen, attendanceMonth, attendanceYear, selectedTeacher]);
     // Get assignments count for each teacher
     const getTeacherAssignmentsCount = (teacherId) => {
         return allAssignments.filter(a => a.teacher_id === teacherId).length;
     };
-    const loadDailyAttendance = async (teacherId, month, year) => {
+    const loadDailyAttendance = useCallback(async (teacherId, month, year) => {
         try {
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token || !isMountedRef.current)
@@ -885,7 +876,16 @@ function StaffManagement() {
                 console.error('Error loading daily attendance:', error);
             }
         }
-    };
+    }, []); // Empty deps - function uses isMountedRef (stable) and receives all data as parameters
+    useEffect(() => {
+        if (dailyAttendanceModalOpen && selectedTeacher) {
+            loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
+        }
+        // Always return cleanup function (even if empty) to avoid React error #310
+        return () => {
+            // No cleanup needed - loadDailyAttendance checks isMountedRef
+        };
+    }, [dailyAttendanceModalOpen, selectedTeacher, loadDailyAttendance, attendanceMonth, attendanceYear]);
     const toggleDayAttendance = (dateStr) => {
         setDailyAttendance(prev => {
             const newAttendance = { ...prev };
