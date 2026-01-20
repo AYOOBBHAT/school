@@ -1,5 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api';
 export default function TeacherPaymentHistory({ teacherId, teacherName, onClose, showHeader = true }) {
@@ -17,15 +17,19 @@ export default function TeacherPaymentHistory({ teacherId, teacherName, onClose,
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const itemsPerPage = 20;
-    useEffect(() => {
-        loadPaymentHistory();
-    }, [teacherId, currentPage, startDate, endDate, paymentTypeFilter, paymentModeFilter]);
-    const loadPaymentHistory = async () => {
+    // Ref to track if component is mounted (for async operations)
+    const isMountedRef = useRef(true);
+    // Extract loadPaymentHistory as a useCallback so it can be called from both useEffect and retry button
+    const loadPaymentHistory = useCallback(async () => {
         try {
+            if (!isMountedRef.current)
+                return;
             setLoading(true);
             setError(null);
             const token = (await supabase.auth.getSession()).data.session?.access_token;
             if (!token) {
+                if (!isMountedRef.current)
+                    return;
                 setError('Authentication required');
                 setLoading(false);
                 return;
@@ -45,24 +49,40 @@ export default function TeacherPaymentHistory({ teacherId, teacherName, onClose,
             const response = await fetch(`${API_URL}/salary/history/${teacherId}?${params}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
+            if (!isMountedRef.current)
+                return;
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.error || 'Failed to load payment history');
             }
             const data = await response.json();
+            if (!isMountedRef.current)
+                return;
             setPayments(data.payments || []);
             setSummary(data.summary || null);
             setTotalPages(data.pagination?.total_pages || 1);
             setTotalCount(data.pagination?.total || 0);
         }
         catch (err) {
+            if (!isMountedRef.current)
+                return;
             console.error('Error loading payment history:', err);
             setError(err.message || 'Failed to load payment history');
         }
         finally {
-            setLoading(false);
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
         }
-    };
+    }, [teacherId, currentPage, startDate, endDate, paymentTypeFilter, paymentModeFilter]);
+    useEffect(() => {
+        isMountedRef.current = true;
+        loadPaymentHistory();
+        // Always return cleanup function to avoid React error #310
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, [loadPaymentHistory]);
     const formatCurrency = (amount) => {
         return new Intl.NumberFormat('en-IN', {
             style: 'currency',
