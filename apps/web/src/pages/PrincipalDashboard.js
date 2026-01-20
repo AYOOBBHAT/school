@@ -298,6 +298,10 @@ function DashboardOverview() {
             }
         };
         loadDashboardData();
+        // Always return cleanup function (even if empty) to avoid React error #310
+        return () => {
+            // No cleanup needed
+        };
     }, []);
     if (loading) {
         return _jsx("div", { className: "p-6", children: "Loading..." });
@@ -411,6 +415,10 @@ function StaffManagement() {
         loadAllSubjects();
         loadAllAssignments();
         loadAttendanceAssignments();
+        // Always return cleanup function (even if empty) to avoid React error #310
+        return () => {
+            // No cleanup needed
+        };
     }, []);
     const loadAllClasses = async () => {
         try {
@@ -811,12 +819,19 @@ function StaffManagement() {
         if (assignForm.class_group_id) {
             loadSections(assignForm.class_group_id);
         }
+        // Always return cleanup function (even if empty) to avoid React error #310
+        return () => {
+            // No cleanup needed
+        };
     }, [assignForm.class_group_id]);
     useEffect(() => {
         if (dailyAttendanceModalOpen && selectedTeacher) {
             loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
         }
-        // No cleanup needed - just loading data conditionally
+        // Always return cleanup function (even if empty) to avoid React error #310
+        return () => {
+            // No cleanup needed
+        };
     }, [dailyAttendanceModalOpen, attendanceMonth, attendanceYear, selectedTeacher]);
     // Get assignments count for each teacher
     const getTeacherAssignmentsCount = (teacherId) => {
@@ -976,9 +991,8 @@ function StaffManagement() {
         const handleClickOutside = () => {
             setActionMenuOpen({});
         };
-        if (Object.keys(actionMenuOpen).length > 0) {
-            document.addEventListener('click', handleClickOutside);
-        }
+        // Always add listener, cleanup will remove it
+        document.addEventListener('click', handleClickOutside);
         // Always return cleanup function to avoid React error #310
         return () => {
             document.removeEventListener('click', handleClickOutside);
@@ -2921,6 +2935,10 @@ function SalaryManagement() {
         if (activeTab === 'unpaid') {
             loadUnpaidSalaries();
         }
+        // Always return cleanup function (even if empty) to avoid React error #310
+        return () => {
+            // No cleanup needed
+        };
     }, [activeTab]);
     const loadData = async () => {
         try {
@@ -3188,6 +3206,10 @@ function FeeManagement({ userRole = 'principal' }) {
             loadTransportData();
             loadCustomFees();
         }
+        // Always return cleanup function (even if empty) to avoid React error #310
+        return () => {
+            // No cleanup needed
+        };
     }, [activeTab]);
     const loadInitialData = async () => {
         try {
@@ -3760,6 +3782,10 @@ export default function PrincipalDashboard() {
             }
         };
         verifyRole();
+        // Always return cleanup function (even if empty) to avoid React error #310
+        return () => {
+            // No cleanup needed
+        };
     }, [navigate]);
     useEffect(() => {
         const path = location.pathname;
@@ -3781,6 +3807,10 @@ export default function PrincipalDashboard() {
             setCurrentView('salary');
         else if (path === '/principal/fees')
             setCurrentView('fees');
+        // Always return cleanup function (even if empty) to avoid React error #310
+        return () => {
+            // No cleanup needed
+        };
     }, [location]);
     if (checkingRole) {
         return (_jsx("div", { className: "min-h-screen bg-gray-50 flex items-center justify-center", children: _jsx("div", { className: "text-center", children: _jsx("div", { className: "text-2xl font-bold text-gray-600", children: "Loading..." }) }) }));
