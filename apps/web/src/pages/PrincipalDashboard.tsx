@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -638,6 +638,9 @@ function DashboardOverview() {
 }
 
 function StaffManagement() {
+  // Ref to track if component is mounted (for async operations)
+  const isMountedRef = useRef(true);
+  
   const [staff, setStaff] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -716,14 +719,15 @@ function StaffManagement() {
   });
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadStaff();
     loadAllClasses();
     loadAllSubjects();
     loadAllAssignments();
     loadAttendanceAssignments();
-    // Always return cleanup function (even if empty) to avoid React error #310
+    // Always return cleanup function to avoid React error #310
     return () => {
-      // No cleanup needed
+      isMountedRef.current = false;
     };
   }, []);
 
@@ -1170,7 +1174,7 @@ function StaffManagement() {
     }
     // Always return cleanup function (even if empty) to avoid React error #310
     return () => {
-      // No cleanup needed
+      // No cleanup needed - loadDailyAttendance checks isMountedRef
     };
   }, [dailyAttendanceModalOpen, attendanceMonth, attendanceYear, selectedTeacher]);
 
@@ -1182,7 +1186,7 @@ function StaffManagement() {
   const loadDailyAttendance = async (teacherId: string, month: number, year: number) => {
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
+      if (!token || !isMountedRef.current) return;
 
       // Get first and last day of the month
       const firstDay = new Date(year, month - 1, 1);
@@ -1193,8 +1197,12 @@ function StaffManagement() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
+      if (!isMountedRef.current) return;
+
       if (response.ok) {
         const data = await response.json();
+        if (!isMountedRef.current) return;
+        
         const attendanceMap: Record<string, 'present' | 'absent'> = {};
         const daysInMonth = lastDay.getDate();
         
@@ -1211,6 +1219,7 @@ function StaffManagement() {
           }
         });
         
+        if (!isMountedRef.current) return;
         setDailyAttendance(attendanceMap);
         
         // Calculate stats (consider unmarked days as present)
@@ -1218,10 +1227,14 @@ function StaffManagement() {
         const absentDays = Object.values(attendanceMap).filter(status => status === 'absent').length;
         const presentDays = totalDays - absentDays;
         
-        setAttendanceStats({ totalDays, presentDays, absentDays });
+        if (isMountedRef.current) {
+          setAttendanceStats({ totalDays, presentDays, absentDays });
+        }
       }
     } catch (error) {
-      console.error('Error loading daily attendance:', error);
+      if (isMountedRef.current) {
+        console.error('Error loading daily attendance:', error);
+      }
     }
   };
 
@@ -1380,7 +1393,9 @@ function StaffManagement() {
     return () => {
       document.removeEventListener('click', handleClickOutside);
     };
-  }, [actionMenuOpen]);
+    // Remove actionMenuOpen from dependencies - we want this to run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
