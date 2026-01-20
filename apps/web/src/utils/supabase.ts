@@ -11,6 +11,7 @@ export function getSupabaseClient() {
     );
   }
   return supabaseInstance;
+  
 }
 
 // Export a default instance for convenience
