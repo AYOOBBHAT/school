@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
-import { API_URL } from '../utils/api.js';
+import { API_URL } from '../utils/api';
 
 interface Student {
   id: string;

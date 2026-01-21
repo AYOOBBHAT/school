@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
-import { API_URL } from '../utils/api.js';
+import { API_URL } from '../utils/api';
 
 export default function Login() {
   const navigate = useNavigate();

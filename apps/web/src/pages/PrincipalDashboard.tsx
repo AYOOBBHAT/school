@@ -803,30 +803,38 @@ function StaffManagement() {
     }
   };
 
-  const loadSections = async (classId: string) => {
+  const loadSections = useCallback(async (classId: string) => {
     if (!classId) {
       setSections(prev => ({ ...prev, [classId]: [] }));
       return;
     }
 
-    if (sections[classId]) return;
+    // Check if already loaded using functional update to avoid dependency
+    setSections(prev => {
+      if (prev[classId]) return prev; // Already loaded, don't fetch again
+      
+      // Fetch sections asynchronously
+      (async () => {
+        try {
+          const token = (await supabase.auth.getSession()).data.session?.access_token;
+          if (!token) return;
 
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
+          const response = await fetch(`${API_URL}/classes/${classId}/sections`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
-      const response = await fetch(`${API_URL}/classes/${classId}/sections`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSections(prev => ({ ...prev, [classId]: data.sections || [] }));
-      }
-    } catch (error) {
-      console.error('Error loading sections:', error);
-    }
-  };
+          if (response.ok) {
+            const data = await response.json();
+            setSections(prevSections => ({ ...prevSections, [classId]: data.sections || [] }));
+          }
+        } catch (error) {
+          console.error('Error loading sections:', error);
+        }
+      })();
+      
+      return prev; // Return unchanged for now
+    });
+  }, []); // Empty deps - uses functional updates
 
   const loadStaff = async () => {
     try {
@@ -1166,7 +1174,7 @@ function StaffManagement() {
     return () => {
       // No cleanup needed
     };
-  }, [assignForm.class_group_id]);
+  }, [assignForm.class_group_id, loadSections]);
 
   // Get assignments count for each teacher
   const getTeacherAssignmentsCount = (teacherId: string) => {
@@ -8933,7 +8941,7 @@ export default function PrincipalDashboard() {
               </div>
             </div>
           }>
-            <StaffManagement />
+            <StaffManagement key="staff-management" />
           </ErrorBoundary>
         )}
         {currentView === 'classifications' && <ClassificationsManagement />}
