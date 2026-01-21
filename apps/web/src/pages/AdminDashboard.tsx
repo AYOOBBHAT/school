@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
-import { API_URL } from '../utils/api.js';
+import { API_URL } from '../utils/api';
 
 interface School {
   id: string;

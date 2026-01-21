@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../utils/supabase';
-import { API_URL } from '../utils/api.js';
+import { API_URL } from '../utils/api';
 // Import recharts components
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 

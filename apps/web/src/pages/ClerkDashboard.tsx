@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
-import FeeCollection from '../components/FeeCollection.js';
+import FeeCollection from '../components/FeeCollection';
 import UnpaidFeeAnalytics from '../components/UnpaidFeeAnalytics';
 import TeacherPaymentHistory from '../components/TeacherPaymentHistory';
-import { API_URL } from '../utils/api.js';
+import { API_URL } from '../utils/api';
 
 export default function ClerkDashboard() {
   const navigate = useNavigate();
