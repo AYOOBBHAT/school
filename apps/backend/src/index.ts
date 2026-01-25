@@ -3,8 +3,11 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+import compression from 'compression';
 
 import { authMiddleware, checkPaymentStatus } from './middleware/auth.js';
+
 import feesRouter from './routes/fees-comprehensive.js';
 import paymentsRouter from './routes/payments.js';
 import marksRouter from './routes/marks.js';
@@ -27,56 +30,96 @@ import adminRouter from './routes/admin.js';
 import principalUsersRouter from './routes/principal-users.js';
 import clerkFeesRouter from './routes/clerk-fees.js';
 
-// Validate required environment variables at startup
+
+// ======================================================
+// ENV VALIDATION
+// ======================================================
+
 const requiredEnvVars = [
   'SUPABASE_URL',
   'SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY'
 ];
 
+const missingEnvVars = requiredEnvVars.filter(v => !process.env[v]);
 
-const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
-
-if (missingEnvVars.length > 0) {
-  // eslint-disable-next-line no-console
-  console.error('❌ Missing required environment variables:');
-  missingEnvVars.forEach(varName => {
-    // eslint-disable-next-line no-console
-    console.error(`   - ${varName}`);
-  });
-  // eslint-disable-next-line no-console
-  console.error('\nPlease ensure all required variables are set in your .env file.');
-  // eslint-disable-next-line no-console
-  console.error('See .env.example for reference.\n');
+if (missingEnvVars.length) {
+  console.error('❌ Missing required env vars:', missingEnvVars);
   process.exit(1);
 }
 
+
+// ======================================================
+// APP SETUP
+// ======================================================
+
 const app = express();
+
+app.set('trust proxy', 1); // important behind nginx / load balancer
+
+
+// ======================================================
+// SECURITY + PERFORMANCE MIDDLEWARE
+// ======================================================
+
 app.use(helmet());
-app.use(cors());
-app.use(express.json());
-app.use(morgan('dev'));
+
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
+// compress responses (huge bandwidth win)
+app.use(compression());
+
+// safer JSON limits (prevent memory attacks)
+app.use(express.json({ limit: '1mb' }));
+
+// logging
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+
+// ======================================================
+// RATE LIMITING (VERY IMPORTANT FOR 50K USERS)
+// ======================================================
+
+const limiter = rateLimit({
+  windowMs: 60 * 1000,     // 1 min
+  max: 120,               // 120 req/min per IP
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+app.use(limiter);
+
+
+// ======================================================
+// HEALTH CHECK
+// ======================================================
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
-// Public auth routes (no auth middleware)
+
+// ======================================================
+// ROUTES
+// ======================================================
+
+// Public
 app.use('/auth', authRouter);
 
-// Protected routes (require auth middleware)
-// Skip auth middleware for /auth routes
+// Auth middleware
 app.use((req, res, next) => {
-  if (req.path.startsWith('/auth')) {
-    return next();
-  }
+  if (req.path.startsWith('/auth')) return next();
   return authMiddleware(req, res, next);
 });
 
-// Admin routes (no payment check needed)
+// Admin (no payment check)
 app.use('/admin', adminRouter);
 
-// All other protected routes (require payment check)
+// Payment check
 app.use(checkPaymentStatus);
 
+// Feature routes
 app.use('/fees', feesRouter);
 app.use('/payments', paymentsRouter);
 app.use('/marks', marksRouter);
@@ -97,16 +140,14 @@ app.use('/salary', salaryRouter);
 app.use('/principal-users', principalUsersRouter);
 app.use('/clerk-fees', clerkFeesRouter);
 
+
+// ======================================================
+// SERVER START
+// ======================================================
+
 const port = Number(process.env.PORT) || 4000;
-const host = process.env.HOST || '0.0.0.0'; // Listen on all network interfaces
+const host = process.env.HOST || '0.0.0.0';
 
 app.listen(port, host, () => {
-  // eslint-disable-next-line no-console
-  console.log(`Backend listening on http://localhost:${port}`);
-  // eslint-disable-next-line no-console
-  console.log(`Backend accessible on network at http://${host === '0.0.0.0' ? 'YOUR_LOCAL_IP' : host}:${port}`);
-  // eslint-disable-next-line no-console
-  console.log(`To find your local IP, run: hostname -I | awk '{print $1}'`);
+  console.log(`🚀 Backend running on http://${host}:${port}`);
 });
-
-

@@ -1,12 +1,9 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 
 const router = Router();
-
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 // Schema for classification type
 const classificationTypeSchema = Joi.object({
@@ -27,15 +24,10 @@ router.get('/types', requireRoles(['principal', 'clerk', 'teacher']), async (req
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   const { data, error } = await adminSupabase
     .from('classification_types')
-    .select('*')
+    .select('id, name, display_order, school_id, created_at')
     .eq('school_id', user.schoolId)
     .order('display_order', { ascending: true });
 
@@ -52,11 +44,6 @@ router.post('/types', requireRoles(['principal']), async (req, res) => {
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   const insertPayload = {
     name: value.name,
@@ -92,11 +79,6 @@ router.put('/types/:id', requireRoles(['principal']), async (req, res) => {
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   // Verify the type belongs to the school
   const { data: existingType, error: checkError } = await adminSupabase
@@ -130,11 +112,6 @@ router.delete('/types/:id', requireRoles(['principal']), async (req, res) => {
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   // Verify the type belongs to the school
   const { data: existingType, error: checkError } = await adminSupabase
@@ -163,11 +140,6 @@ router.get('/types/:typeId/values', requireRoles(['principal', 'clerk', 'teacher
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   // Verify the type belongs to the school
   const { data: type, error: typeError } = await adminSupabase
@@ -183,7 +155,7 @@ router.get('/types/:typeId/values', requireRoles(['principal', 'clerk', 'teacher
 
   const { data, error } = await adminSupabase
     .from('classification_values')
-    .select('*')
+    .select('id, value, display_order, classification_type_id, created_at')
     .eq('classification_type_id', req.params.typeId)
     .order('display_order', { ascending: true });
 
@@ -200,11 +172,6 @@ router.post('/values', requireRoles(['principal']), async (req, res) => {
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   // Verify the type belongs to the school
   const { data: type, error: typeError } = await adminSupabase
@@ -252,11 +219,6 @@ router.put('/values/:id', requireRoles(['principal']), async (req, res) => {
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   // Verify the value's type belongs to the school
   const { data: existingValue, error: valueError } = await adminSupabase
@@ -297,11 +259,6 @@ router.delete('/values/:id', requireRoles(['principal']), async (req, res) => {
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   // Verify the value's type belongs to the school
   const { data: existingValue, error: valueError } = await adminSupabase

@@ -1,11 +1,8 @@
 import { Router } from 'express';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 
 const router = Router();
-
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 // Get all students for principal/clerk (grouped by class) or students for teacher's assigned classes
 router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
@@ -15,11 +12,6 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
   const { class_group_id, subject_id, section_id } = req.query;
 
   // Use service role key to bypass RLS for admin operations
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     let classGroupIds: string[] = [];
@@ -112,7 +104,15 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
       query = query.eq('section_id', section_id as string);
     }
 
-    const { data: students, error } = await query.order('roll_number', { ascending: true, nullsFirst: false });
+    // Add pagination (critical for 1M+ users)
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100); // Max 100 per page
+    const offset = (page - 1) * limit;
+
+    const { data: students, error, count } = await query
+      .order('roll_number', { ascending: true, nullsFirst: false })
+      .range(offset, offset + limit - 1)
+      .select('*', { count: 'exact' });
 
     if (error) {
       console.error('[students-admin] Error fetching students:', error);
@@ -191,7 +191,13 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
         admission_date: s.admission_date,
         profile: s.profile
       })),
-      total_students: studentsWithClasses.length
+      total_students: count || 0,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        total_pages: Math.ceil((count || 0) / limit)
+      }
     });
   } catch (err: any) {
     console.error('[students-admin] Error:', err);
@@ -204,11 +210,6 @@ router.get('/:studentId/fee-config', requireRoles(['principal', 'clerk']), async
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { studentId } = req.params;
   const today = new Date().toISOString().split('T')[0];
 
@@ -410,11 +411,6 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { studentId } = req.params;
   const { class_group_id, section_id, roll_number, fee_config } = req.body;
   const today = new Date().toISOString().split('T')[0];
@@ -833,11 +829,6 @@ router.post('/:studentId/promote', requireRoles(['principal', 'clerk']), async (
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { studentId } = req.params;
   const { target_class_id, section_id } = req.body;
 
@@ -927,11 +918,6 @@ router.post('/class/:classId/promote', requireRoles(['principal', 'clerk']), asy
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { classId } = req.params;
   const { target_class_id, clear_sections } = req.body;
 

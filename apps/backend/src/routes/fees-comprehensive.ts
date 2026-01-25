@@ -1,12 +1,9 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 
 const router = Router();
-
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 // ============================================
 // FEE CATEGORIES
@@ -26,7 +23,7 @@ router.get('/categories', requireRoles(['principal', 'student', 'parent']), asyn
 
   const { data, error } = await supabase
     .from('fee_categories')
-    .select('*')
+    .select('id, name, description, fee_type, code, is_active, display_order, created_at')
     .eq('school_id', user.schoolId)
     .eq('is_active', true)
     .order('display_order', { ascending: true });
@@ -139,11 +136,6 @@ router.post('/class-fees', requireRoles(['principal']), async (req, res) => {
   const { error, value } = classFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -201,11 +193,6 @@ router.put('/class-fees/:id', requireRoles(['principal']), async (req, res) => {
   const { error, value } = classFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -259,17 +246,12 @@ const transportRouteSchema = Joi.object({
 
 // Get transport routes
 router.get('/transport/routes', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
   const { data, error } = await adminSupabase
     .from('transport_routes')
-    .select('*')
+    .select('id, route_name, bus_number, zone, school_id, is_active, created_at')
     .eq('school_id', user.schoolId)
     .eq('is_active', true)
     .order('route_name', { ascending: true });
@@ -283,11 +265,6 @@ router.post('/transport/routes', requireRoles(['principal']), async (req, res) =
   const { error, value } = transportRouteSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -307,11 +284,6 @@ router.put('/transport/routes/:id', requireRoles(['principal']), async (req, res
   const { error, value } = transportRouteSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -345,11 +317,6 @@ const transportFeeSchema = Joi.object({
 
 // Get transport fees
 router.get('/transport/fees', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -373,11 +340,6 @@ router.post('/transport/fees', requireRoles(['principal']), async (req, res) => 
   const { error, value } = transportFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -412,11 +374,6 @@ router.put('/transport/fees/:id', requireRoles(['principal']), async (req, res) 
   const { error, value } = transportFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -501,11 +458,6 @@ router.post('/custom-fees', requireRoles(['principal']), async (req, res) => {
   const { error, value } = customFeeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -603,11 +555,6 @@ router.post('/custom-fees', requireRoles(['principal']), async (req, res) => {
 
 // Delete custom fee (Principal only)
 router.delete('/custom-fees/:id', requireRoles(['principal']), async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -666,11 +613,6 @@ router.post('/transport/assign', requireRoles(['principal']), async (req, res) =
   const { error, value } = studentTransportSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -778,11 +720,6 @@ router.post('/student-cycles', requireRoles(['principal']), async (req, res) => 
   const { error, value } = studentFeeCycleSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -830,7 +767,7 @@ router.get('/student-cycles/:studentId', requireRoles(['principal', 'student', '
 
   const { data, error } = await supabase
     .from('student_fee_cycles')
-    .select('*')
+    .select('id, student_id, fee_category_id, fee_cycle, billing_frequency, start_date, end_date, school_id, created_at')
     .eq('student_id', req.params.studentId)
     .eq('school_id', user.schoolId)
     .eq('is_active', true)
@@ -852,11 +789,6 @@ router.post('/generate-schedule', requireRoles(['principal']), async (req, res) 
     return res.status(400).json({ error: 'student_id and academic_year are required' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -884,11 +816,6 @@ router.post('/generate-schedule', requireRoles(['principal']), async (req, res) 
 
 // Get pending periods for student
 router.get('/periods/pending/:studentId', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -904,11 +831,6 @@ router.get('/periods/pending/:studentId', requireRoles(['principal', 'student', 
 
 // Get overdue periods for student
 router.get('/periods/overdue/:studentId', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -924,11 +846,6 @@ router.get('/periods/overdue/:studentId', requireRoles(['principal', 'student', 
 
 // Get total dues for student
 router.get('/dues/:studentId', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -957,11 +874,6 @@ router.post('/class-fees/:id/hike', requireRoles(['principal']), async (req, res
   const { error, value } = feeHikeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -969,7 +881,7 @@ router.post('/class-fees/:id/hike', requireRoles(['principal']), async (req, res
     // Get the class fee default to get class_group_id, fee_category_id, fee_cycle
     const { data: classFee, error: feeError } = await adminSupabase
       .from('class_fee_defaults')
-      .select('*')
+      .select('id, class_group_id, fee_category_id, amount, fee_cycle, effective_from, effective_to, is_active, name, school_id, created_at, updated_at')
       .eq('id', req.params.id)
       .eq('school_id', user.schoolId)
       .single();
@@ -1017,11 +929,6 @@ router.post('/transport/fees/:id/hike', requireRoles(['principal']), async (req,
   const { error, value } = feeHikeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -1093,11 +1000,6 @@ router.post('/custom-fees/:id/hike', requireRoles(['principal']), async (req, re
   const { error, value } = feeHikeSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.message });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -1121,7 +1023,7 @@ router.post('/custom-fees/:id/hike', requireRoles(['principal']), async (req, re
     // Get the custom fee definition to get class_group_id, fee_category_id, fee_cycle
     const { data: customFee, error: feeError } = await adminSupabase
       .from('optional_fee_definitions')
-      .select('*')
+      .select('id, class_group_id, fee_category_id, amount, fee_cycle, effective_from, effective_to, is_active, name, school_id, created_at, updated_at')
       .eq('id', req.params.id)
       .eq('school_id', user.schoolId)
       .in('fee_category_id', customCategoryIds)
@@ -1167,11 +1069,6 @@ router.post('/custom-fees/:id/hike', requireRoles(['principal']), async (req, re
 
 // Get custom fee versions
 router.get('/custom-fees/:id/versions', requireRoles(['principal']), async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -1208,7 +1105,7 @@ router.get('/custom-fees/:id/versions', requireRoles(['principal']), async (req,
     // Get all versions for this custom fee
     let versionsQuery = adminSupabase
       .from('optional_fee_versions')
-      .select('*')
+      .select('id, fee_category_id, fee_cycle, amount, effective_from, effective_to, created_at')
       .eq('fee_category_id', customFee.fee_category_id)
       .eq('fee_cycle', customFee.fee_cycle)
       .eq('school_id', user.schoolId)
@@ -1238,11 +1135,6 @@ router.get('/custom-fees/:id/versions', requireRoles(['principal']), async (req,
 
 // Get Class Fee Version History
 router.get('/class-fees/:id/versions', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -1262,7 +1154,7 @@ router.get('/class-fees/:id/versions', requireRoles(['principal', 'student', 'pa
     // Get all versions
     const { data: versions, error: versionsError } = await adminSupabase
       .from('class_fee_versions')
-      .select('*')
+      .select('id, class_group_id, fee_category_id, amount, fee_cycle, effective_from, effective_to, created_at')
       .eq('class_group_id', classFee.class_group_id)
       .eq('fee_category_id', classFee.fee_category_id)
       .eq('fee_cycle', classFee.fee_cycle)
@@ -1282,11 +1174,6 @@ router.get('/class-fees/:id/versions', requireRoles(['principal', 'student', 'pa
 
 // Get Transport Fee Version History
 router.get('/transport/fees/:id/versions', requireRoles(['principal', 'student', 'parent']), async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
@@ -1314,7 +1201,7 @@ router.get('/transport/fees/:id/versions', requireRoles(['principal', 'student',
     // Get all versions
     let query = adminSupabase
       .from('transport_fee_versions')
-      .select('*')
+      .select('id, route_id, fee_cycle, base_fee, escort_fee, fuel_surcharge, effective_from, effective_to, created_at')
       .eq('school_id', user.schoolId)
       .eq('fee_cycle', transportFee.fee_cycle)
       .order('version_number', { ascending: false });

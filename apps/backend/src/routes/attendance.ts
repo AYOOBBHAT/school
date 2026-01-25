@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 import {
   getTeacherFirstClass,
   isHoliday,
@@ -12,9 +12,6 @@ import {
 } from '../utils/attendanceLogic.js';
 
 const router = Router();
-
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 const attendanceSchema = Joi.object({
   student_id: Joi.string().uuid().required(),
@@ -39,32 +36,12 @@ router.get('/', requireRoles(['teacher', 'principal', 'clerk']), async (req, res
     return res.status(400).json({ error: 'class_group_id and date are required' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
+    // Step 1: Fetch attendance records (minimal fields, no joins)
     let query = adminSupabase
       .from('student_attendance')
-      .select(`
-        id,
-        student_id,
-        attendance_date,
-        status,
-        class_group_id,
-        is_locked,
-        students:student_id(
-          id,
-          roll_number,
-          profile:profiles!students_profile_id_fkey(
-            id,
-            full_name,
-            email
-          )
-        )
-      `)
+      .select('id, student_id, attendance_date, status, class_group_id, is_locked')
       .eq('class_group_id', class_group_id as string)
       .eq('attendance_date', date as string)
       .eq('school_id', user.schoolId);
@@ -73,17 +50,48 @@ router.get('/', requireRoles(['teacher', 'principal', 'clerk']), async (req, res
       query = query.eq('student_id', student_id as string);
     }
 
-    const { data: attendance, error } = await query.order('attendance_date', { ascending: false });
+    const { data: attendance, error } = await query;
 
     if (error) {
       console.error('[attendance] Error fetching attendance:', error);
       return res.status(400).json({ error: error.message });
     }
 
-    return res.json({ attendance: attendance || [] });
-  } catch (err: any) {
+    if (!attendance || attendance.length === 0) {
+      return res.json({ attendance: [] });
+    }
+
+    // Step 2: Fetch student details separately (only if needed)
+    const studentIds = [...new Set(attendance.map((a: any) => a.student_id))];
+    const { data: students, error: studentsError } = await adminSupabase
+      .from('students')
+      .select('id, roll_number, profile:profiles!students_profile_id_fkey(id, full_name, email)')
+      .in('id', studentIds);
+
+    if (studentsError) {
+      console.error('[attendance] Error fetching students:', studentsError);
+      // Return attendance without student details rather than failing
+    }
+
+    // Step 3: Map student details to attendance records in memory
+    const studentMap = new Map(
+      (students || []).map((s: any) => [s.id, {
+        id: s.id,
+        roll_number: s.roll_number,
+        profile: s.profile
+      }])
+    );
+
+    const attendanceWithStudents = attendance.map((a: any) => ({
+      ...a,
+      students: studentMap.get(a.student_id) || null
+    }));
+
+    return res.json({ attendance: attendanceWithStudents });
+  } catch (err: unknown) {
     console.error('[attendance] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    const errorMessage = err instanceof Error ? err.message : 'Internal server error';
+    return res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -95,11 +103,6 @@ router.post('/bulk', requireRoles(['teacher', 'principal', 'clerk']), async (req
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     // Verify all records belong to the school
@@ -128,7 +131,7 @@ router.post('/bulk', requireRoles(['teacher', 'principal', 'clerk']), async (req
       }
     }
 
-    // Upsert attendance records (update if exists, insert if not)
+    // Prepare attendance data for UPSERT
     const attendanceData = value.attendance.map((a: any) => ({
       student_id: a.student_id,
       class_group_id: a.class_group_id,
@@ -139,34 +142,32 @@ router.post('/bulk', requireRoles(['teacher', 'principal', 'clerk']), async (req
       is_locked: false // Old bulk endpoint doesn't lock
     }));
 
-    // Delete existing records for the same students and date
-    const studentIds = attendanceData.map((a: any) => a.student_id);
-    const attendanceDate = attendanceData[0].attendance_date;
-    const classGroupId = attendanceData[0].class_group_id;
-
-    await adminSupabase
+    // Single UPSERT operation - atomic and fast
+    // Uses ON CONFLICT to update existing records or insert new ones
+    // Constraint: unique(student_id, class_group_id, attendance_date)
+    const { error: upsertError } = await adminSupabase
       .from('student_attendance')
-      .delete()
-      .in('student_id', studentIds)
-      .eq('attendance_date', attendanceDate)
-      .eq('class_group_id', classGroupId);
+      .upsert(attendanceData, {
+        onConflict: 'student_id,class_group_id,attendance_date',
+        ignoreDuplicates: false
+      });
 
-    // Insert new records
-    const { data: inserted, error: insertError } = await adminSupabase
-      .from('student_attendance')
-      .insert(attendanceData)
-      .select();
-
-    if (insertError) {
-      console.error('[attendance] Error saving attendance:', insertError);
-      return res.status(400).json({ error: insertError.message });
+    if (upsertError) {
+      console.error('[attendance] Error upserting attendance:', upsertError);
+      return res.status(400).json({ error: upsertError.message });
     }
 
-    console.log('[attendance] Attendance saved successfully:', inserted?.length, 'records');
-    return res.json({ attendance: inserted, message: 'Attendance saved successfully' });
-  } catch (err: any) {
+    console.log('[attendance] Attendance saved successfully:', attendanceData.length, 'records');
+    // Return minimal response - no need to re-fetch data
+    return res.json({ 
+      success: true,
+      count: attendanceData.length,
+      message: 'Attendance saved successfully' 
+    });
+  } catch (err: unknown) {
     console.error('[attendance] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    const errorMessage = err instanceof Error ? err.message : 'Internal server error';
+    return res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -179,11 +180,6 @@ router.get('/teacher/first-class', requireRoles(['teacher']), async (req, res) =
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const dateParam = req.query.date as string;
   const date = dateParam ? new Date(dateParam) : new Date();
 
@@ -217,9 +213,10 @@ router.get('/teacher/first-class', requireRoles(['teacher']), async (req, res) =
       isHoliday: false,
       firstClass
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[attendance/teacher/first-class] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    const errorMessage = err instanceof Error ? err.message : 'Internal server error';
+    return res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -234,11 +231,6 @@ router.get('/students', requireRoles(['teacher', 'principal', 'clerk']), async (
     return res.status(400).json({ error: 'class_group_id is required' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const date = dateParam ? new Date(dateParam as string) : new Date();
 
   try {
@@ -289,9 +281,10 @@ router.get('/students', requireRoles(['teacher', 'principal', 'clerk']), async (
       students,
       date: date.toISOString().split('T')[0]
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[attendance/students] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    const errorMessage = err instanceof Error ? err.message : 'Internal server error';
+    return res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -306,11 +299,6 @@ router.get('/can-mark', requireRoles(['teacher']), async (req, res) => {
     return res.status(400).json({ error: 'class_group_id is required' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const date = dateParam ? new Date(dateParam as string) : new Date();
 
   try {
@@ -323,9 +311,10 @@ router.get('/can-mark', requireRoles(['teacher']), async (req, res) => {
     );
 
     return res.json(canMark);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[attendance/can-mark] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    const errorMessage = err instanceof Error ? err.message : 'Internal server error';
+    return res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -337,11 +326,6 @@ router.get('/is-holiday', requireRoles(['teacher', 'principal', 'clerk']), async
   const { date: dateParam } = req.query;
   const date = dateParam ? new Date(dateParam as string) : new Date();
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   if (!user.schoolId) {
     return res.status(500).json({ error: 'School ID not found' });
@@ -350,9 +334,10 @@ router.get('/is-holiday', requireRoles(['teacher', 'principal', 'clerk']), async
   try {
     const holidayCheck = await isHoliday(date, user.schoolId, adminSupabase);
     return res.json(holidayCheck);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[attendance/is-holiday] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    const errorMessage = err instanceof Error ? err.message : 'Internal server error';
+    return res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -376,11 +361,6 @@ router.post('/mark', requireRoles(['teacher']), async (req, res) => {
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const date = new Date(value.date);
 
   if (!user.schoolId) {
@@ -411,9 +391,10 @@ router.post('/mark', requireRoles(['teacher']), async (req, res) => {
       message: 'Attendance marked and locked successfully',
       count: value.attendance.length
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[attendance/mark] Error:', err);
-    return res.status(400).json({ error: err.message || 'Failed to mark attendance' });
+    const errorMessage = err instanceof Error ? err.message : 'Failed to mark attendance';
+    return res.status(400).json({ error: errorMessage });
   }
 });
 

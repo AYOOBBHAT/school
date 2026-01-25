@@ -399,43 +399,122 @@ export async function generateMonthlyFeeComponents(
 }
 
 /**
- * Get monthly fee ledger for a student (all months with status)
+ * @deprecated Use PostgreSQL RPC function get_student_monthly_ledger instead
+ * This function performs aggregation in Node.js which doesn't scale.
+ * 
+ * Replaced by: adminSupabase.rpc('get_student_monthly_ledger', { ... })
+ * 
+ * Migration: All ledger logic moved to database for better performance.
+ * See migration: 1022_student_monthly_ledger_rpc.sql
  */
 export async function getMonthlyFeeLedger(
   studentId: string,
   schoolId: string,
   adminSupabase: any,
   startYear?: number,
-  endYear?: number
-): Promise<Array<{
-  month: string;
-  year: number;
-  monthNumber: number;
-  components: Array<{
-    id: string;
-    fee_type: string;
-    fee_name: string;
-    fee_amount: number;
-    paid_amount: number;
-    pending_amount: number;
-    status: string;
-    due_date?: string;
+  endYear?: number,
+  page: number = 1,
+  limit: number = 24
+): Promise<{
+  data: Array<{
+    month: string;
+    year: number;
+    monthNumber: number;
+    components: Array<{
+      id: string;
+      fee_type: string;
+      fee_name: string;
+      fee_amount: number;
+      paid_amount: number;
+      pending_amount: number;
+      status: string;
+      due_date?: string;
+    }>;
   }>;
-}>> {
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    total_pages: number;
+  };
+}> {
   const currentYear = new Date().getFullYear();
   const start = startYear || currentYear - 1;
   const end = endYear || currentYear + 1;
 
-  // Get all monthly fee components for the student
-  const { data: components, error } = await adminSupabase
+  // Step 1: Get distinct months (paginated) - most recent first
+  // This is much more efficient than loading all components
+  const { data: allMonths, error: monthsError } = await adminSupabase
     .from('monthly_fee_components')
-    .select('*')
+    .select('period_year, period_month')
+    .eq('student_id', studentId)
+    .eq('school_id', schoolId)
+    .gte('period_year', start)
+    .lte('period_year', end);
+
+  if (monthsError) {
+    throw new Error(`Failed to get monthly fee ledger months: ${monthsError.message}`);
+  }
+
+  // Get unique months and sort by most recent first
+  const uniqueMonthsSet = new Set<string>();
+  const uniqueMonthsArray: Array<{ year: number; month: number }> = [];
+  
+  (allMonths || []).forEach((m: any) => {
+    const key = `${m.period_year}-${m.period_month}`;
+    if (!uniqueMonthsSet.has(key)) {
+      uniqueMonthsSet.add(key);
+      uniqueMonthsArray.push({ year: m.period_year, month: m.period_month });
+    }
+  });
+
+  // Sort by most recent first (DESC)
+  uniqueMonthsArray.sort((a, b) => {
+    if (a.year !== b.year) return b.year - a.year;
+    return b.month - a.month;
+  });
+
+  // Calculate pagination
+  const totalMonths = uniqueMonthsArray.length;
+  const totalPages = Math.ceil(totalMonths / limit);
+  const offset = (page - 1) * limit;
+  const paginatedMonths = uniqueMonthsArray.slice(offset, offset + limit);
+
+  // Step 2: Get components only for the paginated months
+  // Build filter for specific months
+  if (paginatedMonths.length === 0) {
+    return {
+      data: [],
+      pagination: {
+        page,
+        limit,
+        total: totalMonths,
+        total_pages: totalPages
+      }
+    };
+  }
+
+  // Step 2: Get components for paginated months
+  // Create a Set for fast lookup of paginated months
+  const paginatedMonthsSet = new Set(paginatedMonths.map(m => `${m.year}-${m.month}`));
+
+  // Get all components for the date range (but only required columns - huge improvement!)
+  // Then filter to paginated months in memory
+  // This is still much more efficient than loading all columns with select('*')
+  const { data: allComponents, error } = await adminSupabase
+    .from('monthly_fee_components')
+    .select('id, period_year, period_month, fee_type, fee_name, fee_amount, paid_amount, pending_amount, status, due_date')
     .eq('student_id', studentId)
     .eq('school_id', schoolId)
     .gte('period_year', start)
     .lte('period_year', end)
-    .order('period_year', { ascending: true })
-    .order('period_month', { ascending: true });
+    .order('period_year', { ascending: false })
+    .order('period_month', { ascending: false });
+
+  // Filter to only paginated months (fast Set lookup)
+  const components = (allComponents || []).filter((comp: any) => 
+    paginatedMonthsSet.has(`${comp.period_year}-${comp.period_month}`)
+  );
 
   if (error) {
     throw new Error(`Failed to get monthly fee ledger: ${error.message}`);
@@ -482,31 +561,93 @@ export async function getMonthlyFeeLedger(
     });
   });
 
-  // Convert to array and sort
-  return Array.from(monthMap.values()).sort((a, b) => {
-    if (a.year !== b.year) return a.year - b.year;
-    return a.monthNumber - b.monthNumber;
+  // Convert to array and sort (most recent first)
+  // Ensure months are in the same order as paginatedMonths
+  const data = paginatedMonths.map(({ year, month }) => {
+    const monthKey = `${year}-${month}`;
+    return monthMap.get(monthKey) || {
+      month: `${monthNames[month - 1]} ${year}`,
+      year,
+      monthNumber: month,
+      components: []
+    };
   });
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total: totalMonths,
+      total_pages: totalPages
+    }
+  };
 }
 
 /**
- * Ensure monthly fee components exist for a student up to current month
+ * Check if monthly fee components exist for a student (READ-ONLY)
+ * This is safe to call during requests - it only checks, doesn't write
+ * 
+ * Returns true if components exist for current month, false otherwise
  */
-export async function ensureMonthlyFeeComponentsExist(
+export async function checkMonthlyFeeComponentsExist(
   studentId: string,
   schoolId: string,
   adminSupabase: any
-): Promise<void> {
+): Promise<boolean> {
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+
+  // Quick check: see if any components exist for current month
+  const { data: existing, error } = await adminSupabase
+    .from('monthly_fee_components')
+    .select('id')
+    .eq('student_id', studentId)
+    .eq('school_id', schoolId)
+    .eq('period_year', currentYear)
+    .eq('period_month', currentMonth)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[checkMonthlyFeeComponentsExist] Error:', error);
+    // On error, assume components don't exist (safer than assuming they do)
+    return false;
+  }
+
+  return !!existing;
+}
+
+/**
+ * Generate monthly fee components for a student (WRITE OPERATION)
+ * 
+ * ⚠️ WARNING: This performs database writes (INSERT/UPDATE)
+ * ⚠️ DO NOT call this during request handling
+ * ⚠️ Use in background jobs/cron only
+ * 
+ * This function should be called by:
+ * - Daily cron job (generate for current month)
+ * - Background worker (generate for new students)
+ * - Admin script (bulk generation)
+ */
+export async function generateMonthlyFeeComponentsForStudent(
+  studentId: string,
+  schoolId: string,
+  adminSupabase: any,
+  targetYear?: number,
+  targetMonth?: number
+): Promise<{ generated: number; updated: number }> {
   const feeStructure = await loadAssignedFeeStructure(studentId, schoolId, adminSupabase);
   
   // Check if no fee is assigned
   if (!feeStructure.class_fee && !feeStructure.transport_fee && feeStructure.custom_fees.length === 0) {
-    return; // No fee configured
+    return { generated: 0, updated: 0 }; // No fee configured
   }
 
   const today = new Date();
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth() + 1;
+  const currentYear = targetYear || today.getFullYear();
+  const currentMonth = targetMonth || today.getMonth() + 1;
 
   // Get student admission date
   const { data: student } = await adminSupabase
@@ -519,12 +660,18 @@ export async function ensureMonthlyFeeComponentsExist(
   const admissionYear = admissionDate.getFullYear();
   const admissionMonth = admissionDate.getMonth() + 1;
 
-  // Generate components from admission to current month
-  for (let year = admissionYear; year <= currentYear; year++) {
-    const startMonth = year === admissionYear ? admissionMonth : 1;
-    const endMonth = year === currentYear ? currentMonth : 12;
+  let generated = 0;
+  let updated = 0;
 
-    for (let month = startMonth; month <= endMonth; month++) {
+  // Generate components from admission to target month (or current month)
+  const endYear = targetYear || currentYear;
+  const endMonth = targetMonth || currentMonth;
+
+  for (let year = admissionYear; year <= endYear; year++) {
+    const startMonth = year === admissionYear ? admissionMonth : 1;
+    const monthLimit = year === endYear ? endMonth : 12;
+
+    for (let month = startMonth; month <= monthLimit; month++) {
       const components = await generateMonthlyFeeComponents(
         studentId,
         schoolId,
@@ -534,7 +681,7 @@ export async function ensureMonthlyFeeComponentsExist(
         adminSupabase
       );
 
-      // Upsert each component
+      // Batch upsert components
       for (const component of components) {
         // Check if component already exists
         let query = adminSupabase
@@ -569,14 +716,35 @@ export async function ensureMonthlyFeeComponentsExist(
               updated_at: new Date().toISOString()
             })
             .eq('id', existing.id);
+          updated++;
         } else {
           // Insert new component
           await adminSupabase
             .from('monthly_fee_components')
             .insert(component);
+          generated++;
         }
       }
     }
   }
+
+  return { generated, updated };
+}
+
+/**
+ * @deprecated Use checkMonthlyFeeComponentsExist() for read-only checks
+ * This function performs writes and should NOT be called during requests
+ * 
+ * Kept for backward compatibility - will be removed in future version
+ */
+export async function ensureMonthlyFeeComponentsExist(
+  studentId: string,
+  schoolId: string,
+  adminSupabase: any
+): Promise<void> {
+  console.warn('[ensureMonthlyFeeComponentsExist] DEPRECATED: This function performs writes. Use checkMonthlyFeeComponentsExist() for read-only checks.');
+  // For now, just check - don't generate during requests
+  // Generation should be done by cron job
+  await checkMonthlyFeeComponentsExist(studentId, schoolId, adminSupabase);
 }
 

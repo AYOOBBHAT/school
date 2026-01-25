@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import Joi from 'joi';
 import { createClient } from '@supabase/supabase-js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 import { generateJoinCode } from '../utils/joinCode.js';
 
 const router = Router();
 
 const supabaseUrl = process.env.SUPABASE_URL as string;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 
 // Principal signup schema
@@ -40,18 +40,7 @@ router.post('/signup-principal', async (req, res) => {
   if (error) return res.status(400).json({ error: error.message });
 
   // Check for missing environment variables with specific error messages
-  if (!supabaseUrl || !supabaseServiceKey) {
-    const missing: string[] = [];
-    if (!supabaseUrl) missing.push('SUPABASE_URL');
-    if (!supabaseServiceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY');
-    
-    // eslint-disable-next-line no-console
-    console.error(`[signup-principal] Missing environment variables: ${missing.join(', ')}`);
-    
-    return res.status(500).json({ 
-      error: `Server configuration error: Missing required environment variables: ${missing.join(', ')}. Please ensure these are set in your .env file.` 
-    });
-  }
+  // Service key is validated at module load time in supabaseAdmin.ts
 
   // Check if service role key is still placeholder
   if (supabaseServiceKey === 'your_service_role_key_here' || supabaseServiceKey.includes('your_service_role_key')) {
@@ -62,7 +51,7 @@ router.post('/signup-principal', async (req, res) => {
     });
   }
 
-  const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+    const supabase = adminSupabase;
 
   try {
     // Create auth user with email confirmed (no email confirmation required)
@@ -182,18 +171,7 @@ router.post('/signup-join', async (req, res) => {
   if (error) return res.status(400).json({ error: error.message });
 
   // Check for missing environment variables with specific error messages
-  if (!supabaseUrl || !supabaseServiceKey) {
-    const missing: string[] = [];
-    if (!supabaseUrl) missing.push('SUPABASE_URL');
-    if (!supabaseServiceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY');
-    
-    // eslint-disable-next-line no-console
-    console.error(`[signup-join] Missing environment variables: ${missing.join(', ')}`);
-    
-    return res.status(500).json({ 
-      error: `Server configuration error: Missing required environment variables: ${missing.join(', ')}. Please ensure these are set in your .env file.` 
-    });
-  }
+  // Service key is validated at module load time in supabaseAdmin.ts
 
   // Check if service role key is still placeholder
   if (supabaseServiceKey === 'your_service_role_key_here' || supabaseServiceKey.includes('your_service_role_key')) {
@@ -204,7 +182,7 @@ router.post('/signup-join', async (req, res) => {
     });
   }
 
-  const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+    const supabase = adminSupabase;
 
   try {
     // Find school by join code
@@ -321,9 +299,7 @@ router.get('/profile', async (req, res) => {
     return res.status(401).json({ error: 'Missing bearer token' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
+  // Service key is validated at module load time in supabaseAdmin.ts
 
   try {
     // Verify the token and get user
@@ -337,7 +313,6 @@ router.get('/profile', async (req, res) => {
     }
 
     // Get profile using service role to bypass RLS
-    const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
     const { data: profile, error: profileError } = await adminSupabase
       .from('profiles')
       .select('id, role, approval_status, school_id, full_name, email, created_at')
@@ -372,11 +347,9 @@ router.get('/profile', async (req, res) => {
 
 // Public endpoint to get list of all schools for signup dropdown
 router.get('/schools', async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
+  // Service key is validated at module load time in supabaseAdmin.ts
 
-  const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+    const supabase = adminSupabase;
 
   try {
     // Get all schools (public information for signup)
@@ -405,8 +378,8 @@ router.post('/login', async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
+  if (!supabaseAnonKey) {
+    return res.status(500).json({ error: 'Missing SUPABASE_ANON_KEY' });
   }
 
   try {
@@ -422,7 +395,6 @@ router.post('/login', async (req, res) => {
     }
 
     // Get user profile
-    const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
     const { data: profile, error: profileError } = await adminSupabase
       .from('profiles')
       .select('id, role, full_name, email, school_id')
@@ -527,11 +499,9 @@ router.post('/login-username', async (req, res) => {
     return res.status(400).json({ error: 'Either join code or registration number is required' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
+  // Service key is validated at module load time in supabaseAdmin.ts
 
-  const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+    const supabase = adminSupabase;
 
   try {
     // Find school by join_code or registration_number
@@ -611,9 +581,7 @@ router.post('/reset-password', async (req, res) => {
     return res.status(400).json({ error: 'New password is required and must be at least 8 characters' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
+  // Service key is validated at module load time in supabaseAdmin.ts
 
   try {
     // Verify the token and get user
@@ -627,7 +595,6 @@ router.post('/reset-password', async (req, res) => {
     }
 
     // Update password using admin API
-    const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
     const { data: updatedUser, error: updateError } = await adminSupabase.auth.admin.updateUserById(user.id, {
       password: new_password
     });
@@ -698,11 +665,9 @@ router.post('/forgot-password-request', async (req, res) => {
     return res.status(400).json({ error: 'Either join code or registration number is required' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
+  // Service key is validated at module load time in supabaseAdmin.ts
 
-  const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+    const supabase = adminSupabase;
 
   try {
     // Find school by join_code or registration_number
@@ -814,11 +779,9 @@ router.post('/forgot-password-request-email', async (req, res) => {
     return res.status(400).json({ error: 'Email is required' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
+  // Service key is validated at module load time in supabaseAdmin.ts
 
-  const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+    const supabase = adminSupabase;
 
   try {
     // Find profile by email (principals and teachers have unique emails)
@@ -904,11 +867,9 @@ router.post('/forgot-password-verify', async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 8 characters long' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
+  // Service key is validated at module load time in supabaseAdmin.ts
 
-  const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+    const supabase = adminSupabase;
 
   try {
     // Verify OTP
@@ -1000,11 +961,9 @@ router.post('/confirm-email', async (req, res) => {
     return res.status(400).json({ error: 'Email is required' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
+  // Service key is validated at module load time in supabaseAdmin.ts
 
-  const supabase = createClient<any>(supabaseUrl, supabaseServiceKey);
+    const supabase = adminSupabase;
 
   try {
     // Find user by email
