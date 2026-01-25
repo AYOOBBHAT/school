@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button } from '../components/Button';
-import { Input } from '../components/Input';
-import { authService } from '../services/auth';
+import { Button } from '../shared/components/Button';
+import { Input } from '../shared/components/Input';
+import { authService } from '../shared/services/auth';
 import { useAuth } from '../navigation/AuthContext';
+import { NavigationProp } from '../shared/types';
 
-export function SignupScreen({ navigation }: any) {
+interface SignupScreenProps {
+  navigation: NavigationProp;
+}
+
+export function SignupScreen({ navigation }: SignupScreenProps) {
   const [step, setStep] = useState<'type' | 'principal' | 'join'>('type');
   const [loading, setLoading] = useState(false);
   const { setUser } = useAuth();
@@ -42,8 +47,9 @@ export function SignupScreen({ navigation }: any) {
     try {
       const response = await authService.signupPrincipal(principalData);
       setUser(response.user);
-    } catch (error: any) {
-      Alert.alert('Signup Failed', error.message || 'Failed to create account');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to create account';
+      Alert.alert('Signup Failed', message);
     } finally {
       setLoading(false);
     }
@@ -59,8 +65,9 @@ export function SignupScreen({ navigation }: any) {
     try {
       const response = await authService.signupJoin(joinData);
       setUser(response.user);
-    } catch (error: any) {
-      Alert.alert('Signup Failed', error.message || 'Failed to join school');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to join school';
+      Alert.alert('Signup Failed', message);
     } finally {
       setLoading(false);
     }
@@ -113,13 +120,13 @@ export function SignupScreen({ navigation }: any) {
               label="Full Name"
               placeholder="Your full name"
               value={principalData.full_name}
-              onChangeText={(text) => setPrincipalData({ ...principalData, full_name: text })}
+              onChangeText={(text: string) => setPrincipalData({ ...principalData, full_name: text })}
             />
             <Input
               label="Email"
               placeholder="your@email.com"
               value={principalData.email}
-              onChangeText={(text) => setPrincipalData({ ...principalData, email: text })}
+              onChangeText={(text: string) => setPrincipalData({ ...principalData, email: text })}
               keyboardType="email-address"
               autoCapitalize="none"
             />
@@ -127,26 +134,26 @@ export function SignupScreen({ navigation }: any) {
               label="Password"
               placeholder="Minimum 8 characters"
               value={principalData.password}
-              onChangeText={(text) => setPrincipalData({ ...principalData, password: text })}
+              onChangeText={(text: string) => setPrincipalData({ ...principalData, password: text })}
               secureTextEntry
             />
             <Input
               label="School Name"
               placeholder="Your school name"
               value={principalData.school_name}
-              onChangeText={(text) => setPrincipalData({ ...principalData, school_name: text })}
+              onChangeText={(text: string) => setPrincipalData({ ...principalData, school_name: text })}
             />
             <Input
               label="School Address (Optional)"
               placeholder="School address"
               value={principalData.school_address}
-              onChangeText={(text) => setPrincipalData({ ...principalData, school_address: text })}
+              onChangeText={(text: string) => setPrincipalData({ ...principalData, school_address: text })}
             />
             <Input
               label="Contact Phone (Optional)"
               placeholder="School phone"
               value={principalData.contact_phone}
-              onChangeText={(text) => setPrincipalData({ ...principalData, contact_phone: text })}
+              onChangeText={(text: string) => setPrincipalData({ ...principalData, contact_phone: text })}
               keyboardType="phone-pad"
             />
 
@@ -210,7 +217,7 @@ export function SignupScreen({ navigation }: any) {
               label="Roll Number (Optional)"
               placeholder="Student roll number"
               value={joinData.roll_number}
-              onChangeText={(text) => setJoinData({ ...joinData, roll_number: text })}
+              onChangeText={(text: string) => setJoinData({ ...joinData, roll_number: text })}
             />
           )}
 

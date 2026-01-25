@@ -1,13 +1,25 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button } from '../components/Button';
-import { Input } from '../components/Input';
-import { authService } from '../services/auth';
-import { api } from '../services/api';
+import { Button } from '../shared/components/Button';
+import { Input } from '../shared/components/Input';
+import { authService } from '../shared/services/auth';
+import { api } from '../shared/services/api';
 import { useAuth } from '../navigation/AuthContext';
+import { queryClient } from '../../App';
+import { queryKeys } from '../shared/queryKeys';
+import { loadDashboard, loadStudents, loadClasses } from '../shared/services/principal.service';
+import { loadTeacherAssignments, loadTeacherAttendanceAssignments, loadTeacherSalary } from '../shared/services/teacher.service';
+import { loadStudents as loadClerkStudents, loadClasses as loadClerkClasses, loadUnpaidSalaries } from '../shared/services/clerk.service';
+import { loadAttendance, loadMarks, loadFees } from '../shared/services/student.service';
 
-export function LoginScreen({ navigation }: any) {
+import { NavigationProp } from '../shared/types';
+
+interface LoginScreenProps {
+  navigation: NavigationProp;
+}
+
+export function LoginScreen({ navigation }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,20 +39,97 @@ export function LoginScreen({ navigation }: any) {
       
       // Ensure token is set in API service before navigating (should already be set by saveAuth, but verify)
       if (response.token) {
-        api.setToken(response.token);
+        await api.setToken(response.token);
         console.log('[LoginScreen] Token verified and set in API service before navigation');
       } else {
         console.error('[LoginScreen] WARNING: No token in login response!');
       }
       
-      setUser(response.user);
-    } catch (error: any) {
+      const user = response.user;
+      
+      // Prefetch role-specific data immediately after login for instant screen loads
+      // Do not await - let it run in background while navigation happens
+      prefetchRoleData(user.role, user.id);
+      
+      setUser(user);
+    } catch (error: unknown) {
       console.error('[LoginScreen] Login error:', error);
-      console.error('[LoginScreen] Error message:', error.message);
-      console.error('[LoginScreen] Error stack:', error.stack);
-      Alert.alert('Login Failed', error.message || 'Invalid credentials');
+      const message = error instanceof Error ? error.message : 'Login failed';
+      const stack = error instanceof Error ? error.stack : undefined;
+      console.error('[LoginScreen] Error message:', message);
+      if (stack) console.error('[LoginScreen] Error stack:', stack);
+      Alert.alert('Login Failed', message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  /**
+   * Prefetch all important queries for the user's role
+   * This runs in background - navigation doesn't wait for it
+   */
+  const prefetchRoleData = (role: string, userId: string) => {
+    try {
+      if (role === 'principal') {
+        // Prefetch principal dashboard and key screens
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.principal.dashboard,
+          queryFn: loadDashboard,
+        });
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.principal.students,
+          queryFn: loadStudents,
+        });
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.principal.classes,
+          queryFn: loadClasses,
+        });
+      } else if (role === 'teacher') {
+        // Prefetch teacher assignments, attendance, and salary
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.teacher.assignments(userId),
+          queryFn: () => loadTeacherAssignments(userId),
+        });
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.teacher.attendanceAssignments(userId),
+          queryFn: () => loadTeacherAttendanceAssignments(userId),
+        });
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.teacher.salary,
+          queryFn: loadTeacherSalary,
+        });
+      } else if (role === 'clerk') {
+        // Prefetch clerk students, classes, and unpaid salaries
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.clerk.students,
+          queryFn: loadClerkStudents,
+        });
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.clerk.classes,
+          queryFn: loadClerkClasses,
+        });
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.clerk.unpaidSalaries('all'),
+          queryFn: () => loadUnpaidSalaries('all'),
+        });
+      } else if (role === 'student') {
+        // Prefetch student attendance, marks, and fees
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.student.attendance({ student_id: userId }),
+          queryFn: () => loadAttendance({ student_id: userId }),
+        });
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.student.marks({ student_id: userId }),
+          queryFn: () => loadMarks({ student_id: userId }),
+        });
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.student.fees({ student_id: userId }),
+          queryFn: () => loadFees({ student_id: userId }),
+        });
+      }
+    } catch (error) {
+      // Silently fail prefetching - don't block login
+      console.warn('[LoginScreen] Prefetch error (non-blocking):', error);
     }
   };
 

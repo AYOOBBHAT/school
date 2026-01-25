@@ -1,68 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../navigation/AuthContext';
-import { api } from '../services/api';
-import { authService } from '../services/auth';
-import { DashboardStats } from '../types';
-import { UnpaidFeeAnalytics } from '../components/UnpaidFeeAnalytics';
-import { UnpaidSalaries } from '../components/UnpaidSalaries';
+import { useDashboard } from '../features/principal/hooks/useDashboard';
+import { DashboardStats } from '../shared/types';
+import { UnpaidFeeAnalytics } from '../shared/components/UnpaidFeeAnalytics';
+import { UnpaidSalaries } from '../shared/components/UnpaidSalaries';
 
-export function DashboardScreen({ navigation }: any) {
+import { NavigationProp } from '../shared/types';
+
+interface DashboardScreenProps {
+  navigation: NavigationProp;
+}
+
+export function DashboardScreen({ navigation }: DashboardScreenProps) {
   const { user, logout } = useAuth();
-  const [stats, setStats] = useState<DashboardStats>({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Only load dashboard after user is confirmed (avoid race condition with auth loading)
-    if (user) {
-      loadDashboard();
-    }
-  }, [user]);
-
-  const loadDashboard = async () => {
-    // Don't load if we don't have a user
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
-    // Ensure token is loaded from storage before making request
-    try {
-      const authLoaded = await authService.loadStoredAuth();
-      if (!authLoaded) {
-        console.warn('[DashboardScreen] No stored auth found, but user is set. This may cause authentication errors.');
-      }
-      
-      // Verify token is set in API service
-      // We can't directly access the token, but we can verify by checking if loadStoredAuth succeeded
-      if (__DEV__) {
-        console.log('[DashboardScreen] Auth loaded, proceeding with dashboard request');
-      }
-    } catch (error) {
-      console.error('[DashboardScreen] Error loading stored auth:', error);
-      // Don't proceed if we can't load auth
-      return;
-    }
-
-    try {
-      const data = await api.getDashboard();
-      setStats(data);
-    } catch (error: any) {
-      console.error('Error loading dashboard:', error);
-      // If it's an auth error (missing token, bearer token, authentication required), log the user out
-      const errorMsg = error.message?.toLowerCase() || '';
-      if (errorMsg.includes('authentication') || 
-          errorMsg.includes('bearer') || 
-          errorMsg.includes('missing bearer token') ||
-          errorMsg.includes('token')) {
-        console.log('Authentication error detected, logging out...');
-        await logout();
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: stats = {} as DashboardStats, isLoading, refetch, isRefetching } = useDashboard();
 
   const StatCard = ({ title, value }: { title: string; value?: number }) => (
     <View style={styles.statCard}>
@@ -86,26 +39,26 @@ export function DashboardScreen({ navigation }: any) {
 
       <ScrollView
         style={styles.content}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadDashboard} />}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
       >
         <View style={styles.statsGrid}>
           {user?.role === 'principal' && (
             <>
-              <StatCard title="Total Students" value={stats.total_students} />
-              <StatCard title="Total Teachers" value={stats.total_teachers} />
-              <StatCard title="Total Classes" value={stats.total_classes} />
-              <StatCard title="Pending Approvals" value={stats.pending_approvals} />
+              <StatCard title="Total Students" value={stats.total_students ?? undefined} />
+              <StatCard title="Total Teachers" value={stats.total_teachers ?? undefined} />
+              <StatCard title="Total Classes" value={stats.total_classes ?? undefined} />
+              <StatCard title="Pending Approvals" value={stats.pending_approvals ?? undefined} />
             </>
           )}
           {user?.role === 'teacher' && (
             <>
-              <StatCard title="Today's Attendance" value={stats.today_attendance} />
-              <StatCard title="My Classes" value={stats.total_classes} />
+              <StatCard title="Today's Attendance" value={stats.today_attendance ?? undefined} />
+              <StatCard title="My Classes" value={stats.total_classes ?? undefined} />
             </>
           )}
           {user?.role === 'student' && (
             <>
-              <StatCard title="My Classes" value={stats.total_classes} />
+              <StatCard title="My Classes" value={stats.total_classes ?? undefined} />
             </>
           )}
         </View>
@@ -115,10 +68,10 @@ export function DashboardScreen({ navigation }: any) {
           
           {user?.role === 'principal' && (
             <>
-              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Students')}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Principal')}>
                 <Text style={styles.actionText}>Manage Students</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Classes')}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Principal')}>
                 <Text style={styles.actionText}>Manage Classes</Text>
               </TouchableOpacity>
             </>
@@ -126,10 +79,10 @@ export function DashboardScreen({ navigation }: any) {
 
           {user?.role === 'teacher' && (
             <>
-              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Attendance')}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Teacher')}>
                 <Text style={styles.actionText}>Mark Attendance</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Marks')}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Teacher')}>
                 <Text style={styles.actionText}>Enter Marks</Text>
               </TouchableOpacity>
             </>
@@ -137,13 +90,13 @@ export function DashboardScreen({ navigation }: any) {
 
           {user?.role === 'student' && (
             <>
-              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('MyAttendance')}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Student')}>
                 <Text style={styles.actionText}>My Attendance</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('MyMarks')}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Student')}>
                 <Text style={styles.actionText}>My Marks</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('MyFees')}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Student')}>
                 <Text style={styles.actionText}>My Fees</Text>
               </TouchableOpacity>
             </>
@@ -151,10 +104,10 @@ export function DashboardScreen({ navigation }: any) {
 
           {user?.role === 'clerk' && (
             <>
-              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Fees')}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Clerk')}>
                 <Text style={styles.actionText}>Manage Fees</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Payments')}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Clerk')}>
                 <Text style={styles.actionText}>View Payments</Text>
               </TouchableOpacity>
             </>

@@ -1,18 +1,21 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, FormEvent } from 'react';
 import { supabase } from '../utils/supabase';
-import { API_URL } from '../utils/api';
+import {
+  loadClassesForFeeCollection,
+  loadStudentsForFeeCollection,
+  loadStudentFeeStructure,
+  loadStudentPayments,
+  collectFee
+} from '../services/clerk.service';
+import type { ClassGroup, MonthlyLedgerEntry } from '../services/types';
 
+// Local Student type for FeeCollection (transformed UI-specific structure)
 interface Student {
   id: string;
   name: string;
   roll_number: string;
   class: string;
   class_group_id?: string;
-}
-
-interface ClassGroup {
-  id: string;
-  name: string;
 }
 
 interface FeeComponent {
@@ -24,13 +27,6 @@ interface FeeComponent {
   pending_amount: number;
   status: string;
   due_date?: string;
-}
-
-interface MonthlyLedgerEntry {
-  month: string;
-  year: number;
-  monthNumber: number;
-  components: FeeComponent[];
 }
 
 export default function FeeCollection() {
@@ -78,7 +74,7 @@ export default function FeeCollection() {
   const selectedComponentsData = useMemo(() => {
     if (selectedComponents.length === 0) return [];
     return monthlyLedger
-      .flatMap(month => month.components)
+      .flatMap(month => month.components || [])
       .filter(comp => selectedComponents.includes(comp.id));
   }, [selectedComponents, monthlyLedger]);
 
@@ -110,14 +106,8 @@ export default function FeeCollection() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/classes`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setClasses(data.classes || []);
-      }
+      const data = await loadClassesForFeeCollection(token);
+      setClasses(data.classes || []);
     } catch (error) {
       console.error('Error loading classes:', error);
     } finally {
@@ -130,60 +120,48 @@ export default function FeeCollection() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      // Build URL with class filter if selected
-      let url = `${API_URL}/students-admin`;
-      if (selectedClass) {
-        url += `?class_group_id=${selectedClass}`;
-      }
-
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // The /students-admin endpoint returns { classes: [...], unassigned: [...] }
-        // Extract students from classes array
-        let studentsList: Student[] = [];
-        
-        if (data.classes && Array.isArray(data.classes)) {
-          // Extract students from all classes (or just the selected class if filtered)
-          data.classes.forEach((cls: any) => {
-            if (cls.students && Array.isArray(cls.students)) {
-              cls.students.forEach((s: any) => {
-                studentsList.push({
-                  id: s.id,
-                  name: s.profile?.full_name || 'Unknown',
-                  roll_number: s.roll_number || 'N/A',
-                  class: cls.name || 'N/A',
-                  class_group_id: cls.id
-                });
+      const data = await loadStudentsForFeeCollection(token, selectedClass || undefined);
+      // The /students-admin endpoint returns { classes: [...], unassigned: [...] }
+      // Extract students from classes array
+      let studentsList: Student[] = [];
+      
+      if (data.classes && Array.isArray(data.classes)) {
+        // Extract students from all classes (or just the selected class if filtered)
+        data.classes.forEach((cls: any) => {
+          if (cls.students && Array.isArray(cls.students)) {
+            cls.students.forEach((s: any) => {
+              studentsList.push({
+                id: s.id,
+                name: s.profile?.full_name || 'Unknown',
+                roll_number: s.roll_number || 'N/A',
+                class: cls.name || 'N/A',
+                class_group_id: cls.id
               });
-            }
-          });
-        }
-        
-        // Also include unassigned students if no class filter is selected
-        if (!selectedClass && data.unassigned && Array.isArray(data.unassigned)) {
-          data.unassigned.forEach((s: any) => {
-            studentsList.push({
-              id: s.id,
-              name: s.profile?.full_name || 'Unknown',
-              roll_number: s.roll_number || 'N/A',
-              class: 'Unassigned',
-              class_group_id: undefined
             });
+          }
+        });
+      }
+      
+      // Also include unassigned students if no class filter is selected
+      if (!selectedClass && data.unassigned && Array.isArray(data.unassigned)) {
+        data.unassigned.forEach((s: any) => {
+          studentsList.push({
+            id: s.id,
+            name: s.profile?.full_name || 'Unknown',
+            roll_number: s.roll_number || 'N/A',
+            class: 'Unassigned',
+            class_group_id: undefined
           });
-        }
-        
-        setAllStudents(studentsList);
-        // Apply search filter immediately on the newly loaded students
-        // Note: The debounced effect will also handle this, but this ensures immediate update
-        if (searchQuery.trim()) {
-          applySearchFilter(studentsList, searchQuery);
-        } else {
-          setStudents(studentsList);
-        }
+        });
+      }
+      
+      setAllStudents(studentsList);
+      // Apply search filter immediately on the newly loaded students
+      // Note: The debounced effect will also handle this, but this ensures immediate update
+      if (searchQuery.trim()) {
+        applySearchFilter(studentsList, searchQuery);
+      } else {
+        setStudents(studentsList);
       }
     } catch (error) {
       console.error('Error loading students:', error);
@@ -228,12 +206,8 @@ export default function FeeCollection() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/clerk-fees/student/${studentId}/fee-structure`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
+      try {
+        const data = await loadStudentFeeStructure(token, studentId);
         if (data.message && data.message === 'No fee configured for this student') {
           setFeeStructure(null);
           setMonthlyLedger([]);
@@ -241,13 +215,12 @@ export default function FeeCollection() {
           setFeeStructure(data.fee_structure);
           setMonthlyLedger(data.monthly_ledger || []);
         }
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        if (errorData.error && errorData.error.includes('No fee configured')) {
+      } catch (error: any) {
+        if (error.message && error.message.includes('No fee configured')) {
           setFeeStructure(null);
           setMonthlyLedger([]);
         } else {
-          alert(errorData.error || 'Failed to load fee data');
+          alert(error.message || 'Failed to load fee data');
         }
       }
     } catch (error) {
@@ -272,15 +245,9 @@ export default function FeeCollection() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/clerk-fees/student/${selectedStudent.id}/payments`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPaymentHistory(data.payments || []);
-        setShowPaymentHistory(true);
-      }
+      const data = await loadStudentPayments(token, selectedStudent.id);
+      setPaymentHistory(data.payments || []);
+      setShowPaymentHistory(true);
     } catch (error) {
       console.error('Error loading payment history:', error);
     } finally {
@@ -309,7 +276,7 @@ export default function FeeCollection() {
     });
   }, []);
 
-  const handlePaymentSubmit = async (e: React.FormEvent) => {
+  const handlePaymentSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (selectedComponents.length === 0) {
       alert('Please select at least one fee component');
@@ -320,7 +287,7 @@ export default function FeeCollection() {
 
     // Calculate total pending for selected components
     const selectedComponentsDataForValidation = monthlyLedger
-      .flatMap(month => month.components)
+      .flatMap(month => month.components || [])
       .filter(comp => selectedComponents.includes(comp.id));
     const totalPendingForValidation = selectedComponentsDataForValidation.reduce(
       (sum, comp) => sum + comp.pending_amount, 
@@ -342,10 +309,10 @@ export default function FeeCollection() {
     const futureComponents = selectedComponentsDataForValidation.filter(comp => {
       // Find the month entry for this component
       const monthEntry = monthlyLedger.find(month => 
-        month.components.some(c => c.id === comp.id)
+        month.components?.some(c => c.id === comp.id)
       );
       if (!monthEntry) return false;
-      return isFutureMonth(monthEntry.year, monthEntry.monthNumber);
+      return isFutureMonth(monthEntry.year || 0, monthEntry.monthNumber || 0);
     });
 
     if (futureComponents.length > 0) {
@@ -358,26 +325,16 @@ export default function FeeCollection() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/clerk-fees/collect`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          monthly_fee_component_ids: selectedComponents,
-          payment_amount: parseFloat(paymentForm.payment_amount),
-          payment_date: paymentForm.payment_date,
-          payment_mode: paymentForm.payment_mode,
-          transaction_id: paymentForm.transaction_id || null,
-          cheque_number: paymentForm.cheque_number || null,
-          bank_name: paymentForm.bank_name || null,
-          notes: paymentForm.notes || null
-        })
+      const data = await collectFee(token, {
+        monthly_fee_component_ids: selectedComponents,
+        payment_amount: parseFloat(paymentForm.payment_amount),
+        payment_date: paymentForm.payment_date,
+        payment_mode: paymentForm.payment_mode,
+        transaction_id: paymentForm.transaction_id || null,
+        cheque_number: paymentForm.cheque_number || null,
+        bank_name: paymentForm.bank_name || null,
+        notes: paymentForm.notes || null
       });
-
-      if (response.ok) {
-        const data = await response.json();
         // Store full payment data for receipt
         const receiptPayload = {
           ...data,
@@ -412,20 +369,16 @@ export default function FeeCollection() {
           notes: ''
         });
         setSelectedComponents([]);
-      } else {
-        const error = await response.json();
-        // Show better error message
-        const errorMessage = error.error || 'Failed to process payment';
-        alert(errorMessage);
-        
-        // If it's a future month error, clear selection
-        if (errorMessage.includes('future months') || errorMessage.includes('Advance payments')) {
-          setSelectedComponents([]);
-        }
-      }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing payment:', error);
-      alert('Error processing payment');
+      // Show better error message
+      const errorMessage = error.message || 'Failed to process payment';
+      alert(errorMessage);
+      
+      // If it's a future month error, clear selection
+      if (errorMessage.includes('future months') || errorMessage.includes('Advance payments')) {
+        setSelectedComponents([]);
+      }
     } finally {
       setProcessingPayment(false);
     }
@@ -445,21 +398,21 @@ export default function FeeCollection() {
   // Group components by fee type for tabs
   const componentsByType = {
     'class-fee': monthlyLedger.flatMap(month => 
-      month.components.filter(c => c.fee_type === 'class-fee')
+      (month.components || []).filter(c => c.fee_type === 'class-fee')
     ),
     'transport-fee': monthlyLedger.flatMap(month => 
-      month.components.filter(c => c.fee_type === 'transport-fee')
+      (month.components || []).filter(c => c.fee_type === 'transport-fee')
     ),
     'custom-fee': monthlyLedger.flatMap(month => 
-      month.components.filter(c => c.fee_type === 'custom-fee')
+      (month.components || []).filter(c => c.fee_type === 'custom-fee')
     )
   };
 
   // Get components for active tab, grouped by month
   const activeTabByMonth = monthlyLedger.map(monthEntry => ({
     ...monthEntry,
-    components: monthEntry.components.filter(c => c.fee_type === activeFeeTab)
-  })).filter(month => month.components.length > 0);
+    components: (monthEntry.components || []).filter(c => c.fee_type === activeFeeTab)
+  })).filter(month => (month.components || []).length > 0);
 
   // Get fee component name and amount for active tab
   const getActiveTabInfo = () => {
@@ -481,9 +434,9 @@ export default function FeeCollection() {
     const selectedMonthsSet = new Set<string>();
     selectedComponentsData.forEach(comp => {
       const monthEntry = monthlyLedger.find(m => 
-        m.components.some(c => c.id === comp.id)
+        m.components?.some(c => c.id === comp.id)
       );
-      if (monthEntry) selectedMonthsSet.add(monthEntry.month);
+      if (monthEntry && monthEntry.month !== undefined) selectedMonthsSet.add(String(monthEntry.month));
     });
     return Array.from(selectedMonthsSet);
   }, [selectedComponentsData, monthlyLedger]);
@@ -520,7 +473,7 @@ export default function FeeCollection() {
   
   // Check if all months are paid for active tab
   const allPaidForActiveTab = activeTabByMonth.every(month => 
-    month.components.every(c => c.status === 'paid' || c.pending_amount === 0)
+    (month.components || []).every(c => c.status === 'paid' || c.pending_amount === 0)
   );
 
   return (
@@ -736,10 +689,10 @@ export default function FeeCollection() {
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {monthlyLedger.map((monthEntry, monthIdx) => 
-                        monthEntry.components.map((comp, compIdx) => {
+                        (monthEntry.components || []).map((comp, compIdx) => {
                           const isOverdue = comp.status === 'overdue' || 
                             (comp.due_date && new Date(comp.due_date) < new Date() && comp.status !== 'paid');
-                          const isFuture = isFutureMonth(monthEntry.year, monthEntry.monthNumber);
+                          const isFuture = isFutureMonth(monthEntry.year || 0, monthEntry.monthNumber || 0);
                           const isDisabled = comp.status === 'paid' || comp.pending_amount === 0 || isFuture;
                           const rowBgColor = comp.status === 'paid' 
                             ? 'bg-green-50' 
@@ -798,7 +751,7 @@ export default function FeeCollection() {
                                 <input
                                   type="checkbox"
                                   checked={selectedComponents.includes(comp.id)}
-                                  onChange={() => handleComponentToggle(comp.id, monthEntry.year, monthEntry.monthNumber)}
+                                  onChange={() => handleComponentToggle(comp.id, monthEntry.year || 0, monthEntry.monthNumber || 0)}
                                   disabled={isDisabled}
                                   title={isFuture ? 'Future months require Principal approval' : (comp.status === 'paid' ? 'Already paid' : comp.pending_amount === 0 ? 'No pending amount' : '')}
                                   className="w-5 h-5 cursor-pointer disabled:cursor-not-allowed"
@@ -815,7 +768,7 @@ export default function FeeCollection() {
                           </td>
                         </tr>
                       )}
-                      {monthlyLedger.length > 0 && monthlyLedger.every(m => m.components.length === 0) && (
+                      {monthlyLedger.length > 0 && monthlyLedger.every(m => (m.components || []).length === 0) && (
                         <tr>
                           <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
                             No fee components found
@@ -991,10 +944,10 @@ export default function FeeCollection() {
                         </thead>
                         <tbody className="divide-y divide-gray-200">
                           {activeTabByMonth.map((monthEntry) => 
-                            monthEntry.components.map((comp, compIdx) => {
+                            (monthEntry.components || []).map((comp, compIdx) => {
                               const isOverdue = comp.status === 'overdue' || 
                                 (comp.due_date && new Date(comp.due_date) < new Date() && comp.status !== 'paid');
-                              const isFuture = isFutureMonth(monthEntry.year, monthEntry.monthNumber);
+                              const isFuture = isFutureMonth(monthEntry.year || 0, monthEntry.monthNumber || 0);
                               const isDisabled = comp.status === 'paid' || comp.pending_amount === 0 || isFuture;
                               const statusColor = comp.status === 'paid' 
                                 ? 'text-green-600' 
@@ -1034,7 +987,7 @@ export default function FeeCollection() {
                                     <input
                                       type="checkbox"
                                       checked={selectedComponents.includes(comp.id)}
-                                      onChange={() => handleComponentToggle(comp.id, monthEntry.year, monthEntry.monthNumber)}
+                                      onChange={() => handleComponentToggle(comp.id, monthEntry.year || 0, monthEntry.monthNumber || 0)}
                                       disabled={isDisabled}
                                       className="w-5 h-5 cursor-pointer disabled:cursor-not-allowed"
                                     />

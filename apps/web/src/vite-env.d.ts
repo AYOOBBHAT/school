@@ -6,6 +6,5 @@ interface ImportMetaEnv {
   readonly VITE_API_URL: string;
 }
 
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}
+// Vite's client types already provide ImportMeta with env containing DEV, PROD, MODE
+// We just extend ImportMetaEnv for our custom variables

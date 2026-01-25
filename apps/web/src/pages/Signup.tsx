@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@school/ui';
 import { supabase } from '../utils/supabase';
@@ -25,7 +25,7 @@ export default function Signup() {
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [joinCode, setJoinCode] = useState('');
 
-  const handlePrincipalSubmit = async (e: React.FormEvent) => {
+  const handlePrincipalSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
