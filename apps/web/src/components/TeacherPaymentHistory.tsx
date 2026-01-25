@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
-import { API_URL } from '../utils/api';
+import { loadSalaryPaymentHistory } from '../services/clerk.service';
 
 interface Payment {
   id: string;
@@ -92,18 +92,7 @@ export default function TeacherPaymentHistory({
       if (paymentTypeFilter !== 'all') params.append('payment_type', paymentTypeFilter);
       if (paymentModeFilter !== 'all') params.append('payment_mode', paymentModeFilter);
 
-      const response = await fetch(`${API_URL}/salary/history/${teacherId}?${params}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (!isMountedRef.current) return;
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to load payment history');
-      }
-
-      const data = await response.json();
+      const data = await loadSalaryPaymentHistory(token, teacherId, params);
       if (!isMountedRef.current) return;
       
       setPayments(data.payments || []);
@@ -116,8 +105,8 @@ export default function TeacherPaymentHistory({
       setError(err.message || 'Failed to load payment history');
     } finally {
       if (isMountedRef.current) {
-        setLoading(false);
-      }
+      setLoading(false);
+    }
     }
   }, [teacherId, currentPage, startDate, endDate, paymentTypeFilter, paymentModeFilter]);
 

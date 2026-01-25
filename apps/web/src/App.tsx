@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState, FormEvent, MouseEvent, lazy, Suspense } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { supabase } from './utils/supabase';
 import { Button } from '@school/ui';
@@ -6,14 +6,16 @@ import Signup from './pages/Signup';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import ForgotPassword from './pages/ForgotPassword';
-import PrincipalDashboard from './pages/PrincipalDashboard';
-import StudentDashboard from './pages/StudentDashboard';
-import TeacherDashboard from './pages/TeacherDashboard';
-import ClerkDashboard from './pages/ClerkDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 
+// Lazy load dashboard components for code splitting
+const PrincipalDashboard = lazy(() => import('./pages/principal/PrincipalDashboard'));
+const StudentDashboard = lazy(() => import('./pages/student/StudentDashboard'));
+const TeacherDashboard = lazy(() => import('./pages/teacher/TeacherDashboard'));
+const ClerkDashboard = lazy(() => import('./pages/clerk/ClerkDashboard'));
+
 function Navbar() {
-  const handleScrollTo = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+  const handleScrollTo = (e: MouseEvent<HTMLAnchorElement>, id: string) => {
     e.preventDefault();
     const element = document.getElementById(id);
     if (element) {
@@ -200,7 +202,7 @@ function Testimonials() {
 }
 
 function RequestDemo() {
-  const [formData, setFormData] = React.useState({
+  const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
@@ -208,7 +210,7 @@ function RequestDemo() {
     message: ''
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     const message = encodeURIComponent(
       `Hello! I would like to request a demo of JhelumVerse.\n\n` +
@@ -336,7 +338,7 @@ function FAQ() {
 }
 
 function Footer() {
-  const handleScrollTo = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+  const handleScrollTo = (e: MouseEvent<HTMLAnchorElement>, id: string) => {
     e.preventDefault();
     const element = document.getElementById(id);
     if (element) {
@@ -413,34 +415,42 @@ export default function App() {
   // Placeholder to ensure supabase used to avoid tree-shake confusion
   void supabase;
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/principal/dashboard" element={<PrincipalDashboard />} />
-      <Route path="/principal/staff" element={<PrincipalDashboard />} />
-      <Route path="/principal/classifications" element={<PrincipalDashboard />} />
-      <Route path="/principal/classes" element={<PrincipalDashboard />} />
-      <Route path="/principal/subjects" element={<PrincipalDashboard />} />
-      <Route path="/principal/students" element={<PrincipalDashboard />} />
-      <Route path="/principal/exams" element={<PrincipalDashboard />} />
-      <Route path="/principal/salary" element={<PrincipalDashboard />} />
-      <Route path="/principal/fees" element={<PrincipalDashboard />} />
-      <Route path="/clerk" element={<ClerkDashboard />} />
-      <Route path="/clerk/fees" element={<ClerkDashboard />} />
-      <Route path="/clerk/payments" element={<ClerkDashboard />} />
-      <Route path="/clerk/salary" element={<ClerkDashboard />} />
-      <Route path="/clerk/marks" element={<ClerkDashboard />} />
-      <Route path="/teacher/classes" element={<TeacherDashboard />} />
-      <Route path="/teacher" element={<TeacherDashboard />} />
-      <Route path="/student/home" element={<StudentDashboard />} />
-      <Route path="/student" element={<StudentDashboard />} />
-      <Route path="/parent" element={<Parent />} />
-      <Route path="/admin/dashboard" element={<AdminDashboard />} />
-      <Route path="/admin" element={<AdminDashboard />} />
-    </Routes>
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-gray-600">Loading...</div>
+        </div>
+      </div>
+    }>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/principal/dashboard" element={<PrincipalDashboard />} />
+        <Route path="/principal/staff" element={<PrincipalDashboard />} />
+        <Route path="/principal/classifications" element={<PrincipalDashboard />} />
+        <Route path="/principal/classes" element={<PrincipalDashboard />} />
+        <Route path="/principal/subjects" element={<PrincipalDashboard />} />
+        <Route path="/principal/students" element={<PrincipalDashboard />} />
+        <Route path="/principal/exams" element={<PrincipalDashboard />} />
+        <Route path="/principal/salary" element={<PrincipalDashboard />} />
+        <Route path="/principal/fees" element={<PrincipalDashboard />} />
+        <Route path="/clerk" element={<ClerkDashboard />} />
+        <Route path="/clerk/fees" element={<ClerkDashboard />} />
+        <Route path="/clerk/payments" element={<ClerkDashboard />} />
+        <Route path="/clerk/salary" element={<ClerkDashboard />} />
+        <Route path="/clerk/marks" element={<ClerkDashboard />} />
+        <Route path="/teacher/classes" element={<TeacherDashboard />} />
+        <Route path="/teacher" element={<TeacherDashboard />} />
+        <Route path="/student/home" element={<StudentDashboard />} />
+        <Route path="/student" element={<StudentDashboard />} />
+        <Route path="/parent" element={<Parent />} />
+        <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        <Route path="/admin" element={<AdminDashboard />} />
+      </Routes>
+    </Suspense>
   );
 }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api';
@@ -14,7 +14,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');

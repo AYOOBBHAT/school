@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_URL } from '../utils/api';
 
@@ -21,7 +21,7 @@ export default function ForgotPassword() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const handleRequestOTP = async (e: React.FormEvent) => {
+  const handleRequestOTP = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -79,7 +79,7 @@ export default function ForgotPassword() {
     }
   };
 
-  const handleVerifyOTP = async (e: React.FormEvent) => {
+  const handleVerifyOTP = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');

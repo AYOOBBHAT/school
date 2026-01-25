@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { supabase } from '../utils/supabase';
-import { API_URL } from '../utils/api';
+import {
+  loadClassesForFeeCollection,
+  loadUnpaidFeeAnalytics
+} from '../services/clerk.service';
 // Import recharts components
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
@@ -95,17 +98,11 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const response = await fetch(`${API_URL}/classes`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setClasses(result.classes || []);
-        // Auto-select first class if available
-        if (result.classes && result.classes.length > 0 && !selectedClass) {
-          setSelectedClass(result.classes[0].id);
-        }
+      const result = await loadClassesForFeeCollection(token);
+      setClasses(result.classes || []);
+      // Auto-select first class if available
+      if (result.classes && result.classes.length > 0 && !selectedClass) {
+        setSelectedClass(result.classes[0].id);
       }
     } catch (error) {
       console.error('Error loading classes:', error);
@@ -128,17 +125,12 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
         params.append('class_group_id', selectedClass);
       }
 
-      const response = await fetch(`${API_URL}/clerk-fees/analytics/unpaid?${params}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
+      try {
+        const result = await loadUnpaidFeeAnalytics(token, params);
         setData(result);
-      } else {
-        const error = await response.json();
+      } catch (error: any) {
         console.error('Error loading analytics:', error);
-        alert(error.error || 'Failed to load analytics');
+        alert(error.message || 'Failed to load analytics');
       }
     } catch (error) {
       console.error('Error loading analytics:', error);
@@ -360,7 +352,7 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
                         const hasBreakdown = student.fee_component_breakdown && student.fee_component_breakdown.length > 0;
                         
                         return (
-                          <React.Fragment key={student.student_id}>
+                          <Fragment key={student.student_id}>
                             <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => {
                               if (hasBreakdown) {
                                 setExpandedStudents(prev => {
@@ -468,7 +460,7 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
                                 </td>
                               </tr>
                             )}
-                          </React.Fragment>
+                          </Fragment>
                         );
                       })}
                     </tbody>
