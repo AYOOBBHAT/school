@@ -1,19 +1,11 @@
 import { Router } from 'express';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 
 const router = Router();
 
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
-
 // Get all schools with principal name and total students count
 router.get('/schools', requireRoles(['admin']), async (req, res) => {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     // Get all schools with their principals and student counts
@@ -103,11 +95,6 @@ router.put('/schools/:id/payment-status', requireRoles(['admin']), async (req, r
     return res.status(400).json({ error: 'Invalid payment_status. Must be "paid" or "unpaid"' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     const { data: school, error } = await adminSupabase

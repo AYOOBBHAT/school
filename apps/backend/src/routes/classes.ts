@@ -1,12 +1,9 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 
 const router = Router();
-
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 const classSchema = Joi.object({
   name: Joi.string().required(),
@@ -21,11 +18,6 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS for consistent access
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   const { data, error } = await adminSupabase
     .from('class_groups')
@@ -118,11 +110,6 @@ router.post('/', requireRoles(['principal']), async (req, res) => {
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS for admin operations
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   const insertPayload = {
     name: value.name,
@@ -237,11 +224,6 @@ router.put('/:id', requireRoles(['principal']), async (req, res) => {
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
   // Use service role key to bypass RLS for admin operations
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   // Verify the class belongs to the school
   const { data: existingClass, error: checkError } = await adminSupabase
@@ -426,11 +408,6 @@ router.post('/:classId/subjects', requireRoles(['principal', 'clerk']), async (r
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const classId = req.params.classId;
 
   // Verify the class belongs to the school
@@ -501,11 +478,6 @@ router.delete('/:classId/subjects/:classSubjectId', requireRoles(['principal', '
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const classId = req.params.classId;
   const classSubjectId = req.params.classSubjectId;
 

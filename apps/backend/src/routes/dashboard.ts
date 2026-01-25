@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 
 const router = Router();
 
@@ -11,45 +11,26 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher', 'student']), asyn
     return res.status(500).json({ error: 'Server misconfigured' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     const stats: any = {};
 
     if (user.role === 'principal') {
-      // Principal gets full stats
-      const [studentsResponse, staffResponse, classesResponse, pendingApprovalsResponse] = await Promise.all([
-        adminSupabase
-          .from('students')
-          .select('id', { count: 'exact', head: true })
-          .eq('school_id', user.schoolId)
-          .eq('status', 'active'),
-        adminSupabase
-          .from('profiles')
-          .select('id', { count: 'exact', head: true })
-          .eq('school_id', user.schoolId)
-          .in('role', ['teacher', 'clerk'])
-          .eq('approval_status', 'approved'),
-        adminSupabase
-          .from('class_groups')
-          .select('id', { count: 'exact', head: true })
-          .eq('school_id', user.schoolId),
-        adminSupabase
-          .from('profiles')
-          .select('id', { count: 'exact', head: true })
-          .eq('school_id', user.schoolId)
-          .in('role', ['teacher', 'clerk', 'student'])
-          .eq('approval_status', 'pending')
-      ]);
+      // Principal gets full stats - use single RPC call instead of 4 separate queries
+      const { data: counts, error: rpcError } = await adminSupabase.rpc('get_dashboard_counts', {
+        p_school_id: user.schoolId
+      });
 
-      stats.total_students = studentsResponse.count || 0;
-      stats.total_teachers = staffResponse.count || 0;
-      stats.total_classes = classesResponse.count || 0;
-      stats.pending_approvals = pendingApprovalsResponse.count || 0;
+      if (rpcError) {
+        console.error('[dashboard] RPC error:', rpcError);
+        return res.status(500).json({ error: rpcError.message || 'Failed to get dashboard counts' });
+      }
+
+      // Use counts from single query result
+      stats.total_students = counts?.total_students || 0;
+      stats.total_teachers = counts?.total_teachers || 0;
+      stats.total_classes = counts?.total_classes || 0;
+      stats.pending_approvals = counts?.pending_approvals || 0;
     } else if (user.role === 'teacher') {
       // Teacher gets their assignment count and today's attendance
       const today = new Date().toISOString().split('T')[0];
@@ -85,39 +66,13 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher', 'student']), asyn
     }
 
     return res.json(stats);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[dashboard] Error building dashboard:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    const errorMessage = err instanceof Error ? err.message : 'Internal server error';
+    return res.status(500).json({ error: errorMessage });
   }
 });
 
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
-
-type GenderCounts = {
-  total: number;
-  male: number;
-  female: number;
-  other: number;
-  unknown: number;
-};
-
-const normalizeGender = (value?: string | null): keyof GenderCounts => {
-  if (!value) return 'unknown';
-  const lower = value.trim().toLowerCase();
-  if (['male', 'm', 'boy', 'boys'].includes(lower)) return 'male';
-  if (['female', 'f', 'girl', 'girls'].includes(lower)) return 'female';
-  if (lower && lower !== 'male' && lower !== 'female') return 'other';
-  return 'unknown';
-};
-
-const getInitialGenderCounts = (): GenderCounts => ({
-  total: 0,
-  male: 0,
-  female: 0,
-  other: 0,
-  unknown: 0
-});
 
 router.get('/stats', requireRoles(['principal']), async (req, res) => {
   const { user } = req;
@@ -125,76 +80,48 @@ router.get('/stats', requireRoles(['principal']), async (req, res) => {
     return res.status(500).json({ error: 'Server misconfigured' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
-    const [
-      studentsResponse,
-      staffResponse,
-      classesResponse
-    ] = await Promise.all([
-      adminSupabase
-        .from('students')
-        .select('id, status, profile:profiles!students_profile_id_fkey(gender)')
-        .eq('school_id', user.schoolId)
-        .eq('status', 'active'),
-      adminSupabase
-        .from('profiles')
-        .select('id, gender, role, approval_status')
-        .eq('school_id', user.schoolId)
-        .in('role', ['principal', 'clerk', 'teacher'])
-        .eq('approval_status', 'approved'),
-      adminSupabase
-        .from('class_groups')
-        .select('id', { count: 'exact', head: true })
-        .eq('school_id', user.schoolId)
-    ]);
-
-    if (studentsResponse.error) {
-      console.error('[dashboard] Error fetching students:', studentsResponse.error);
-      return res.status(400).json({ error: studentsResponse.error.message });
-    }
-
-    if (staffResponse.error) {
-      console.error('[dashboard] Error fetching staff:', staffResponse.error);
-      return res.status(400).json({ error: staffResponse.error.message });
-    }
-
-    if (classesResponse.error) {
-      console.error('[dashboard] Error fetching classes:', classesResponse.error);
-      return res.status(400).json({ error: classesResponse.error.message });
-    }
-
-    const studentGenderCounts = getInitialGenderCounts();
-    (studentsResponse.data || []).forEach((student: any) => {
-      const genderKey = normalizeGender(student.profile?.gender);
-      studentGenderCounts.total += 1;
-      studentGenderCounts[genderKey] += 1;
+    // Call PostgreSQL function to do all aggregation in the database
+    // This returns only aggregated counts, never full rows
+    const { data: stats, error: rpcError } = await adminSupabase.rpc('get_dashboard_stats', {
+      p_school_id: user.schoolId
     });
 
-    const staffGenderCounts = getInitialGenderCounts();
-    (staffResponse.data || []).forEach((profile: any) => {
-      const genderKey = normalizeGender(profile.gender);
-      staffGenderCounts.total += 1;
-      staffGenderCounts[genderKey] += 1;
-    });
+    if (rpcError) {
+      console.error('[dashboard/stats] RPC error:', rpcError);
+      return res.status(500).json({ error: rpcError.message || 'Failed to get dashboard stats' });
+    }
 
-    const stats = {
-      totalStudents: studentGenderCounts.total,
-      totalStaff: staffGenderCounts.total,
-      totalClasses: classesResponse.count || 0,
-      studentsByGender: studentGenderCounts,
-      staffByGender: staffGenderCounts
-    };
+    if (!stats) {
+      return res.json({
+        stats: {
+          totalStudents: 0,
+          totalStaff: 0,
+          totalClasses: 0,
+          studentsByGender: {
+            total: 0,
+            male: 0,
+            female: 0,
+            other: 0,
+            unknown: 0
+          },
+          staffByGender: {
+            total: 0,
+            male: 0,
+            female: 0,
+            other: 0,
+            unknown: 0
+          }
+        }
+      });
+    }
 
     return res.json({ stats });
-  } catch (err: any) {
-    console.error('[dashboard] Error building stats:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+  } catch (err: unknown) {
+    console.error('[dashboard/stats] Error:', err);
+    const errorMessage = err instanceof Error ? err.message : 'Internal server error';
+    return res.status(500).json({ error: errorMessage });
   }
 });
 

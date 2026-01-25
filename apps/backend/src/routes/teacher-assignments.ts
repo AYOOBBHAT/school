@@ -1,12 +1,9 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 
 const router = Router();
-
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 const assignmentSchema = Joi.object({
   teacher_id: Joi.string().uuid().required(),
@@ -20,11 +17,6 @@ router.get('/', requireRoles(['principal', 'clerk']), async (req, res) => {
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     // First, verify the table exists by checking if we can query it
@@ -102,11 +94,6 @@ router.get('/teacher/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     return res.status(403).json({ error: 'Access denied' });
   }
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     const { data: assignments, error } = await adminSupabase
@@ -156,11 +143,6 @@ router.post('/', requireRoles(['principal', 'clerk']), async (req, res) => {
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     // First, verify the table exists
@@ -261,11 +243,6 @@ router.delete('/:assignmentId', requireRoles(['principal', 'clerk']), async (req
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
   const { assignmentId } = req.params;
 
   try {

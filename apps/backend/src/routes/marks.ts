@@ -1,12 +1,9 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 
 const router = Router();
-
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 const verifySchema = Joi.object({
   marks_id: Joi.string().uuid().required()
@@ -30,16 +27,11 @@ router.get('/exams', requireRoles(['teacher', 'principal']), async (req, res) =>
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     const { data: exams, error } = await adminSupabase
       .from('exams')
-      .select('*')
+      .select('id, name, term, start_date, end_date, academic_year, is_active')
       .eq('school_id', user.schoolId)
       .order('start_date', { ascending: false });
 
@@ -63,11 +55,6 @@ router.post('/bulk', requireRoles(['teacher', 'principal']), async (req, res) =>
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   try {
     // Verify all records belong to the school
@@ -241,11 +228,6 @@ router.get('/results', requireRoles(['principal']), async (req, res) => {
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(500).json({ error: 'Server configuration error' });
-  }
-
-  const adminSupabase = createClient<any>(supabaseUrl, supabaseServiceKey);
 
   const { 
     class_group_id, 
@@ -351,7 +333,15 @@ router.get('/results', requireRoles(['principal']), async (req, res) => {
       query = query.eq('subject_id', subject_id as string);
     }
 
-    const { data, error } = await query;
+    // Add pagination (critical for 1M+ users)
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100); // Max 100 per page
+    const offset = (page - 1) * limit;
+
+    const { data, error, count } = await query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+      .select('*', { count: 'exact' });
 
     if (error) {
       console.error('[marks/results] Error:', error);
@@ -398,7 +388,13 @@ router.get('/results', requireRoles(['principal']), async (req, res) => {
 
     return res.json({ 
       results: filteredData,
-      count: filteredData.length
+      count: filteredData.length,
+      pagination: {
+        page,
+        limit,
+        total: count || filteredData.length,
+        total_pages: Math.ceil((count || filteredData.length) / limit)
+      }
     });
   } catch (err: any) {
     console.error('[marks/results] Error:', err);

@@ -3,11 +3,6 @@
  * Handles teacher first class detection, holiday checking, and attendance locking
  */
 
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
-
 /**
  * Get teacher's first class for a given date based on timetable
  */
@@ -295,18 +290,18 @@ export async function saveAttendance(
     is_locked: true
   }));
   
-  // Upsert attendance (update if exists, insert if not)
-  for (const record of attendanceData) {
-    const { error: upsertError } = await adminSupabase
-      .from('student_attendance')
-      .upsert(record, {
-        onConflict: 'student_id,attendance_date'
-      });
-    
-    if (upsertError) {
-      console.error('[saveAttendance] Error upserting attendance:', upsertError);
-      throw new Error(`Failed to save attendance: ${upsertError.message}`);
-    }
+  // Batch UPSERT - single operation for all records
+  // Much faster than loop - one query instead of N queries
+  const { error: upsertError } = await adminSupabase
+    .from('student_attendance')
+    .upsert(attendanceData, {
+      onConflict: 'student_id,class_group_id,attendance_date',
+      ignoreDuplicates: false
+    });
+  
+  if (upsertError) {
+    console.error('[saveAttendance] Error upserting attendance:', upsertError);
+    throw new Error(`Failed to save attendance: ${upsertError.message}`);
   }
   
   // Create/update class lock
@@ -367,18 +362,19 @@ export async function handleHolidayAttendance(
     is_locked: true
   }));
   
-  // Upsert holiday attendance (only insert, don't update existing)
-  for (const record of holidayAttendance) {
+  // Batch UPSERT holiday attendance - single operation for all records
+  // Much faster than loop - one query instead of N queries
+  if (holidayAttendance.length > 0) {
     const { error: upsertError } = await adminSupabase
       .from('student_attendance')
-      .upsert(record, {
-        onConflict: 'student_id,attendance_date',
+      .upsert(holidayAttendance, {
+        onConflict: 'student_id,class_group_id,attendance_date',
         ignoreDuplicates: false // Update if exists
       });
     
     if (upsertError) {
       console.error('[handleHolidayAttendance] Error:', upsertError);
-      // Continue with other records
+      throw new Error(`Failed to save holiday attendance: ${upsertError.message}`);
     }
   }
 }
