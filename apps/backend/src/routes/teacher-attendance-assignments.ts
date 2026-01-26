@@ -3,6 +3,9 @@ import Joi from 'joi';
 import { requireRoles } from '../middleware/auth.js';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
 
+// Use adminSupabase for all operations
+const supabase = adminSupabase;
+
 const router = Router();
 
 // Schema for teacher attendance assignment

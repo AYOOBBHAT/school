@@ -638,7 +638,7 @@ router.get('/reports', requireRoles(['principal', 'clerk']), async (req, res) =>
     if (year) query = query.eq('year', parseInt(year as string));
     if (month) query = query.eq('month', parseInt(month as string));
 
-    const { data: records, error } = await query;
+    const { data: records, error, count } = await query;
 
     if (error) {
       console.error('[salary] Error fetching reports:', error);
@@ -1057,7 +1057,9 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
   // The views (teacher_unpaid_salary_months, unpaid_teachers_summary) respect RLS from underlying tables
 
   try {
-    const { teacher_id, time_scope, page = 1, limit = 20 } = req.query;
+    const { teacher_id, time_scope } = req.query;
+    const unpaidPageNum = parseInt(req.query.page as string) || 1;
+    const unpaidLimitNum = Math.min(parseInt(req.query.limit as string) || 50, 100);
     
     // Validate time scope
     const validTimeScopes = ['last_month', 'last_2_months', 'last_3_months', 'last_6_months', 'last_12_months', 'current_academic_year'];
@@ -1104,11 +1106,11 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
     // RLS automatically filters by school_id - no need to manually filter
     // The view respects RLS from underlying tables (profiles, teacher_salary_structure, etc.)
     // Add pagination (critical for 1M+ users)
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100); // Max 100 per page
+    const page = unpaidPageNum;
+    const limit = unpaidLimitNum;
     const offset = (page - 1) * limit;
 
-    let unpaidMonthsQuery = supabase
+    let unpaidMonthsQuery = adminSupabase
       .from('teacher_unpaid_salary_months')
       .select('teacher_id, year, month, period_start, period_end, salary_due, salary_paid, unpaid_amount, is_unpaid', { count: 'exact' })
       .eq('is_unpaid', true)
@@ -1220,10 +1222,10 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
     const totalUnpaidMonths = teachersList.reduce((sum, t) => sum + t.unpaid_months_count, 0);
 
     // Pagination
-    const pageNum = parseInt(page as string) || 1;
-    const limitNum = parseInt(limit as string) || 20;
-    const startIndex = (pageNum - 1) * limitNum;
-    const endIndex = startIndex + limitNum;
+    const summaryPageNum = parseInt(String(page)) || 1;
+    const summaryLimitNum = parseInt(String(limit)) || 20;
+    const startIndex = (summaryPageNum - 1) * summaryLimitNum;
+    const endIndex = startIndex + summaryLimitNum;
     const paginatedTeachers = teachersList.slice(startIndex, endIndex);
 
     return res.json({
@@ -1237,10 +1239,10 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
       },
       teachers: paginatedTeachers,
       pagination: {
-        page: pageNum,
-        limit: limitNum,
+        page: summaryPageNum,
+        limit: summaryLimitNum,
         total: teachersList.length,
-        total_pages: Math.ceil(teachersList.length / limitNum)
+        total_pages: Math.ceil(teachersList.length / summaryLimitNum)
       }
     });
   } catch (err: any) {
@@ -1412,14 +1414,14 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     }
 
     // Apply pagination
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
-    const offset = (pageNum - 1) * limitNum;
+    const historyPageNum = parseInt(page as string, 10);
+    const historyLimitNum = parseInt(limit as string, 10);
+    const offset = (historyPageNum - 1) * historyLimitNum;
 
     const { data: payments, error: paymentsError } = await query
       .order('payment_date', { ascending: false })
       .order('created_at', { ascending: false })
-      .range(offset, offset + limitNum - 1);
+      .range(offset, offset + historyLimitNum - 1);
 
     if (paymentsError) {
       console.error('[salary/history] Error fetching payment history:', paymentsError);
@@ -1429,9 +1431,6 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     // Get payment summary using the database function
     // Note: RPC functions may need service role if they're SECURITY DEFINER
     // For now, we'll use service role only for this RPC call (documented exception)
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return res.status(500).json({ error: 'Server configuration error' });
-    }
     
     const { data: summary, error: summaryError } = await adminSupabase.rpc(
       'get_teacher_payment_summary',
@@ -1480,10 +1479,10 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
       },
       payments: payments || [],
       pagination: {
-        page: pageNum,
-        limit: limitNum,
+        page: historyPageNum,
+        limit: historyLimitNum,
         total: count || 0,
-        total_pages: Math.ceil((count || 0) / limitNum)
+        total_pages: Math.ceil((count || 0) / historyLimitNum)
       }
     });
   } catch (err: any) {

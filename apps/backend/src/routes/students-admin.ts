@@ -109,10 +109,12 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100); // Max 100 per page
     const offset = (page - 1) * limit;
 
-    const { data: students, error, count } = await query
+    const result = await (query as any)
+      .select('*', { count: 'exact' })
       .order('roll_number', { ascending: true, nullsFirst: false })
-      .range(offset, offset + limit - 1)
-      .select('*', { count: 'exact' });
+      .range(offset, offset + limit - 1);
+    
+    const { data: students, error, count } = result;
 
     if (error) {
       console.error('[students-admin] Error fetching students:', error);

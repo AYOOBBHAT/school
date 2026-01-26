@@ -278,30 +278,27 @@ export async function saveAttendance(
     throw new Error(canMark.reason || 'Not allowed to mark attendance');
   }
   
-  // Insert/update attendance records
-  const attendanceData = attendanceRecords.map((record) => ({
+  // Prepare records for RPC call
+  const records = attendanceRecords.map((record) => ({
     student_id: record.student_id,
-    class_group_id: classGroupId,
-    section_id: sectionId,
-    school_id: schoolId,
-    attendance_date: dateStr,
     status: record.status,
-    marked_by: teacherId,
     is_locked: true
   }));
   
-  // Batch UPSERT - single operation for all records
-  // Much faster than loop - one query instead of N queries
-  const { error: upsertError } = await adminSupabase
-    .from('student_attendance')
-    .upsert(attendanceData, {
-      onConflict: 'student_id,class_group_id,attendance_date',
-      ignoreDuplicates: false
-    });
+  // ✅ Use atomic RPC function - single transaction, no race conditions
+  // Uses DELETE + INSERT pattern for idempotent operations
+  const { data: result, error: rpcError } = await adminSupabase.rpc('mark_student_attendance_atomic', {
+    p_school_id: schoolId,
+    p_class_group_id: classGroupId,
+    p_attendance_date: dateStr,
+    p_marked_by: teacherId,
+    p_records: records
+  });
   
-  if (upsertError) {
-    console.error('[saveAttendance] Error upserting attendance:', upsertError);
-    throw new Error(`Failed to save attendance: ${upsertError.message}`);
+  if (rpcError || !result?.success) {
+    const errorMsg = rpcError?.message || result?.error || 'Unknown error';
+    console.error('[saveAttendance] RPC error:', errorMsg);
+    throw new Error(`Failed to save attendance: ${errorMsg}`);
   }
   
   // Create/update class lock

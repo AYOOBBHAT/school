@@ -232,46 +232,19 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
   try {
     const { monthly_fee_component_ids, payment_amount, payment_date, payment_mode, transaction_id, cheque_number, bank_name, notes } = value;
 
-    // Get all fee components (only needed fields)
+    // Quick validation: Verify components exist and get student_id
     const { data: components, error: componentsError } = await adminSupabase
       .from('monthly_fee_components')
-      .select('id, student_id, fee_amount, paid_amount, pending_amount, period_year, period_month, fee_name, fee_type, fee_category_id, school_id')
+      .select('id, student_id, school_id')
       .in('id', monthly_fee_component_ids)
-      .eq('school_id', user.schoolId);
+      .eq('school_id', user.schoolId)
+      .limit(1);
 
     if (componentsError || !components || components.length === 0) {
       return res.status(404).json({ error: 'Fee components not found' });
     }
 
-    // Verify all components belong to same student
-    const studentIds = [...new Set(components.map((c: any) => c.student_id))];
-    if (studentIds.length !== 1) {
-      return res.status(400).json({ error: 'All fee components must belong to the same student' });
-    }
-
-    const studentId = studentIds[0];
-
-    // Validate: Prevent payment for future months (unless principal enables advance payments)
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth() + 1;
-
-    const futureComponents = components.filter((c: any) => {
-      return c.period_year > currentYear || 
-             (c.period_year === currentYear && c.period_month > currentMonth);
-    });
-
-    if (futureComponents.length > 0) {
-      // Check if school allows advance payments (for now, reject by default)
-      // TODO: Add school settings table to check allow_advance_payments flag
-      const futureMonths = futureComponents.map((c: any) => 
-        `${c.period_month}/${c.period_year}`
-      ).join(', ');
-      
-      return res.status(400).json({ 
-        error: `Cannot record payment for future months (${futureMonths}). Advance payments require Principal approval. Please contact Principal to enable advance payments.` 
-      });
-    }
+    const studentId = components[0].student_id;
 
     // Verify student belongs to school
     const { data: student } = await adminSupabase
@@ -285,150 +258,49 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    // Calculate total pending amount
-    const totalPending = components.reduce((sum: number, comp: any) => {
-      return sum + parseFloat(comp.pending_amount || 0);
-    }, 0);
+    // Prepare metadata for RPC
+    const paymentMeta = {
+      transaction_id: transaction_id || null,
+      cheque_number: cheque_number || null,
+      bank_name: bank_name || null,
+      notes: notes || null
+    };
 
-    // Validate: Payment amount should not exceed pending fee
-    if (payment_amount > totalPending) {
-      return res.status(400).json({ 
-        error: `Payment amount (₹${payment_amount.toFixed(2)}) cannot exceed total pending amount (₹${totalPending.toFixed(2)})` 
-      });
-    }
-
-    // Validate: Payment amount must be positive
-    if (payment_amount <= 0) {
-      return res.status(400).json({ 
-        error: `Payment amount must be greater than 0` 
-      });
-    }
-
-    // Generate receipt number
-    let receiptNumber: string;
-    try {
-      const { data: receiptData, error: receiptError } = await adminSupabase.rpc('generate_receipt_number', {
-        school_uuid: user.schoolId
-      });
-      
-      if (receiptError || !receiptData) {
-        // Fallback: manual receipt number generation
-        const { count } = await adminSupabase
-          .from('monthly_fee_payments')
-          .select('id', { count: 'exact', head: true })
-          .eq('school_id', user.schoolId)
-          .not('receipt_number', 'is', null);
-        
-        const receiptCount = (count || 0) + 1;
-        receiptNumber = `RCP-${new Date().getFullYear()}-${String(receiptCount).padStart(6, '0')}`;
-      } else {
-        receiptNumber = receiptData;
-      }
-    } catch (err) {
-      // Fallback receipt number
-      receiptNumber = `RCP-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
-    }
-
-    // Distribute payment across components (in order of oldest pending first)
-    const sortedComponents = [...components].sort((a: any, b: any) => {
-      const dateA = new Date(`${a.period_year}-${String(a.period_month).padStart(2, '0')}-01`);
-      const dateB = new Date(`${b.period_year}-${String(b.period_month).padStart(2, '0')}-01`);
-      return dateA.getTime() - dateB.getTime();
+    // ✅ ONE RPC call - all payment logic happens atomically in PostgreSQL
+    // Removed: component loops, manual distribution, multiple inserts, multiple updates
+    const { data: result, error: rpcError } = await adminSupabase.rpc('collect_fee_payment_atomic', {
+      p_school_id: user.schoolId,
+      p_student_id: studentId,
+      p_component_ids: monthly_fee_component_ids,
+      p_amount: payment_amount,
+      p_payment_date: payment_date.toISOString().split('T')[0],
+      p_mode: payment_mode,
+      p_received_by: user.id,
+      p_meta: paymentMeta
     });
 
-    let remainingPayment = payment_amount;
-    const paymentsToInsert: Array<{
-      monthly_fee_component_id: string;
-      student_id: string;
-      school_id: string;
-      payment_amount: number;
-      payment_date: string;
-      payment_mode: string;
-      transaction_id: string | null;
-      cheque_number: string | null;
-      bank_name: string | null;
-      received_by: string;
-      receipt_number: string;
-      notes: string | null;
-    }> = [];
-
-    // Build array of payment objects (no database calls yet)
-    for (const component of sortedComponents) {
-      if (remainingPayment <= 0) break;
-
-      const pendingAmount = parseFloat(component.pending_amount || 0);
-      if (pendingAmount <= 0) continue;
-
-      const amountToPay = Math.min(remainingPayment, pendingAmount);
-
-      // Add payment object to array (will insert all at once)
-      paymentsToInsert.push({
-        monthly_fee_component_id: component.id,
-        student_id: studentId,
-        school_id: user.schoolId,
-        payment_amount: amountToPay,
-        payment_date: payment_date.toISOString().split('T')[0],
-        payment_mode: payment_mode,
-        transaction_id: transaction_id || null,
-        cheque_number: cheque_number || null,
-        bank_name: bank_name || null,
-        received_by: user.id,
-        receipt_number: receiptNumber,
-        notes: notes || null
-      });
-
-      remainingPayment -= amountToPay;
+    if (rpcError || !result?.success) {
+      const errorMsg = rpcError?.message || result?.error || 'Unknown error';
+      console.error('[clerk-fees/collect] RPC error:', errorMsg);
+      return res.status(400).json({ error: errorMsg });
     }
 
-    // Verify that at least one payment will be recorded
-    if (paymentsToInsert.length === 0) {
-      return res.status(500).json({ 
-        error: 'No payment was recorded. Please check that selected components have pending amounts.' 
-      });
-    }
-
-    // Batch insert all payments in a single query
-    const { data: payments, error: paymentError } = await adminSupabase
-      .from('monthly_fee_payments')
-      .insert(paymentsToInsert)
-      .select();
-
-    if (paymentError) {
-      console.error('[clerk-fees/collect] Payment batch insert error:', paymentError);
-      return res.status(500).json({ error: `Failed to record payment: ${paymentError.message}` });
-    }
-
-    // Check if there's any remaining payment (should not happen with new validation, but keep for safety)
-    if (remainingPayment > 0.01) { // Allow small rounding differences (1 paisa)
-      console.warn(`[clerk-fees/collect] Warning: Remaining payment ${remainingPayment} after distribution. This should not happen with validation.`);
-      // This should not happen with the new validation, but if it does, we'll log it
-      // The payment has already been recorded for the selected components
-    }
-
-    // Get updated components to return status (only fields needed by frontend)
-    const { data: updatedComponents } = await adminSupabase
-      .from('monthly_fee_components')
-      .select('id, paid_amount, pending_amount, status')
-      .in('id', monthly_fee_component_ids)
-      .eq('school_id', user.schoolId);
-
+    // Return minimal response - RPC handles all writes
     return res.status(201).json({
       success: true,
-      receipt_number: receiptNumber,
+      receipt_number: result.receipt,
       payment: {
-        id: payments[0]?.id,
-        amount_paid: payment_amount,
-        payment_amount: payment_amount,
+        amount_paid: result.paid,
+        payment_amount: result.paid,
         payment_date: payment_date.toISOString().split('T')[0],
         payment_mode: payment_mode,
         transaction_id: transaction_id || null,
         cheque_number: cheque_number || null,
         bank_name: bank_name || null,
         notes: notes || null,
-        receipt_number: receiptNumber
+        receipt_number: result.receipt
       },
-      payments: payments, // Return all payment records created
-      components: updatedComponents,
+      remaining: result.remaining || 0,
       message: 'Payment recorded successfully'
     });
   } catch (err: unknown) {
@@ -776,7 +648,15 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
     const limitNum = parseInt(limit as string) || 20;
     const offset = (pageNum - 1) * limitNum;
 
-    // Call PostgreSQL function to do all aggregation in the database
+    // Get summary from materialized view (instant, no aggregation)
+    const { data: feeSummary, error: summaryError } = await adminSupabase
+      .from('mv_fee_unpaid_summary')
+      .select('*')
+      .eq('school_id', user.schoolId)
+      .single();
+
+    // For detailed student data, still use RPC (can be optimized later with another view)
+    // But use materialized view for summary stats
     const { data: result, error: rpcError } = await adminSupabase.rpc('get_unpaid_fee_analytics', {
       p_school_id: user.schoolId,
       p_class_group_id: class_group_id || null,
@@ -791,25 +671,19 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
       return res.status(500).json({ error: rpcError.message || 'Failed to get unpaid fee analytics' });
     }
 
-    if (!result) {
-      return res.json({
-        summary: {
-          total_students: 0,
-          unpaid_count: 0,
-          partially_paid_count: 0,
-          paid_count: 0,
-          total_unpaid_amount: 0
-        },
-        chart_data: { paid: 0, unpaid: 0, partially_paid: 0 },
-        students: [],
-        pagination: { page: 1, limit: 20, total: 0, total_pages: 0 }
-      });
-    }
-
     // Extract data from JSON result
-    const students = result.students || [];
-    const summary = result.summary || {};
-    const pagination = result.pagination || {};
+    const students = result?.students || [];
+    const resultSummary = result?.summary || {};
+    const pagination = result?.pagination || {};
+
+    // Use materialized view summary if available, otherwise fall back to RPC result
+    const summary = summaryError ? resultSummary : {
+      total_students: resultSummary.total_students || 0,
+      unpaid_count: feeSummary?.unpaid_components || resultSummary.unpaid_count || 0,
+      partially_paid_count: feeSummary?.partially_paid_count || resultSummary.partially_paid_count || 0,
+      paid_count: feeSummary?.paid_count || resultSummary.paid_count || 0,
+      total_unpaid_amount: feeSummary?.total_unpaid_amount || resultSummary.total_unpaid_amount || 0
+    };
 
     // Build chart data from summary
     const chartData = {

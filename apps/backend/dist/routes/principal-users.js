@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 const router = Router();
-const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = process.env.SUPABASE_URL;
+// Use adminSupabase for all operations (already imported)
+const supabase = adminSupabase;
 // Schema for fee configuration when adding student
 const feeConfigSchema = Joi.object({
     // Class fee selection and discount
@@ -67,17 +68,13 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
     if (!user || !user.schoolId) {
         return res.status(500).json({ error: 'Server misconfigured' });
     }
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         const today = new Date().toISOString().split('T')[0];
         // 1. Get class fees (default fees for the class)
         // Get general class fees (where fee_category_id IS NULL) - these are the main class fees
         // Note: Simplified query - get all active fees regardless of effective dates
         // This ensures fees set by principal are always visible
-        const { data: allClassFees, error: allClassFeesError } = await supabase
+        const { data: allClassFees, error: allClassFeesError } = await adminSupabase
             .from('class_fee_defaults')
             .select(`
         *,
@@ -103,7 +100,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
             });
         }
         // 2. Get transport routes and their fees
-        const { data: transportRoutes, error: transportRoutesError } = await supabase
+        const { data: transportRoutes, error: transportRoutesError } = await adminSupabase
             .from('transport_routes')
             .select(`
         id,
@@ -126,9 +123,9 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
             console.error('[default-fees] Error fetching transport routes:', transportRoutesError);
         }
         // 3. Get all other fee categories with their amounts from class_fee_defaults or optional_fee_definitions
-        const { data: feeCategories, error: categoriesError } = await supabase
+        const { data: feeCategories, error: categoriesError } = await adminSupabase
             .from('fee_categories')
-            .select('*')
+            .select('id, name, description, fee_type, code, is_active, display_order')
             .eq('school_id', user.schoolId)
             .eq('is_active', true)
             .neq('fee_type', 'transport') // Exclude transport as it's handled separately
@@ -137,7 +134,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
             console.error('[default-fees] Error fetching fee categories:', categoriesError);
         }
         // 4. Get optional fee definitions for this class (fetch before using it)
-        const { data: optionalFees, error: optionalFeesError } = await supabase
+        const { data: optionalFees, error: optionalFeesError } = await adminSupabase
             .from('optional_fee_definitions')
             .select(`
         *,
@@ -164,7 +161,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
         if (!catError && customCategories && customCategories.length > 0) {
             const customCategoryIds = customCategories.map((cat) => cat.id);
             // Now get optional_fee_definitions filtered by custom category IDs
-            const { data: customFeesData, error: customFeesDataError } = await supabase
+            const { data: customFeesData, error: customFeesDataError } = await adminSupabase
                 .from('optional_fee_definitions')
                 .select(`
           *,
@@ -188,7 +185,7 @@ router.get('/classes/:classId/default-fees', requireRoles(['principal']), async 
         console.log(`[default-fees] Found ${customFees.length || 0} custom fees for class ${classId}`);
         // Get fee amounts for other categories from class_fee_defaults (for this class)
         // This is for fees that have a specific category (Library, Lab, etc.) - excludes general tuition fees
-        const { data: otherClassFees, error: otherClassFeesError } = await supabase
+        const { data: otherClassFees, error: otherClassFeesError } = await adminSupabase
             .from('class_fee_defaults')
             .select(`
         *,
@@ -256,13 +253,9 @@ router.get('/check-username/:username', requireRoles(['principal']), async (req,
     if (!username || username.trim().length === 0) {
         return res.json({ available: false, message: 'Username cannot be empty' });
     }
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Check if username already exists in this school
-        const { data: existingProfile, error } = await supabase
+        const { data: existingProfile, error } = await adminSupabase
             .from('profiles')
             .select('id')
             .eq('username', username.trim())
@@ -291,10 +284,6 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
     const { user } = req;
     if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Check if username already exists in this school
         const { data: existingProfile } = await supabase
@@ -312,7 +301,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
         let authEmail = value.email;
         let emailSuffix = 1;
         // Check if email already exists in auth, and if so, generate a unique one
-        const { data: existingUsers } = await supabase.auth.admin.listUsers();
+        const { data: existingUsers } = await adminSupabase.auth.admin.listUsers();
         const emailExists = existingUsers?.users?.some((u) => u.email === authEmail);
         if (emailExists) {
             // Generate unique email for auth: email+username@domain or email.username@domain
@@ -331,7 +320,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
             }
         }
         // Create auth user with potentially modified email
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
             email: authEmail,
             password: value.password,
             email_confirm: true,
@@ -352,9 +341,9 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
             approval_status: 'approved',
             gender: value.gender || null
         };
-        const { error: profileError } = await supabase.from('profiles').insert(profileData);
+        const { error: profileError } = await adminSupabase.from('profiles').insert(profileData);
         if (profileError) {
-            await supabase.auth.admin.deleteUser(authData.user.id);
+            await adminSupabase.auth.admin.deleteUser(authData.user.id);
             return res.status(400).json({ error: profileError.message });
         }
         // Create student record
@@ -379,14 +368,14 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
             .select()
             .single();
         if (studentError) {
-            await supabase.auth.admin.deleteUser(authData.user.id);
-            await supabase.from('profiles').delete().eq('id', authData.user.id);
+            await adminSupabase.auth.admin.deleteUser(authData.user.id);
+            await adminSupabase.from('profiles').delete().eq('id', authData.user.id);
             return res.status(400).json({ error: `Failed to create student record: ${studentError.message}` });
         }
         // Create parent/guardian profile
         // Generate unique email for guardian if needed
         let guardianAuthEmail = value.guardian_email || `${value.guardian_phone}@guardian.local`;
-        const { data: existingGuardianUsers } = await supabase.auth.admin.listUsers();
+        const { data: existingGuardianUsers } = await adminSupabase.auth.admin.listUsers();
         const guardianEmailExists = existingGuardianUsers?.users?.some((u) => u.email === guardianAuthEmail);
         if (guardianEmailExists || !value.guardian_email) {
             // Generate unique email
@@ -404,7 +393,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
             }
         }
         // Create guardian auth user
-        const { data: guardianAuthData, error: guardianAuthError } = await supabase.auth.admin.createUser({
+        const { data: guardianAuthData, error: guardianAuthError } = await adminSupabase.auth.admin.createUser({
             email: guardianAuthEmail,
             password: `Guardian${value.guardian_phone.slice(-4)}!`, // Default password based on phone
             email_confirm: true,
@@ -432,7 +421,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                 console.error('[principal-users] Error creating guardian profile:', guardianProfileError);
                 // Clean up guardian auth if profile creation fails
                 if (guardianAuthData.user) {
-                    await supabase.auth.admin.deleteUser(guardianAuthData.user.id);
+                    await adminSupabase.auth.admin.deleteUser(guardianAuthData.user.id);
                 }
             }
             else {
@@ -704,19 +693,15 @@ router.post('/staff', requireRoles(['principal']), async (req, res) => {
     const { user } = req;
     if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Check if email already exists
-        const { data: existingUser } = await supabase.auth.admin.listUsers();
+        const { data: existingUser } = await adminSupabase.auth.admin.listUsers();
         const userExists = existingUser?.users?.find((u) => u.email === value.email);
         if (userExists) {
             return res.status(400).json({ error: 'User with this email already exists' });
         }
         // Create auth user
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
             email: value.email,
             password: value.password,
             email_confirm: true,
@@ -736,9 +721,9 @@ router.post('/staff', requireRoles(['principal']), async (req, res) => {
             approval_status: 'approved',
             gender: value.gender || null
         };
-        const { error: profileError } = await supabase.from('profiles').insert(profileData);
+        const { error: profileError } = await adminSupabase.from('profiles').insert(profileData);
         if (profileError) {
-            await supabase.auth.admin.deleteUser(authData.user.id);
+            await adminSupabase.auth.admin.deleteUser(authData.user.id);
             return res.status(400).json({ error: profileError.message });
         }
         // For teachers: If salary_start_date is provided, we note it but don't create salary structure yet

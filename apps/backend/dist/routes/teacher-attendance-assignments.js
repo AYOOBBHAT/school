@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
+// Use adminSupabase for all operations
+const supabase = adminSupabase;
 const router = Router();
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 // Schema for teacher attendance assignment
 const teacherAttendanceAssignmentSchema = Joi.object({
     teacher_id: Joi.string().uuid().required(),
@@ -17,12 +17,8 @@ router.get('/', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { user } = req;
     if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
-        const { data, error } = await supabase
+        const { data, error } = await adminSupabase
             .from('teacher_attendance_assignments')
             .select(`
         *,
@@ -50,10 +46,6 @@ router.post('/', requireRoles(['principal']), async (req, res) => {
     const { user } = req;
     if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         const payload = {
             ...value,
@@ -91,10 +83,6 @@ router.put('/:id', requireRoles(['principal']), async (req, res) => {
     const { user } = req;
     if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         const updateData = {
             ...value,
@@ -128,10 +116,6 @@ router.delete('/:id', requireRoles(['principal']), async (req, res) => {
     const { user } = req;
     if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         const { error } = await supabase
             .from('teacher_attendance_assignments')
@@ -156,12 +140,8 @@ router.get('/teacher/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     if (user.role === 'teacher' && user.id !== req.params.teacherId) {
         return res.status(403).json({ error: 'Forbidden' });
     }
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
-        const { data, error } = await supabase
+        const { data, error } = await adminSupabase
             .from('teacher_attendance_assignments')
             .select(`
         *,
