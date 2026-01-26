@@ -555,6 +555,24 @@ export default function StaffManagement() {
     }
   };
 
+  // Close action menu when clicking outside
+  // CRITICAL: This useEffect MUST be before any early returns to avoid React error #310
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setActionMenuOpen({});
+    };
+    
+    // Always add listener, cleanup will remove it
+    document.addEventListener('click', handleClickOutside);
+    
+    // Always return cleanup function to avoid React error #310
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+    // Remove actionMenuOpen from dependencies - we want this to run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (loading) return <div className="p-6">Loading staff...</div>;
 
   if (error) {
@@ -624,23 +642,6 @@ export default function StaffManagement() {
       [memberId]: !prev[memberId]
     }));
   };
-
-  // Close action menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => {
-      setActionMenuOpen({});
-    };
-    
-    // Always add listener, cleanup will remove it
-    document.addEventListener('click', handleClickOutside);
-    
-    // Always return cleanup function to avoid React error #310
-    return () => {
-      document.removeEventListener('click', handleClickOutside);
-    };
-    // Remove actionMenuOpen from dependencies - we want this to run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
