@@ -2,8 +2,6 @@
  * Attendance Management Logic
  * Handles teacher first class detection, holiday checking, and attendance locking
  */
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 /**
  * Get teacher's first class for a given date based on timetable
  */
@@ -196,28 +194,25 @@ export async function saveAttendance(teacherId, classGroupId, sectionId, schoolI
     if (!canMark.allowed) {
         throw new Error(canMark.reason || 'Not allowed to mark attendance');
     }
-    // Insert/update attendance records
-    const attendanceData = attendanceRecords.map((record) => ({
+    // Prepare records for RPC call
+    const records = attendanceRecords.map((record) => ({
         student_id: record.student_id,
-        class_group_id: classGroupId,
-        section_id: sectionId,
-        school_id: schoolId,
-        attendance_date: dateStr,
         status: record.status,
-        marked_by: teacherId,
         is_locked: true
     }));
-    // Upsert attendance (update if exists, insert if not)
-    for (const record of attendanceData) {
-        const { error: upsertError } = await adminSupabase
-            .from('student_attendance')
-            .upsert(record, {
-            onConflict: 'student_id,attendance_date'
-        });
-        if (upsertError) {
-            console.error('[saveAttendance] Error upserting attendance:', upsertError);
-            throw new Error(`Failed to save attendance: ${upsertError.message}`);
-        }
+    // ✅ Use atomic RPC function - single transaction, no race conditions
+    // Uses DELETE + INSERT pattern for idempotent operations
+    const { data: result, error: rpcError } = await adminSupabase.rpc('mark_student_attendance_atomic', {
+        p_school_id: schoolId,
+        p_class_group_id: classGroupId,
+        p_attendance_date: dateStr,
+        p_marked_by: teacherId,
+        p_records: records
+    });
+    if (rpcError || !result?.success) {
+        const errorMsg = rpcError?.message || result?.error || 'Unknown error';
+        console.error('[saveAttendance] RPC error:', errorMsg);
+        throw new Error(`Failed to save attendance: ${errorMsg}`);
     }
     // Create/update class lock
     const { error: lockError } = await adminSupabase
@@ -266,17 +261,18 @@ export async function handleHolidayAttendance(schoolId, date, adminSupabase) {
         marked_by: null, // System-generated
         is_locked: true
     }));
-    // Upsert holiday attendance (only insert, don't update existing)
-    for (const record of holidayAttendance) {
+    // Batch UPSERT holiday attendance - single operation for all records
+    // Much faster than loop - one query instead of N queries
+    if (holidayAttendance.length > 0) {
         const { error: upsertError } = await adminSupabase
             .from('student_attendance')
-            .upsert(record, {
-            onConflict: 'student_id,attendance_date',
+            .upsert(holidayAttendance, {
+            onConflict: 'student_id,class_group_id,attendance_date',
             ignoreDuplicates: false // Update if exists
         });
         if (upsertError) {
             console.error('[handleHolidayAttendance] Error:', upsertError);
-            // Continue with other records
+            throw new Error(`Failed to save holiday attendance: ${upsertError.message}`);
         }
     }
 }

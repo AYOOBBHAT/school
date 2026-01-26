@@ -7,6 +7,10 @@ import { adminSupabase } from '../utils/supabaseAdmin.js';
 const router = Router();
 
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY as string;
+const supabaseUrl = process.env.SUPABASE_URL as string;
+
+// Use adminSupabase for all operations (already imported)
+const supabase = adminSupabase;
 
 // Schema for fee configuration when adding student
 const feeConfigSchema = Joi.object({

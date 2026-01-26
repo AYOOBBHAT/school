@@ -131,37 +131,60 @@ router.post('/bulk', requireRoles(['teacher', 'principal', 'clerk']), async (req
       }
     }
 
-    // Prepare attendance data for UPSERT
-    const attendanceData = value.attendance.map((a: any) => ({
-      student_id: a.student_id,
-      class_group_id: a.class_group_id,
-      attendance_date: a.date,
-      status: a.status,
-      school_id: a.school_id,
-      marked_by: user.id,
-      is_locked: false // Old bulk endpoint doesn't lock
-    }));
+    // Group records by (class_group_id, date) for atomic RPC calls
+    const attendanceByClassAndDate = new Map<string, { classGroupId: string; date: string; records: any[] }>();
+    
+    value.attendance.forEach((a: any) => {
+      const key = `${a.class_group_id}:${a.date}`;
+      if (!attendanceByClassAndDate.has(key)) {
+        attendanceByClassAndDate.set(key, {
+          classGroupId: a.class_group_id,
+          date: a.date,
+          records: []
+        });
+      }
+      attendanceByClassAndDate.get(key)!.records.push({
+        student_id: a.student_id,
+        status: a.status,
+        is_locked: false
+      });
+    });
 
-    // Single UPSERT operation - atomic and fast
-    // Uses ON CONFLICT to update existing records or insert new ones
-    // Constraint: unique(student_id, class_group_id, attendance_date)
-    const { error: upsertError } = await adminSupabase
-      .from('student_attendance')
-      .upsert(attendanceData, {
-        onConflict: 'student_id,class_group_id,attendance_date',
-        ignoreDuplicates: false
+    // Call atomic RPC function for each unique (class_group_id, date) combination
+    // ✅ ONE RPC call per class/date - all writes in single transaction
+    let totalAffected = 0;
+    const errors: string[] = [];
+
+    for (const { classGroupId, date, records } of attendanceByClassAndDate.values()) {
+      const { data: result, error: rpcError } = await adminSupabase.rpc('mark_student_attendance_atomic', {
+        p_school_id: user.schoolId,
+        p_class_group_id: classGroupId,
+        p_attendance_date: date,
+        p_marked_by: user.id,
+        p_records: records
       });
 
-    if (upsertError) {
-      console.error('[attendance] Error upserting attendance:', upsertError);
-      return res.status(400).json({ error: upsertError.message });
+      if (rpcError || !result?.success) {
+        const errorMsg = rpcError?.message || result?.error || 'Unknown error';
+        console.error('[attendance] RPC error:', errorMsg);
+        errors.push(`Failed for class ${classGroupId} on ${date}: ${errorMsg}`);
+      } else {
+        totalAffected += result.inserted || 0;
+      }
     }
 
-    console.log('[attendance] Attendance saved successfully:', attendanceData.length, 'records');
-    // Return minimal response - no need to re-fetch data
+    if (errors.length > 0) {
+      return res.status(400).json({ 
+        error: 'Some attendance records failed to save',
+        details: errors,
+        affected: totalAffected
+      });
+    }
+
+    console.log('[attendance] Attendance saved successfully:', totalAffected, 'records');
     return res.json({ 
       success: true,
-      count: attendanceData.length,
+      count: totalAffected,
       message: 'Attendance saved successfully' 
     });
   } catch (err: unknown) {

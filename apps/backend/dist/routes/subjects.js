@@ -1,10 +1,8 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 const router = Router();
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const subjectSchema = Joi.object({
     name: Joi.string().required(),
     code: Joi.string().allow('', null)
@@ -14,14 +12,10 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         const { data: subjects, error } = await adminSupabase
             .from('subjects')
-            .select('*')
+            .select('id, name, code, description, school_id, created_at')
             .eq('school_id', user.schoolId)
             .order('name', { ascending: true });
         if (error) {
@@ -43,10 +37,6 @@ router.post('/', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         const { data: subject, error: insertError } = await adminSupabase
             .from('subjects')

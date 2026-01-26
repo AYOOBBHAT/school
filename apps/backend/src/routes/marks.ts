@@ -338,10 +338,12 @@ router.get('/results', requireRoles(['principal']), async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100); // Max 100 per page
     const offset = (page - 1) * limit;
 
-    const { data, error, count } = await query
+    const result = await (query as any)
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1)
-      .select('*', { count: 'exact' });
+      .range(offset, offset + limit - 1);
+    
+    const { data, error, count } = result;
 
     if (error) {
       console.error('[marks/results] Error:', error);

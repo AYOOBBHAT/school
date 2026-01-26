@@ -1,10 +1,8 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 import { requireRoles } from '../middleware/auth.js';
 const router = Router();
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 // Salary Structure Schema
 const salaryStructureSchema = Joi.object({
     teacher_id: Joi.string().uuid().required(),
@@ -59,10 +57,6 @@ router.post('/structure', requireRoles(['principal']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Verify teacher belongs to the school
         const { data: teacher, error: teacherError } = await adminSupabase
@@ -179,10 +173,6 @@ router.get('/structure/:teacherId', requireRoles(['principal', 'clerk', 'teacher
     if (user.role === 'teacher' && user.id !== teacherId) {
         return res.status(403).json({ error: 'Access denied' });
     }
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Get the active structure for the teacher
         // If date is provided in query, get structure active for that date; otherwise get currently active
@@ -221,10 +211,6 @@ router.get('/structures', requireRoles(['principal', 'clerk']), async (req, res)
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Get only active structures (currently effective)
         const today = new Date().toISOString().split('T')[0];
@@ -283,10 +269,6 @@ router.post('/generate', requireRoles(['principal', 'clerk']), async (req, res) 
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Verify teacher belongs to the school
         const { data: teacher, error: teacherError } = await adminSupabase
@@ -304,7 +286,7 @@ router.post('/generate', requireRoles(['principal', 'clerk']), async (req, res) 
         const targetDate = new Date(value.year, value.month - 1, 1).toISOString().split('T')[0];
         const { data: structure, error: structureError } = await adminSupabase
             .from('teacher_salary_structure')
-            .select('*')
+            .select('id, teacher_id, base_salary, hra, other_allowances, fixed_deductions, salary_cycle, attendance_based_deduction, effective_from, effective_to, is_active')
             .eq('teacher_id', value.teacher_id)
             .eq('school_id', user.schoolId)
             .eq('is_active', true)
@@ -381,10 +363,6 @@ router.get('/records', requireRoles(['principal', 'clerk', 'teacher']), async (r
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { teacher_id, month, year, status } = req.query;
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         let query = adminSupabase
             .from('teacher_salary_records')
@@ -445,10 +423,6 @@ router.put('/records/:recordId/approve', requireRoles(['principal']), async (req
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { recordId } = req.params;
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Verify record belongs to school
         const { data: record, error: recordError } = await adminSupabase
@@ -502,10 +476,6 @@ router.put('/records/:recordId/mark-paid', requireRoles(['clerk']), async (req, 
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { recordId } = req.params;
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Verify record belongs to school
         const { data: record, error: recordError } = await adminSupabase
@@ -565,20 +535,20 @@ router.get('/reports', requireRoles(['principal', 'clerk']), async (req, res) =>
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { year, month } = req.query;
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
+        // Add pagination (critical for 1M+ users)
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 per page
+        const offset = (page - 1) * limit;
         let query = adminSupabase
             .from('teacher_salary_records')
-            .select('*')
+            .select('id, teacher_id, year, month, base_salary, hra, other_allowances, fixed_deductions, total_salary, attendance_deduction, final_salary, status, approved_by, school_id, created_at', { count: 'exact' })
             .eq('school_id', user.schoolId);
         if (year)
             query = query.eq('year', parseInt(year));
         if (month)
             query = query.eq('month', parseInt(month));
-        const { data: records, error } = await query;
+        const { data: records, error, count } = await query;
         if (error) {
             console.error('[salary] Error fetching reports:', error);
             return res.status(400).json({ error: error.message });
@@ -602,7 +572,13 @@ router.get('/reports', requireRoles(['principal', 'clerk']), async (req, res) =>
                 totalPending,
                 totalApproved,
                 totalAttendanceDeduction,
-                totalRecords: records?.length || 0
+                totalRecords: count || records?.length || 0
+            },
+            pagination: {
+                page,
+                limit,
+                total: count || 0,
+                total_pages: Math.ceil((count || 0) / limit)
             }
         });
     }
@@ -622,10 +598,6 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Verify teacher belongs to the school
         const { data: teacher, error: teacherError } = await adminSupabase
@@ -764,10 +736,6 @@ router.get('/payments', requireRoles(['principal', 'clerk', 'teacher']), async (
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { teacher_id, start_date, end_date } = req.query;
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         let query = adminSupabase
             .from('teacher_salary_payments')
@@ -817,10 +785,6 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { teacher_id } = req.query;
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Get teacher IDs to query
         let teacherIds = [];
@@ -853,55 +817,84 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
             }
             teacherIds = (teachers || []).map((t) => t.id);
         }
-        // Calculate summary for each teacher
-        const summaries = await Promise.all(teacherIds.map(async (tid) => {
-            // Get teacher info
-            const { data: teacher } = await adminSupabase
-                .from('profiles')
-                .select('id, full_name, email')
-                .eq('id', tid)
-                .single();
-            // Calculate totals using database functions
-            const { data: dueData, error: dueError } = await adminSupabase.rpc('calculate_teacher_salary_due', {
-                p_teacher_id: tid,
+        // Use RPC function to get all summaries in one query (replaces N+1 Promise.all loop)
+        // Note: RPC function will be available after running migration 1024_teacher_salary_summary_rpc.sql
+        // For now, fallback to existing logic if RPC fails
+        let summaries = [];
+        try {
+            const { data: summariesData, error: rpcError } = await adminSupabase.rpc('get_teacher_salary_summaries', {
                 p_school_id: user.schoolId,
-                p_as_of_date: new Date().toISOString().split('T')[0]
+                p_teacher_ids: teacherIds.length > 0 ? teacherIds : null
             });
-            const total_due = parseFloat(String(dueData || 0));
-            const { data: paidData, error: paidError } = await adminSupabase.rpc('calculate_teacher_salary_paid', {
-                p_teacher_id: tid,
-                p_school_id: user.schoolId,
-                p_as_of_date: new Date().toISOString().split('T')[0]
-            });
-            const total_paid = parseFloat(String(paidData || 0));
-            const pending = total_due - total_paid;
-            // Get active salary structure
-            const { data: structure } = await adminSupabase
-                .from('teacher_salary_structure')
-                .select('*')
-                .eq('teacher_id', tid)
-                .eq('school_id', user.schoolId)
-                .eq('is_active', true)
-                .is('effective_to', null)
-                .order('effective_from', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-            // Get all salary structures (for history)
-            const { data: structures } = await adminSupabase
-                .from('teacher_salary_structure')
-                .select('*')
-                .eq('teacher_id', tid)
-                .eq('school_id', user.schoolId)
-                .order('effective_from', { ascending: false });
-            return {
-                teacher,
-                total_salary_due: total_due,
-                total_salary_paid: total_paid,
-                pending_salary: pending,
-                current_structure: structure,
-                salary_structures: structures || []
-            };
-        }));
+            if (!rpcError && summariesData) {
+                // Transform RPC response to match existing format
+                summaries = summariesData.map((s) => ({
+                    teacher: s.teacher,
+                    total_salary_due: s.total_salary_due || 0,
+                    total_salary_paid: s.total_salary_paid || 0,
+                    pending_salary: s.pending_salary || 0,
+                    current_structure: s.current_structure,
+                    salary_structures: s.salary_structures || []
+                }));
+            }
+            else {
+                // Fallback to existing Promise.all logic if RPC not available
+                throw new Error('RPC not available, using fallback');
+            }
+        }
+        catch (rpcFallbackError) {
+            // Fallback to existing logic (for backward compatibility)
+            console.warn('[salary/summary] RPC not available, using fallback:', rpcFallbackError);
+            summaries = await Promise.all(teacherIds.map(async (tid) => {
+                // Get teacher info
+                const { data: teacher } = await adminSupabase
+                    .from('profiles')
+                    .select('id, full_name, email')
+                    .eq('id', tid)
+                    .single();
+                // Calculate totals using database functions
+                const { data: dueData } = await adminSupabase.rpc('calculate_teacher_salary_due', {
+                    p_teacher_id: tid,
+                    p_school_id: user.schoolId,
+                    p_as_of_date: new Date().toISOString().split('T')[0]
+                });
+                const total_due = parseFloat(String(dueData || 0));
+                const { data: paidData } = await adminSupabase.rpc('calculate_teacher_salary_paid', {
+                    p_teacher_id: tid,
+                    p_school_id: user.schoolId,
+                    p_as_of_date: new Date().toISOString().split('T')[0]
+                });
+                const total_paid = parseFloat(String(paidData || 0));
+                const pending = total_due - total_paid;
+                // Get active salary structure
+                const { data: structure } = await adminSupabase
+                    .from('teacher_salary_structure')
+                    .select('id, teacher_id, base_salary, hra, other_allowances, fixed_deductions, salary_cycle, attendance_based_deduction, effective_from, effective_to, is_active')
+                    .eq('teacher_id', tid)
+                    .eq('school_id', user.schoolId)
+                    .eq('is_active', true)
+                    .is('effective_to', null)
+                    .order('effective_from', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                // Get all salary structures (for history) - limit to recent 10
+                const { data: structures } = await adminSupabase
+                    .from('teacher_salary_structure')
+                    .select('id, teacher_id, base_salary, hra, other_allowances, fixed_deductions, salary_cycle, attendance_based_deduction, effective_from, effective_to, is_active')
+                    .eq('teacher_id', tid)
+                    .eq('school_id', user.schoolId)
+                    .order('effective_from', { ascending: false })
+                    .limit(10);
+                return {
+                    teacher,
+                    total_salary_due: total_due,
+                    total_salary_paid: total_paid,
+                    pending_salary: pending,
+                    current_structure: structure,
+                    salary_structures: structures || []
+                };
+            }));
+        }
         // If single teacher requested, return single object; otherwise return array
         if (teacher_id || user.role === 'teacher') {
             return res.json({ summary: summaries[0] || null });
@@ -927,7 +920,9 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
     // Use user-context Supabase client to enforce RLS
     // The views (teacher_unpaid_salary_months, unpaid_teachers_summary) respect RLS from underlying tables
     try {
-        const { teacher_id, time_scope, page = 1, limit = 20 } = req.query;
+        const { teacher_id, time_scope } = req.query;
+        const unpaidPageNum = parseInt(req.query.page) || 1;
+        const unpaidLimitNum = Math.min(parseInt(req.query.limit) || 50, 100);
         // Validate time scope
         const validTimeScopes = ['last_month', 'last_2_months', 'last_3_months', 'last_6_months', 'last_12_months', 'current_academic_year'];
         const timeScope = time_scope || 'last_12_months';
@@ -968,29 +963,34 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
         // Build query for unpaid salary months
         // RLS automatically filters by school_id - no need to manually filter
         // The view respects RLS from underlying tables (profiles, teacher_salary_structure, etc.)
-        let unpaidMonthsQuery = supabase
+        // Add pagination (critical for 1M+ users)
+        const page = unpaidPageNum;
+        const limit = unpaidLimitNum;
+        const offset = (page - 1) * limit;
+        let unpaidMonthsQuery = adminSupabase
             .from('teacher_unpaid_salary_months')
-            .select('*')
+            .select('teacher_id, year, month, period_start, period_end, salary_due, salary_paid, unpaid_amount, is_unpaid', { count: 'exact' })
             .eq('is_unpaid', true)
             .gte('period_start', startDate.toISOString().split('T')[0])
             .lte('period_start', endDate.toISOString().split('T')[0])
             .order('teacher_id', { ascending: true })
             .order('year', { ascending: false })
-            .order('month', { ascending: false });
+            .order('month', { ascending: false })
+            .range(offset, offset + limit - 1);
         // Filter by teacher if provided
         if (teacher_id) {
             unpaidMonthsQuery = unpaidMonthsQuery.eq('teacher_id', teacher_id);
         }
-        const { data: unpaidMonths, error: unpaidMonthsError } = await unpaidMonthsQuery;
+        const { data: unpaidMonths, error: unpaidMonthsError, count } = await unpaidMonthsQuery;
         if (unpaidMonthsError) {
             console.error('[salary/unpaid] Error fetching unpaid months:', unpaidMonthsError);
             return res.status(500).json({ error: unpaidMonthsError.message });
         }
-        // Get summary of unpaid teachers
+        // Get summary of unpaid teachers (only needed fields)
         // RLS automatically filters by school_id - no need to manually filter
         let summaryQuery = supabase
             .from('unpaid_teachers_summary')
-            .select('*')
+            .select('teacher_id, teacher_name, total_unpaid_amount, unpaid_months_count')
             .order('total_unpaid_amount', { ascending: false });
         if (teacher_id) {
             summaryQuery = summaryQuery.eq('teacher_id', teacher_id);
@@ -1066,10 +1066,10 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
         const totalUnpaidAmount = teachersList.reduce((sum, t) => sum + t.total_unpaid_amount, 0);
         const totalUnpaidMonths = teachersList.reduce((sum, t) => sum + t.unpaid_months_count, 0);
         // Pagination
-        const pageNum = parseInt(page) || 1;
-        const limitNum = parseInt(limit) || 20;
-        const startIndex = (pageNum - 1) * limitNum;
-        const endIndex = startIndex + limitNum;
+        const summaryPageNum = parseInt(String(page)) || 1;
+        const summaryLimitNum = parseInt(String(limit)) || 20;
+        const startIndex = (summaryPageNum - 1) * summaryLimitNum;
+        const endIndex = startIndex + summaryLimitNum;
         const paginatedTeachers = teachersList.slice(startIndex, endIndex);
         return res.json({
             summary: {
@@ -1082,10 +1082,10 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
             },
             teachers: paginatedTeachers,
             pagination: {
-                page: pageNum,
-                limit: limitNum,
+                page: summaryPageNum,
+                limit: summaryLimitNum,
                 total: teachersList.length,
-                total_pages: Math.ceil(teachersList.length / limitNum)
+                total_pages: Math.ceil(teachersList.length / summaryLimitNum)
             }
         });
     }
@@ -1107,10 +1107,6 @@ router.get('/credits/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     if (user.role === 'teacher' && user.id !== teacherId) {
         return res.status(403).json({ error: 'Access denied' });
     }
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Verify teacher belongs to the school
         const { data: teacher, error: teacherError } = await adminSupabase
@@ -1217,7 +1213,7 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
         // RLS automatically filters by school_id
         const countQuery = supabase
             .from('teacher_payment_history')
-            .select('*', { count: 'exact', head: true })
+            .select('id', { count: 'exact', head: true })
             .eq('teacher_id', teacherId);
         if (start_date) {
             countQuery.gte('payment_date', start_date);
@@ -1236,13 +1232,13 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
             console.error('[salary/history] Error counting payments:', countError);
         }
         // Apply pagination
-        const pageNum = parseInt(page, 10);
-        const limitNum = parseInt(limit, 10);
-        const offset = (pageNum - 1) * limitNum;
+        const historyPageNum = parseInt(page, 10);
+        const historyLimitNum = parseInt(limit, 10);
+        const offset = (historyPageNum - 1) * historyLimitNum;
         const { data: payments, error: paymentsError } = await query
             .order('payment_date', { ascending: false })
             .order('created_at', { ascending: false })
-            .range(offset, offset + limitNum - 1);
+            .range(offset, offset + historyLimitNum - 1);
         if (paymentsError) {
             console.error('[salary/history] Error fetching payment history:', paymentsError);
             return res.status(400).json({ error: paymentsError.message });
@@ -1250,10 +1246,6 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
         // Get payment summary using the database function
         // Note: RPC functions may need service role if they're SECURITY DEFINER
         // For now, we'll use service role only for this RPC call (documented exception)
-        if (!supabaseUrl || !supabaseServiceKey) {
-            return res.status(500).json({ error: 'Server configuration error' });
-        }
-        const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
         const { data: summary, error: summaryError } = await adminSupabase.rpc('get_teacher_payment_summary', {
             p_teacher_id: teacherId,
             p_school_id: user.schoolId,
@@ -1295,10 +1287,10 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
             },
             payments: payments || [],
             pagination: {
-                page: pageNum,
-                limit: limitNum,
+                page: historyPageNum,
+                limit: historyLimitNum,
                 total: count || 0,
-                total_pages: Math.ceil((count || 0) / limitNum)
+                total_pages: Math.ceil((count || 0) / historyLimitNum)
             }
         });
     }

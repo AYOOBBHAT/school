@@ -6,14 +6,8 @@ router.get('/attendance', requireRoles(['student']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    // Use service role key to bypass RLS for reliable access
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const { createClient } = await import('@supabase/supabase-js');
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Use shared admin client
+    const { adminSupabase } = await import('../utils/supabaseAdmin.js');
     try {
         // Get student record
         const { data: student, error: studentError } = await adminSupabase
@@ -304,14 +298,8 @@ router.get('/fees', requireRoles(['student']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    // Use service role key to bypass RLS for reliable access
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const { createClient } = await import('@supabase/supabase-js');
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Use shared admin client
+    const { adminSupabase } = await import('../utils/supabaseAdmin.js');
     try {
         // Get student record with class information
         const { data: student, error: studentError } = await adminSupabase
@@ -407,14 +395,8 @@ router.get('/profile', requireRoles(['student']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    // Use service role key to bypass RLS for reliable access
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const { createClient } = await import('@supabase/supabase-js');
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Use shared admin client
+    const { adminSupabase } = await import('../utils/supabaseAdmin.js');
     try {
         console.log('[students/profile] Fetching student profile for user:', {
             user_id: user.id,

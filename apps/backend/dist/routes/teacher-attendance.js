@@ -1,10 +1,8 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 const router = Router();
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const attendanceSchema = Joi.object({
     teacher_id: Joi.string().uuid().required(),
     date: Joi.string().required(),
@@ -17,10 +15,6 @@ router.get('/', requireRoles(['principal', 'clerk']), async (req, res) => {
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
     const { teacher_id, start_date, end_date } = req.query;
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         let query = adminSupabase
             .from('teacher_attendance')
@@ -84,10 +78,6 @@ router.post('/', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Verify teacher belongs to the school
         const { data: teacher, error: teacherError } = await adminSupabase
@@ -171,10 +161,6 @@ router.post('/bulk', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // Verify teacher belongs to the school
         const { data: teacher, error: teacherError } = await adminSupabase

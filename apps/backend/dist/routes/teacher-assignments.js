@@ -1,10 +1,8 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 const router = Router();
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const assignmentSchema = Joi.object({
     teacher_id: Joi.string().uuid().required(),
     class_group_id: Joi.string().uuid().required(),
@@ -16,10 +14,6 @@ router.get('/', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // First, verify the table exists by checking if we can query it
         const { data: testQuery, error: testError } = await adminSupabase
@@ -90,10 +84,6 @@ router.get('/teacher/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     if (user.role === 'teacher' && user.id !== teacherId) {
         return res.status(403).json({ error: 'Access denied' });
     }
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         const { data: assignments, error } = await adminSupabase
             .from('teacher_assignments')
@@ -140,10 +130,6 @@ router.post('/', requireRoles(['principal', 'clerk']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     try {
         // First, verify the table exists
         const { error: tableCheckError } = await adminSupabase
@@ -231,10 +217,6 @@ router.delete('/:assignmentId', requireRoles(['principal', 'clerk']), async (req
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    if (!supabaseUrl || !supabaseServiceKey) {
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     const { assignmentId } = req.params;
     try {
         // Verify assignment belongs to the school
