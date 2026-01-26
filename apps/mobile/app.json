@@ -23,6 +23,12 @@
     },
     "android": {
       "package": "com.ayoobbhat.jhelumverse"
+    },
+    "ios": {
+      "bundleIdentifier": "com.ayoobbhat.jhelumverse",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     }
   }
 }

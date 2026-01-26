@@ -15,7 +15,7 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
     try {
         const { data: subjects, error } = await adminSupabase
             .from('subjects')
-            .select('id, name, code, description, school_id, created_at')
+            .select('id, name, code, school_id, created_at')
             .eq('school_id', user.schoolId)
             .order('name', { ascending: true });
         if (error) {
