@@ -772,6 +772,69 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
   }
 });
 
+// Get all staff members for the school (with pagination and filters)
+router.get('/staff', requireRoles(['principal']), async (req, res) => {
+  const { user } = req;
+  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+
+  try {
+    // Parse pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+    const offset = (page - 1) * limit;
+
+    // Parse filters
+    const role = req.query.role as string || 'all';
+    const status = req.query.status as string || 'all'; // approval_status filter
+
+    // Build query with adminSupabase to bypass RLS for principal
+    let query = adminSupabase
+      .from('profiles')
+      .select('id, full_name, email, role, approval_status, phone, created_at', { count: 'exact' })
+      .eq('school_id', user.schoolId) // Filter by school_id explicitly
+      .in('role', ['teacher', 'clerk', 'principal']);
+
+    // Apply role filter only when not "all"
+    if (role !== 'all') {
+      query = query.eq('role', role);
+    }
+
+    // Apply approval_status filter only when not "all"
+    if (status !== 'all') {
+      query = query.eq('approval_status', status);
+    }
+
+    // Apply pagination using range (NOT offset + limit, but offset to offset + limit - 1)
+    query = query.range(offset, offset + limit - 1);
+
+    // Order by created_at descending
+    query = query.order('created_at', { ascending: false });
+
+    const { data: staff, error, count } = await query;
+
+    if (error) {
+      console.error('[principal-users/staff] Error fetching staff:', error);
+      console.error('[principal-users/staff] Error details:', { code: error.code, message: error.message, details: error.details, hint: error.hint });
+      return res.status(400).json({ error: error.message || 'Failed to fetch staff' });
+    }
+
+    console.log(`[principal-users/staff] Found ${staff?.length || 0} staff members (total: ${count || 0}) for school ${user.schoolId}`);
+
+    return res.json({
+      staff: staff || [],
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        total_pages: Math.ceil((count || 0) / limit)
+      }
+    });
+  } catch (err: any) {
+    console.error('[principal-users/staff] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
 // Principal adds a staff member (clerk or teacher)
 router.post('/staff', requireRoles(['principal']), async (req, res) => {
   const { error, value } = addStaffSchema.validate(req.body);

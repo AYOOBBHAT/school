@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Joi from 'joi';
 import { requireRoles } from '../middleware/auth.js';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
+import { cacheFetch, invalidateCache } from '../utils/cache.js';
 
 const router = Router();
 
@@ -10,28 +11,33 @@ const subjectSchema = Joi.object({
   code: Joi.string().allow('', null)
 });
 
-// Get all subjects for the school
+// Get all subjects for the school (CACHED)
 router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
   const { user } = req;
   if (!user) return res.status(500).json({ error: 'Server misconfigured' });
 
+  const cacheKey = `school:${user.schoolId}:subjects`;
 
   try {
-    const { data: subjects, error } = await adminSupabase
-      .from('subjects')
-      .select('id, name, code, school_id, created_at')
-      .eq('school_id', user.schoolId)
-      .order('name', { ascending: true });
+    const subjects = await cacheFetch(cacheKey, async () => {
+      const { data, error } = await adminSupabase
+        .from('subjects')
+        .select('id, name, code, school_id, created_at')
+        .eq('school_id', user.schoolId)
+        .order('name', { ascending: true });
 
-    if (error) {
-      console.error('[subjects] Error fetching subjects:', error);
-      return res.status(400).json({ error: error.message });
-    }
+      if (error) {
+        console.error('[subjects] Error fetching subjects:', error);
+        throw error;
+      }
 
-    return res.json({ subjects: subjects || [] });
+      return data || [];
+    });
+
+    return res.json({ subjects });
   } catch (err: any) {
     console.error('[subjects] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(400).json({ error: err.message || 'Failed to fetch subjects' });
   }
 });
 
@@ -59,6 +65,9 @@ router.post('/', requireRoles(['principal', 'clerk']), async (req, res) => {
       console.error('[subjects] Error creating subject:', insertError);
       return res.status(400).json({ error: insertError.message });
     }
+
+    // Invalidate cache after creating a subject
+    await invalidateCache(`school:${user.schoolId}:subjects`);
 
     return res.status(201).json({ subject });
   } catch (err: any) {
