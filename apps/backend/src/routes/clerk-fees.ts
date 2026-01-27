@@ -648,15 +648,8 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
     const limitNum = parseInt(limit as string) || 20;
     const offset = (pageNum - 1) * limitNum;
 
-    // Get summary from materialized view (instant, no aggregation)
-    const { data: feeSummary, error: summaryError } = await adminSupabase
-      .from('mv_fee_unpaid_summary')
-      .select('*')
-      .eq('school_id', user.schoolId)
-      .single();
-
-    // For detailed student data, still use RPC (can be optimized later with another view)
-    // But use materialized view for summary stats
+    // Use RPC function which properly filters by class_group_id and date range
+    // This ensures ALL summary stats respect the selected filters
     const { data: result, error: rpcError } = await adminSupabase.rpc('get_unpaid_fee_analytics', {
       p_school_id: user.schoolId,
       p_class_group_id: class_group_id || null,
@@ -671,21 +664,12 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
       return res.status(500).json({ error: rpcError.message || 'Failed to get unpaid fee analytics' });
     }
 
-    // Extract data from JSON result
+    // Extract data from JSON result - this is the SINGLE SOURCE OF TRUTH
     const students = result?.students || [];
-    const resultSummary = result?.summary || {};
+    const summary = result?.summary || {};
     const pagination = result?.pagination || {};
 
-    // Use materialized view summary if available, otherwise fall back to RPC result
-    const summary = summaryError ? resultSummary : {
-      total_students: resultSummary.total_students || 0,
-      unpaid_count: feeSummary?.unpaid_components || resultSummary.unpaid_count || 0,
-      partially_paid_count: feeSummary?.partially_paid_count || resultSummary.partially_paid_count || 0,
-      paid_count: feeSummary?.paid_count || resultSummary.paid_count || 0,
-      total_unpaid_amount: feeSummary?.total_unpaid_amount || resultSummary.total_unpaid_amount || 0
-    };
-
-    // Build chart data from summary
+    // Build chart data from summary (all from same RPC result)
     const chartData = {
       paid: summary.paid_count || 0,
       unpaid: summary.unpaid_count || 0,

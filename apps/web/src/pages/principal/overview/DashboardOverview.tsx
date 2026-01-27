@@ -16,7 +16,6 @@ export function DashboardOverview() {
   });
   const [loading, setLoading] = useState(true);
   const [schoolInfo, setSchoolInfo] = useState<any>(null);
-  const [joinCodeCopied, setJoinCodeCopied] = useState(false);
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -180,28 +179,6 @@ export function DashboardOverview() {
     return <div className="p-6">Loading...</div>;
   }
 
-  const copyJoinCode = async () => {
-    if (schoolInfo?.join_code) {
-      try {
-        await navigator.clipboard.writeText(schoolInfo.join_code);
-        setJoinCodeCopied(true);
-        setTimeout(() => setJoinCodeCopied(false), 2000);
-      } catch (err) {
-        console.error('Failed to copy join code:', err);
-        // Fallback: select the text
-        const textArea = document.createElement('textarea');
-        textArea.value = schoolInfo.join_code;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        setJoinCodeCopied(true);
-        setTimeout(() => setJoinCodeCopied(false), 2000);
-      }
-    }
-  };
-
-
   return (
     <div className="p-6">
       <div className="mb-6">
@@ -238,54 +215,6 @@ export function DashboardOverview() {
         <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>
       </div>
 
-      {/* Join Code Card - Prominent Display */}
-      {schoolInfo && (
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 mb-6 text-white">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold mb-2">School Join Code</h3>
-              <p className="text-sm opacity-90 mb-3">
-                Share this code with teachers, students, and parents so they can join your school
-              </p>
-              {schoolInfo.join_code ? (
-                <div className="flex items-center gap-3 flex-wrap">
-                  <code className="text-2xl font-bold bg-white/20 px-4 py-2 rounded-lg font-mono">
-                    {schoolInfo.join_code}
-                  </code>
-                  <button
-                    onClick={copyJoinCode}
-                    className="bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-50 transition flex items-center gap-2"
-                  >
-                    {joinCodeCopied ? (
-                      <>
-                        <span>✓</span>
-                        <span>Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>📋</span>
-                        <span>Copy Code</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div className="bg-white/20 rounded-lg p-4">
-                  <p className="text-white font-semibold mb-2">⚠️ Join Code Not Found</p>
-                  <p className="text-sm opacity-90">
-                    Your school join code is missing. Please contact support or check your school settings.
-                  </p>
-                  <p className="text-xs opacity-75 mt-2">
-                    School ID: {schoolInfo.id}
-                  </p>
-                </div>
-              )}
-            </div>
-            <div className="text-6xl opacity-20 ml-4">🔑</div>
-          </div>
-        </div>
-      )}
-
       {/* Debug Info - Remove in production */}
       {import.meta.env.DEV && schoolInfo && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-sm">
@@ -296,7 +225,7 @@ export function DashboardOverview() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 mt-6">
         <DoughnutChart
           title="Student Gender Breakdown"
           breakdown={stats.studentsByGender}

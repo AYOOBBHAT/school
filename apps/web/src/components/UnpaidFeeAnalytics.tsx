@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../utils/supabase';
-import {
-  loadClassesForFeeCollection,
-  loadUnpaidFeeAnalytics
-} from '../services/clerk.service';
+import { loadClassesForFeeCollection } from '../services/clerk.service';
+import { fetchUnpaidAnalytics } from '../services/analyticsService';
+import type { UnpaidFeeAnalyticsResponse } from '../services/types';
 // Import recharts components
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
@@ -42,27 +42,8 @@ interface Student {
   fee_component_breakdown?: FeeComponentBreakdown[];
 }
 
-interface AnalyticsData {
-  summary: {
-    total_students: number;
-    unpaid_count: number;
-    partially_paid_count: number;
-    paid_count: number;
-    total_unpaid_amount: number;
-  };
-  chart_data: {
-    paid: number;
-    unpaid: number;
-    partially_paid: number;
-  };
-  students: Student[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    total_pages: number;
-  };
-}
+// Use imported type from services
+type AnalyticsData = UnpaidFeeAnalyticsResponse;
 
 const COLORS = {
   paid: '#3B82F6',      // Blue
@@ -74,75 +55,54 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
   const [classes, setClasses] = useState<any[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [timeScope, setTimeScope] = useState<string>('last_month');
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
   const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set());
 
-  // Load classes
+  // Load classes (one-time fetch)
   useEffect(() => {
+    const loadClasses = async () => {
+      try {
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        if (!token) return;
+
+        const result = await loadClassesForFeeCollection(token);
+        setClasses(result.classes || []);
+        // Auto-select first class if available
+        if (result.classes && result.classes.length > 0 && !selectedClass) {
+          setSelectedClass(result.classes[0].id);
+        }
+      } catch (error) {
+        console.error('Error loading classes:', error);
+      }
+    };
     loadClasses();
   }, []);
 
-  // Load analytics when filters change
-  useEffect(() => {
-    // Load analytics when timeScope is set (always true) or when class is selected
-    if (timeScope) {
-      loadAnalytics();
-    }
-  }, [selectedClass, timeScope, currentPage]);
+  // React Query: Single source of truth for all analytics data
+  // Query key includes filters for proper caching and refetching
+  const {
+    data,
+    isLoading,
+    isFetching,
+    error,
+    isPlaceholderData,
+  } = useQuery<AnalyticsData>({
+    queryKey: ['unpaid-analytics', selectedClass || 'all', timeScope, currentPage],
+    queryFn: () => fetchUnpaidAnalytics({
+      classId: selectedClass || undefined,
+      timeScope,
+      page: currentPage,
+      limit: pageSize,
+    }),
+    placeholderData: (previousData) => previousData, // Keep previous data while fetching (instant UI)
+    staleTime: 2 * 60 * 1000, // 2 minutes - data is fresh for 2 minutes
+    enabled: !!timeScope, // Only fetch when timeScope is set
+  });
 
-  const loadClasses = async () => {
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const result = await loadClassesForFeeCollection(token);
-      setClasses(result.classes || []);
-      // Auto-select first class if available
-      if (result.classes && result.classes.length > 0 && !selectedClass) {
-        setSelectedClass(result.classes[0].id);
-      }
-    } catch (error) {
-      console.error('Error loading classes:', error);
-    }
-  };
-
-  const loadAnalytics = async () => {
-    setLoading(true);
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
-
-      const params = new URLSearchParams({
-        time_scope: timeScope,
-        page: currentPage.toString(),
-        limit: pageSize.toString()
-      });
-
-      if (selectedClass) {
-        params.append('class_group_id', selectedClass);
-      }
-
-      try {
-        const result = await loadUnpaidFeeAnalytics(token, params);
-        setData(result);
-      } catch (error: any) {
-        console.error('Error loading analytics:', error);
-        alert(error.message || 'Failed to load analytics');
-      }
-    } catch (error) {
-      console.error('Error loading analytics:', error);
-      alert('Error loading analytics');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Prepare chart data
+  // Prepare chart data from single source of truth
   const chartData = useMemo(() => {
-    if (!data) return [];
+    if (!data?.chart_data) return [];
     return [
       { name: 'Paid', value: data.chart_data.paid, color: COLORS.paid },
       { name: 'Unpaid', value: data.chart_data.unpaid, color: COLORS.unpaid },
@@ -190,7 +150,13 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-2xl font-bold">Unpaid Fee Analytics</h3>
+        <div className="flex items-center gap-3">
+          <h3 className="text-2xl font-bold">Unpaid Fee Analytics</h3>
+          {/* Background refresh indicator */}
+          {isFetching && !isLoading && (
+            <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" title="Refreshing..."></div>
+          )}
+        </div>
         {userRole === 'principal' && data && data.students.length > 0 && (
           <div className="flex gap-2">
             <button
@@ -247,13 +213,30 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
         </div>
       </div>
 
-      {loading ? (
+      {isLoading ? (
+        // Loading skeleton - show while initial load
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="bg-gray-100 border border-gray-200 rounded-lg p-4 animate-pulse">
+                <div className="h-4 bg-gray-300 rounded w-24 mb-2"></div>
+                <div className="h-8 bg-gray-300 rounded w-16"></div>
+              </div>
+            ))}
+          </div>
+          <div className="text-center py-12">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+            <div className="text-gray-500">Loading analytics...</div>
+          </div>
+        </div>
+      ) : error ? (
         <div className="text-center py-12">
-          <div className="text-gray-500">Loading analytics...</div>
+          <div className="text-red-600 font-semibold mb-2">Error loading analytics</div>
+          <div className="text-sm text-gray-500">{error instanceof Error ? error.message : 'Unknown error'}</div>
         </div>
       ) : data ? (
         <>
-          {/* Summary Badges */}
+          {/* Summary Badges - All data from single React Query response, respects filters */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="text-sm text-blue-600 font-medium">Total Students</div>
