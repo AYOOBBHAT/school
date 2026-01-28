@@ -11,6 +11,10 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher', 'student']), asyn
   if (!user) {
     return res.status(500).json({ error: 'Server misconfigured' });
   }
+  // Defensive multi-tenant guard: never allow unscoped access
+  if (!user.schoolId) {
+    return res.status(403).json({ error: 'School scope required' });
+  }
 
   try {
     const stats: any = {};
@@ -82,14 +86,62 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher', 'student']), asyn
 
       stats.total_classes = studentResponse.data?.class_group_id ? 1 : 0;
     } else if (user.role === 'clerk') {
-      // Clerk gets basic stats from materialized view
-      const { data: snapshot } = await adminSupabase.rpc('get_school_dashboard_snapshot', {
-        p_school_id: user.schoolId
-      });
+      // Clerk dashboard MUST be strictly school-scoped (multi-tenant safe)
+      // Never trust frontend filters; enforce school_id scoping here.
+      const today = new Date().toISOString().split('T')[0];
 
-      stats.total_classes = snapshot?.stats?.total_classes || 0;
-      stats.fees = snapshot?.fees || null;
-      stats.unpaid = snapshot?.unpaid || null;
+      const [studentsCountRes, todayPaymentsRes, pendingComponentsRes] = await Promise.all([
+        // Total Students (count only)
+        adminSupabase
+          .from('students')
+          .select('id', { count: 'exact', head: true })
+          .eq('school_id', user.schoolId),
+        // Today Collection (sum in Node; query is strictly school-scoped)
+        adminSupabase
+          .from('monthly_fee_payments')
+          .select('payment_amount')
+          .eq('school_id', user.schoolId)
+          .eq('payment_date', today),
+        // Total Pending (sum in Node; only pending components)
+        adminSupabase
+          .from('monthly_fee_components')
+          .select('pending_amount')
+          .eq('school_id', user.schoolId)
+          .gt('pending_amount', 0)
+      ]);
+
+      if (studentsCountRes.error) {
+        return res.status(500).json({ error: studentsCountRes.error.message || 'Failed to get student count' });
+      }
+      if (todayPaymentsRes.error) {
+        return res.status(500).json({ error: todayPaymentsRes.error.message || 'Failed to get today collection' });
+      }
+      if (pendingComponentsRes.error) {
+        return res.status(500).json({ error: pendingComponentsRes.error.message || 'Failed to get pending total' });
+      }
+
+      const toNumber = (value: unknown) => {
+        if (typeof value === 'number') return value;
+        if (typeof value === 'string') {
+          const parsed = parseFloat(value);
+          return Number.isFinite(parsed) ? parsed : 0;
+        }
+        return 0;
+      };
+
+      const todayCollection = (todayPaymentsRes.data || []).reduce((sum: number, row) => {
+        const amount = (row as Record<string, unknown>)?.payment_amount;
+        return sum + toNumber(amount);
+      }, 0);
+
+      const totalPending = (pendingComponentsRes.data || []).reduce((sum: number, row) => {
+        const pending = (row as Record<string, unknown>)?.pending_amount;
+        return sum + toNumber(pending);
+      }, 0);
+
+      stats.total_students = studentsCountRes.count || 0;
+      stats.today_collection = todayCollection;
+      stats.total_pending = totalPending;
     }
 
     return res.json(stats);
