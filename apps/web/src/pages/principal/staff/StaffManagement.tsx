@@ -636,11 +636,23 @@ export default function StaffManagement() {
 
   // Filter staff based on search and filters
   const filteredStaff = staff.filter((member) => {
-    const matchesSearch = 
-      member.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.email?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = roleFilter === 'all' || member.role === roleFilter;
-    const matchesStatus = statusFilter === 'all' || member.approval_status === statusFilter;
+    const name = member.full_name ?? '';
+    const email = member.email ?? '';
+
+    // normalize + safe defaults
+    const role = (member.role ?? '').toLowerCase();
+    const status = (member.approval_status ?? 'approved').toLowerCase();
+
+    const matchesSearch =
+      name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      email.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesRole =
+      roleFilter === 'all' || role === roleFilter.toLowerCase();
+
+    const matchesStatus =
+      statusFilter === 'all' || status === statusFilter.toLowerCase();
+
     return matchesSearch && matchesRole && matchesStatus;
   });
 
@@ -1453,107 +1465,111 @@ export default function StaffManagement() {
 
       {/* Add Staff Modal */}
       {addStaffModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Add New Staff Member</h3>
-            <form onSubmit={handleAddStaff} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={addStaffForm.full_name}
-                  onChange={(e) => setAddStaffForm({ ...addStaffForm, full_name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Role *</label>
-                <select
-                  value={addStaffForm.role}
-                  onChange={(e) => setAddStaffForm({ ...addStaffForm, role: e.target.value as 'clerk' | 'teacher' })}
-                  className="w-full px-3 py-2 border rounded-md"
-                  required
-                >
-                  <option value="teacher">Teacher</option>
-                  <option value="clerk">Clerk</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Email *</label>
-                <input
-                  type="email"
-                  required
-                  value={addStaffForm.email}
-                  onChange={(e) => setAddStaffForm({ ...addStaffForm, email: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Password *</label>
-                <input
-                  type="password"
-                  required
-                  minLength={8}
-                  value={addStaffForm.password}
-                  onChange={(e) => setAddStaffForm({ ...addStaffForm, password: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md"
-                  placeholder="Minimum 8 characters"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Phone</label>
-                <input
-                  type="tel"
-                  value={addStaffForm.phone}
-                  onChange={(e) => setAddStaffForm({ ...addStaffForm, phone: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Gender</label>
-                <select
-                  value={addStaffForm.gender}
-                  onChange={(e) => setAddStaffForm({ ...addStaffForm, gender: e.target.value as any })}
-                  className="w-full px-3 py-2 border rounded-md"
-                >
-                  <option value="">Select Gender</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              {/* Salary Start Date - Only show for teachers */}
-              {addStaffForm.role === 'teacher' && (
-                <div>
-                  <label className="block text-sm font-medium mb-1">Salary Start Date (Optional)</label>
-                  <input
-                    type="date"
-                    value={addStaffForm.salary_start_date}
-                    onChange={(e) => setAddStaffForm({ ...addStaffForm, salary_start_date: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Specify when the salary should start. This date will be used when setting the salary structure.
-                  </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-xl flex flex-col">
+            <form onSubmit={handleAddStaff} className="flex flex-col flex-1 min-h-0">
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                <h3 className="text-xl font-bold mb-4">Add New Staff Member</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={addStaffForm.full_name}
+                      onChange={(e) => setAddStaffForm({ ...addStaffForm, full_name: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Role *</label>
+                    <select
+                      value={addStaffForm.role}
+                      onChange={(e) => setAddStaffForm({ ...addStaffForm, role: e.target.value as 'clerk' | 'teacher' })}
+                      className="w-full px-3 py-2 border rounded-md"
+                      required
+                    >
+                      <option value="teacher">Teacher</option>
+                      <option value="clerk">Clerk</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Email *</label>
+                    <input
+                      type="email"
+                      required
+                      value={addStaffForm.email}
+                      onChange={(e) => setAddStaffForm({ ...addStaffForm, email: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Password *</label>
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      value={addStaffForm.password}
+                      onChange={(e) => setAddStaffForm({ ...addStaffForm, password: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md"
+                      placeholder="Minimum 8 characters"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Phone</label>
+                    <input
+                      type="tel"
+                      value={addStaffForm.phone}
+                      onChange={(e) => setAddStaffForm({ ...addStaffForm, phone: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Gender</label>
+                    <select
+                      value={addStaffForm.gender}
+                      onChange={(e) => setAddStaffForm({ ...addStaffForm, gender: e.target.value as any })}
+                      className="w-full px-3 py-2 border rounded-md"
+                    >
+                      <option value="">Select Gender</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  {/* Salary Start Date - Only show for teachers */}
+                  {addStaffForm.role === 'teacher' && (
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Salary Start Date (Optional)</label>
+                      <input
+                        type="date"
+                        value={addStaffForm.salary_start_date}
+                        onChange={(e) => setAddStaffForm({ ...addStaffForm, salary_start_date: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-md"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Specify when the salary should start. This date will be used when setting the salary structure.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-                >
-                  Add Staff
-                </button>
+              </div>
+              <div className="sticky bottom-0 bg-white border-t p-4 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setAddStaffModalOpen(false);
                     setAddStaffForm({ email: '', password: '', full_name: '', role: 'teacher', phone: '', gender: '', salary_start_date: '' });
                   }}
-                  className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
                 >
                   Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  Add Staff
                 </button>
               </div>
             </form>
