@@ -18,7 +18,7 @@ import {
  * @returns Students data
  */
 export async function loadStudents(token: string): Promise<StudentResponse> {
-  const response = await fetch(`${API_URL}/students`, {
+  const response = await fetch(`${API_URL}/clerk/students`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -36,7 +36,7 @@ export async function loadStudents(token: string): Promise<StudentResponse> {
  * @returns Students data with classes structure
  */
 export async function loadStudentsForFeeCollection(token: string, classGroupId?: string): Promise<StudentsAdminResponse> {
-  let url = `${API_URL}/students-admin`;
+  let url = `${API_URL}/clerk/students-admin`;
   if (classGroupId) {
     url += `?class_group_id=${classGroupId}`;
   }
@@ -58,7 +58,7 @@ export async function loadStudentsForFeeCollection(token: string, classGroupId?:
  * @returns Classes data
  */
 export async function loadClassesForFeeCollection(token: string): Promise<ClassResponse> {
-  const response = await fetch(`${API_URL}/classes`, {
+  const response = await fetch(`${API_URL}/clerk/classes`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
