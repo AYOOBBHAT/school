@@ -206,11 +206,20 @@ export default function StaffManagement() {
       }
 
       const data = await loadStaffService(token);
-      // Transform staff data to extract profiles and add created_at
-      setStaff((data.staff || []).map(s => ({
-        ...s.profile,
-        created_at: s.created_at
-      })));
+
+      // Normalize staff shape:
+      // - Old API: { id, profile_id, profile: { ... }, created_at }
+      // - New API: flat profile rows: { id, full_name, email, role, created_at, ... }
+      const normalizedStaff = (data.staff || []).map((s: any) => {
+        const profile = s.profile || s;
+        return {
+          ...profile,
+          // Prefer top-level created_at if present, otherwise profile.created_at
+          created_at: s.created_at || profile.created_at
+        };
+      });
+
+      setStaff(normalizedStaff);
     } catch (error: any) {
       console.error('Error loading staff:', error);
       setError(error.message || 'Failed to load staff. Please try again.');
