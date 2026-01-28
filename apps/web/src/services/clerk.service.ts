@@ -1,4 +1,5 @@
 import { API_URL } from '../utils/api';
+import { ROUTES } from '../utils/apiRoutes';
 import { supabase } from '../utils/supabase';
 import { 
   StudentResponse, 
@@ -18,7 +19,7 @@ import {
  * @returns Students data
  */
 export async function loadStudents(token: string): Promise<StudentResponse> {
-  const response = await fetch(`${API_URL}/clerk/students`, {
+  const response = await fetch(`${API_URL}${ROUTES.students}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -36,7 +37,7 @@ export async function loadStudents(token: string): Promise<StudentResponse> {
  * @returns Students data with classes structure
  */
 export async function loadStudentsForFeeCollection(token: string, classGroupId?: string): Promise<StudentsAdminResponse> {
-  let url = `${API_URL}/clerk/students-admin`;
+  let url = `${API_URL}${ROUTES.studentsAdmin}`;
   if (classGroupId) {
     url += `?class_group_id=${classGroupId}`;
   }
@@ -58,7 +59,7 @@ export async function loadStudentsForFeeCollection(token: string, classGroupId?:
  * @returns Classes data
  */
 export async function loadClassesForFeeCollection(token: string): Promise<ClassResponse> {
-  const response = await fetch(`${API_URL}/clerk/classes`, {
+  const response = await fetch(`${API_URL}${ROUTES.classes}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -76,7 +77,7 @@ export async function loadClassesForFeeCollection(token: string): Promise<ClassR
  * @returns Fee structure data
  */
 export async function loadStudentFeeStructure(token: string, studentId: string): Promise<FeeStructureResponse> {
-  const response = await fetch(`${API_URL}/clerk-fees/student/${studentId}/fee-structure`, {
+  const response = await fetch(`${API_URL}${ROUTES.clerkFees}/student/${studentId}/fee-structure`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -106,7 +107,7 @@ export async function loadStudentPayments(token: string, studentId: string): Pro
     transaction_id: string;
   }>;
 }> {
-  const response = await fetch(`${API_URL}/clerk-fees/student/${studentId}/payments`, {
+  const response = await fetch(`${API_URL}${ROUTES.clerkFees}/student/${studentId}/payments`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -124,7 +125,7 @@ export async function loadStudentPayments(token: string, studentId: string): Pro
  * @returns Payment result
  */
 export async function collectFee(token: string, paymentData: any): Promise<CollectFeeResponse> {
-  const response = await fetch(`${API_URL}/clerk-fees/collect`, {
+  const response = await fetch(`${API_URL}${ROUTES.clerkFees}/collect`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -148,7 +149,7 @@ export async function collectFee(token: string, paymentData: any): Promise<Colle
  * @returns Analytics data
  */
 export async function loadUnpaidFeeAnalytics(token: string, params: URLSearchParams): Promise<UnpaidFeeAnalyticsResponse> {
-  const response = await fetch(`${API_URL}/clerk-fees/analytics/unpaid?${params.toString()}`, {
+  const response = await fetch(`${API_URL}${ROUTES.clerkFees}/analytics/unpaid?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -194,7 +195,7 @@ export async function loadUnpaidFeeAnalytics(token: string, params: URLSearchPar
  * @returns Payment history data
  */
 export async function loadSalaryPaymentHistory(token: string, teacherId: string, params: URLSearchParams): Promise<PaymentHistoryResponse> {
-  const response = await fetch(`${API_URL}/salary/history/${teacherId}?${params.toString()}`, {
+  const response = await fetch(`${API_URL}${ROUTES.salary}/history/${teacherId}?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -284,7 +285,7 @@ export async function loadUnpaidSalaries(token: string, timeScope: string = 'las
     unpaid_months: Array<{ month: number; year: number; amount: number }>;
   }>;
 }> {
-  const response = await fetch(`${API_URL}/salary/unpaid?time_scope=${timeScope}`, {
+  const response = await fetch(`${API_URL}${ROUTES.salary}/unpaid?time_scope=${timeScope}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -308,7 +309,7 @@ export async function loadSalarySummary(token: string): Promise<{
     unpaid_months: number;
   }>;
 }> {
-  const response = await fetch(`${API_URL}/salary/summary`, {
+  const response = await fetch(`${API_URL}${ROUTES.salary}/summary`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -327,7 +328,7 @@ export async function loadSalarySummary(token: string): Promise<{
  * @returns Payment result
  */
 export async function recordSalaryPayment(token: string, paymentData: any): Promise<RecordSalaryPaymentResponse> {
-  const response = await fetch(`${API_URL}/salary/payments`, {
+  const response = await fetch(`${API_URL}${ROUTES.salary}/payments`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
