@@ -1,2 +1,5 @@
+# Exclude static assets and index.html from SPA routing
+/assets/*    200
+/index.html    200
 /*    /index.html   200
 
