@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Joi from 'joi';
 import { requireRoles } from '../middleware/auth.js';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
+import { cacheFetch, invalidateCache } from '../utils/cache.js';
 const router = Router();
 const classSchema = Joi.object({
     name: Joi.string().required(),
@@ -9,83 +10,92 @@ const classSchema = Joi.object({
     school_id: Joi.string().uuid().optional(), // Will be set from user context
     classification_value_ids: Joi.array().items(Joi.string().uuid()).optional()
 });
-// Get all classes for the school with their classifications
+// Get all classes for the school with their classifications (CACHED)
 router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    // Use service role key to bypass RLS for consistent access
-    const { data, error } = await adminSupabase
-        .from('class_groups')
-        .select(`
-      *,
-      classifications:class_classifications(
-        classification_value:classification_values(
-          id,
-          value,
-          classification_type:classification_types(id, name)
-        )
-      ),
-      subjects:class_subjects(
-        id,
-        subject:subjects(id, name, code)
-      )
-    `)
-        .eq('school_id', user.schoolId)
-        .order('name', { ascending: true });
-    if (error) {
-        console.error('[classes] Error fetching classes:', error);
-        return res.status(400).json({ error: error.message });
-    }
-    // Transform the data to a cleaner format
-    const classes = (data || []).map(cls => {
-        // The structure from Supabase is:
-        // classifications: [{ classification_value: { value, classification_type: { name } } }]
-        const transformedClassifications = (cls.classifications || []).map((cc) => {
-            // Check if it's already transformed (from POST endpoint) or raw (from GET)
-            if (cc.type && cc.value) {
-                // Already in the correct format
-                return cc;
+    const cacheKey = `school:${user.schoolId}:classes`;
+    try {
+        const classes = await cacheFetch(cacheKey, async () => {
+            // Use service role key to bypass RLS for consistent access
+            const { data, error } = await adminSupabase
+                .from('class_groups')
+                .select(`
+          *,
+          classifications:class_classifications(
+            classification_value:classification_values(
+              id,
+              value,
+              classification_type:classification_types(id, name)
+            )
+          ),
+          subjects:class_subjects(
+            id,
+            subject:subjects(id, name, code)
+          )
+        `)
+                .eq('school_id', user.schoolId)
+                .order('name', { ascending: true });
+            if (error) {
+                console.error('[classes] Error fetching classes:', error);
+                throw error;
             }
-            // Raw format from Supabase query
-            const classificationValue = cc.classification_value;
-            if (!classificationValue) {
-                console.warn(`[classes] Missing classification_value in:`, cc);
-                return null;
-            }
-            const classificationType = classificationValue.classification_type;
-            if (!classificationType) {
-                console.warn(`[classes] Missing classification_type in:`, classificationValue);
-                return null;
-            }
-            return {
-                type: classificationType.name,
-                value: classificationValue.value,
-                type_id: classificationType.id,
-                value_id: classificationValue.id
-            };
-        }).filter((c) => c !== null); // Remove any null entries
-        // Transform subjects
-        const transformedSubjects = (cls.subjects || []).map((cs) => {
-            if (cs.subject) {
+            // Transform the data to a cleaner format
+            return (data || []).map(cls => {
+                // The structure from Supabase is:
+                // classifications: [{ classification_value: { value, classification_type: { name } } }]
+                const transformedClassifications = (cls.classifications || []).map((cc) => {
+                    // Check if it's already transformed (from POST endpoint) or raw (from GET)
+                    if (cc.type && cc.value) {
+                        // Already in the correct format
+                        return cc;
+                    }
+                    // Raw format from Supabase query
+                    const classificationValue = cc.classification_value;
+                    if (!classificationValue) {
+                        console.warn(`[classes] Missing classification_value in:`, cc);
+                        return null;
+                    }
+                    const classificationType = classificationValue.classification_type;
+                    if (!classificationType) {
+                        console.warn(`[classes] Missing classification_type in:`, classificationValue);
+                        return null;
+                    }
+                    return {
+                        type: classificationType.name,
+                        value: classificationValue.value,
+                        type_id: classificationType.id,
+                        value_id: classificationValue.id
+                    };
+                }).filter((c) => c !== null); // Remove any null entries
+                // Transform subjects
+                const transformedSubjects = (cls.subjects || []).map((cs) => {
+                    if (cs.subject) {
+                        return {
+                            id: cs.subject.id,
+                            name: cs.subject.name,
+                            code: cs.subject.code,
+                            class_subject_id: cs.id
+                        };
+                    }
+                    return null;
+                }).filter((s) => s !== null);
+                console.log(`[classes] Class "${cls.name}" has ${transformedClassifications.length} classifications and ${transformedSubjects.length} subjects`);
                 return {
-                    id: cs.subject.id,
-                    name: cs.subject.name,
-                    code: cs.subject.code,
-                    class_subject_id: cs.id
+                    ...cls,
+                    classifications: transformedClassifications,
+                    subjects: transformedSubjects
                 };
-            }
-            return null;
-        }).filter((s) => s !== null);
-        console.log(`[classes] Class "${cls.name}" has ${transformedClassifications.length} classifications and ${transformedSubjects.length} subjects`);
-        return {
-            ...cls,
-            classifications: transformedClassifications,
-            subjects: transformedSubjects
-        };
-    });
-    console.log(`[classes] Returning ${classes.length} classes with classifications`);
-    return res.json({ classes });
+            });
+        });
+        console.log(`[classes] Returning ${classes.length} classes with classifications`);
+        return res.json({ classes });
+    }
+    catch (error) {
+        console.error('[classes] Error:', error);
+        return res.status(400).json({ error: error.message || 'Failed to fetch classes' });
+    }
 });
 // Create a new class
 router.post('/', requireRoles(['principal']), async (req, res) => {
@@ -180,6 +190,8 @@ router.post('/', requireRoles(['principal']), async (req, res) => {
         }))
     };
     console.log('[classes] Class created with classifications:', classWithClassifications);
+    // Invalidate cache after creating a class
+    await invalidateCache(`school:${user.schoolId}:classes`);
     return res.status(201).json({ class: classWithClassifications });
 });
 // Update a class
@@ -286,6 +298,8 @@ router.put('/:id', requireRoles(['principal']), async (req, res) => {
             value_id: cc.classification_value.id
         }))
     };
+    // Invalidate cache after updating a class
+    await invalidateCache(`school:${user.schoolId}:classes`);
     return res.json({ class: classWithClassifications });
 });
 // Delete a class
@@ -309,6 +323,8 @@ router.delete('/:id', requireRoles(['principal']), async (req, res) => {
         .eq('id', req.params.id);
     if (dbError)
         return res.status(400).json({ error: dbError.message });
+    // Invalidate cache after deleting a class
+    await invalidateCache(`school:${user.schoolId}:classes`);
     return res.json({ message: 'Class deleted successfully' });
 });
 // Get sections for a class group
@@ -396,6 +412,8 @@ router.post('/:classId/subjects', requireRoles(['principal', 'clerk']), async (r
         console.error('[classes] Error adding subject to class:', insertError);
         return res.status(400).json({ error: insertError.message });
     }
+    // Invalidate cache after adding a subject to a class
+    await invalidateCache(`school:${user.schoolId}:classes`);
     return res.status(201).json({
         class_subject: {
             id: classSubject.id,
@@ -430,6 +448,8 @@ router.delete('/:classId/subjects/:classSubjectId', requireRoles(['principal', '
         console.error('[classes] Error removing subject from class:', deleteError);
         return res.status(400).json({ error: deleteError.message });
     }
+    // Invalidate cache after removing a subject from a class
+    await invalidateCache(`school:${user.schoolId}:classes`);
     return res.json({ message: 'Subject removed from class successfully' });
 });
 export default router;

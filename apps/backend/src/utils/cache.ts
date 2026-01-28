@@ -1,4 +1,4 @@
-import { redis, CACHE_TTL } from './upstash';
+import { redis, CACHE_TTL } from './upstash.js';
 
 /**
  * Cache-aside pattern: Check cache first, fetch if miss, store result

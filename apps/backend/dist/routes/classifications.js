@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Joi from 'joi';
 import { requireRoles } from '../middleware/auth.js';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
+import { cacheFetch, invalidateCache } from '../utils/cache.js';
 const router = Router();
 // Schema for classification type
 const classificationTypeSchema = Joi.object({
@@ -14,20 +15,28 @@ const classificationValueSchema = Joi.object({
     value: Joi.string().required(),
     display_order: Joi.number().integer().default(0)
 });
-// Get all classification types for the school
+// Get all classification types for the school (CACHED)
 router.get('/types', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
     const { user } = req;
     if (!user)
         return res.status(500).json({ error: 'Server misconfigured' });
-    // Use service role key to bypass RLS
-    const { data, error } = await adminSupabase
-        .from('classification_types')
-        .select('id, name, display_order, school_id, created_at')
-        .eq('school_id', user.schoolId)
-        .order('display_order', { ascending: true });
-    if (error)
-        return res.status(400).json({ error: error.message });
-    return res.json({ types: data || [] });
+    const cacheKey = `school:${user.schoolId}:classifications`;
+    try {
+        const types = await cacheFetch(cacheKey, async () => {
+            const { data, error } = await adminSupabase
+                .from('classification_types')
+                .select('id, name, display_order, school_id, created_at')
+                .eq('school_id', user.schoolId)
+                .order('display_order', { ascending: true });
+            if (error)
+                throw error;
+            return data || [];
+        });
+        return res.json({ types });
+    }
+    catch (error) {
+        return res.status(400).json({ error: error.message || 'Failed to fetch classification types' });
+    }
 });
 // Create a classification type
 router.post('/types', requireRoles(['principal']), async (req, res) => {
@@ -56,6 +65,8 @@ router.post('/types', requireRoles(['principal']), async (req, res) => {
         console.error('[classifications] Error creating type:', dbError);
         return res.status(400).json({ error: dbError.message });
     }
+    // Invalidate cache after creating a classification type
+    await invalidateCache(`school:${user.schoolId}:classifications`);
     return res.status(201).json({ type: data });
 });
 // Update a classification type
@@ -88,6 +99,8 @@ router.put('/types/:id', requireRoles(['principal']), async (req, res) => {
         .single();
     if (dbError)
         return res.status(400).json({ error: dbError.message });
+    // Invalidate cache after updating a classification type
+    await invalidateCache(`school:${user.schoolId}:classifications`);
     return res.json({ type: data });
 });
 // Delete a classification type
@@ -112,6 +125,8 @@ router.delete('/types/:id', requireRoles(['principal']), async (req, res) => {
         .eq('id', req.params.id);
     if (dbError)
         return res.status(400).json({ error: dbError.message });
+    // Invalidate cache after deleting a classification type
+    await invalidateCache(`school:${user.schoolId}:classifications`);
     return res.json({ message: 'Classification type deleted successfully' });
 });
 // Get all values for a classification type
@@ -176,6 +191,8 @@ router.post('/values', requireRoles(['principal']), async (req, res) => {
         console.error('[classifications] Error creating value:', dbError);
         return res.status(400).json({ error: dbError.message });
     }
+    // Invalidate cache after creating a classification value
+    await invalidateCache(`school:${user.schoolId}:classifications`);
     return res.status(201).json({ value: data });
 });
 // Update a classification value
@@ -214,6 +231,8 @@ router.put('/values/:id', requireRoles(['principal']), async (req, res) => {
         .single();
     if (dbError)
         return res.status(400).json({ error: dbError.message });
+    // Invalidate cache after updating a classification value
+    await invalidateCache(`school:${user.schoolId}:classifications`);
     return res.json({ value: data });
 });
 // Delete a classification value
@@ -244,6 +263,8 @@ router.delete('/values/:id', requireRoles(['principal']), async (req, res) => {
         .eq('id', req.params.id);
     if (dbError)
         return res.status(400).json({ error: dbError.message });
+    // Invalidate cache after deleting a classification value
+    await invalidateCache(`school:${user.schoolId}:classifications`);
     return res.json({ message: 'Classification value deleted successfully' });
 });
 export default router;
