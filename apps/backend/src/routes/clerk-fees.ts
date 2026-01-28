@@ -593,7 +593,10 @@ router.get('/student/:studentId/payments', requireRoles(['clerk', 'principal', '
 // ============================================
 router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req, res) => {
   const { user } = req;
-  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+  if (!user.schoolId) {
+    return res.status(403).json({ error: 'School scope required' });
+  }
 
   // IMPORTANT: All queries in this endpoint MUST filter by user.schoolId to ensure
   // principals/clerks only see data from their own school

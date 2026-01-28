@@ -775,7 +775,12 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
 // Get all staff members for the school (with pagination and filters)
 router.get('/staff', requireRoles(['principal']), async (req, res) => {
   const { user } = req;
-  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+  if (!user) {
+    return res.status(500).json({ error: 'Server misconfigured' });
+  }
+  if (!user.schoolId) {
+    return res.status(403).json({ error: 'School scope required' });
+  }
 
   try {
     // Parse pagination parameters
@@ -788,11 +793,24 @@ router.get('/staff', requireRoles(['principal']), async (req, res) => {
     const status = req.query.status as string || 'all'; // approval_status filter
 
     // Build query with adminSupabase to bypass RLS for principal
+    // Explicit, school-scoped select (no select('*'))
     let query = adminSupabase
       .from('profiles')
-      .select('id, full_name, email, role, approval_status, phone, created_at', { count: 'exact' })
-      .eq('school_id', user.schoolId) // Filter by school_id explicitly
-      .in('role', ['teacher', 'clerk', 'principal']);
+      .select(
+        `
+        id,
+        full_name,
+        email,
+        role,
+        is_active,
+        approval_status,
+        phone,
+        created_at
+        `,
+        { count: 'exact' }
+      )
+      .eq('school_id', user.schoolId) // Filter by school_id explicitly (multi-tenant safety)
+      .in('role', ['teacher', 'clerk']); // Only staff roles, no principals in this listing
 
     // Apply role filter only when not "all"
     if (role !== 'all') {
