@@ -1,28 +1,53 @@
 import { Router } from 'express';
 import { requireRoles } from '../middleware/auth.js';
+import { adminSupabase } from '../utils/supabaseAdmin.js';
 const router = Router();
 // Get all staff members (teachers, clerks, principals) for the school
 router.get('/', requireRoles(['principal', 'clerk']), async (req, res) => {
-    const { user, supabase } = req;
-    if (!user || !supabase)
+    const { user } = req;
+    if (!user || !user.schoolId)
         return res.status(500).json({ error: 'Server misconfigured' });
     try {
-        // Use user-context Supabase client to enforce RLS
-        // RLS policies ensure users only see staff from their school
-        const { data: staff, error } = await supabase
+        // Parse pagination parameters
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+        const offset = (page - 1) * limit;
+        // Parse filters
+        const role = req.query.role || 'all';
+        const status = req.query.status || 'all'; // approval_status filter
+        // Build query with adminSupabase to bypass RLS for principal
+        let query = adminSupabase
             .from('profiles')
-            .select('id, full_name, email, role, approval_status, phone, created_at, approved_at')
-            .in('role', ['teacher', 'clerk', 'principal'])
-            .order('created_at', { ascending: false });
+            .select('id, full_name, email, role, approval_status, phone, created_at', { count: 'exact' })
+            .eq('school_id', user.schoolId) // Filter by school_id explicitly
+            .in('role', ['teacher', 'clerk', 'principal']);
+        // Apply role filter only when not "all"
+        if (role !== 'all') {
+            query = query.eq('role', role);
+        }
+        // Apply approval_status filter only when not "all"
+        if (status !== 'all') {
+            query = query.eq('approval_status', status);
+        }
+        // Apply pagination using range (NOT offset + limit, but offset to offset + limit - 1)
+        query = query.range(offset, offset + limit - 1);
+        // Order by created_at descending
+        query = query.order('created_at', { ascending: false });
+        const { data: staff, error, count } = await query;
         if (error) {
             console.error('[staff-admin] Error fetching staff:', error);
             console.error('[staff-admin] Error details:', { code: error.code, message: error.message, details: error.details, hint: error.hint });
             return res.status(400).json({ error: error.message || 'Failed to fetch staff' });
         }
-        console.log(`[staff-admin] Found ${staff?.length || 0} staff members for school ${user.schoolId}`);
+        console.log(`[staff-admin] Found ${staff?.length || 0} staff members (total: ${count || 0}) for school ${user.schoolId}`);
         return res.json({
             staff: staff || [],
-            total: staff?.length || 0
+            pagination: {
+                page,
+                limit,
+                total: count || 0,
+                total_pages: Math.ceil((count || 0) / limit)
+            }
         });
     }
     catch (err) {
