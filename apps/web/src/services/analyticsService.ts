@@ -1,4 +1,5 @@
 import { API_URL } from '../utils/api';
+import { ROUTES } from '../utils/apiRoutes';
 import { supabase } from '../utils/supabase';
 import type { UnpaidFeeAnalyticsResponse } from './types';
 
@@ -32,7 +33,7 @@ export const fetchUnpaidAnalytics = async ({
     params.append('class_group_id', classId);
   }
 
-  const response = await fetch(`${API_URL}/clerk-fees/analytics/unpaid?${params.toString()}`, {
+  const response = await fetch(`${API_URL}${ROUTES.clerkFees}/analytics/unpaid?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
