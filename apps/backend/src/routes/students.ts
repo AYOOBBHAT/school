@@ -13,6 +13,9 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
   if (!user) {
     return res.status(500).json({ error: 'Server misconfigured' });
   }
+  if (!user.schoolId) {
+    return res.status(403).json({ error: 'School scope required' });
+  }
 
   // Use shared admin client (bypass RLS but enforce school_id in query)
   const { adminSupabase } = await import('../utils/supabaseAdmin.js');
@@ -26,7 +29,7 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
         roll_number,
         status,
         profile_id,
-        profiles:profile_id (
+        profile:profiles!students_profile_id_fkey (
           id,
           full_name,
           email,
@@ -50,10 +53,10 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
         status: s.status,
         profile_id: s.profile_id,
         profile: {
-          id: s.profiles?.id ?? s.profile_id,
-          full_name: s.profiles?.full_name ?? 'Unknown',
-          email: s.profiles?.email ?? '',
-          phone: s.profiles?.phone ?? undefined,
+          id: s.profile?.id ?? s.profile_id,
+          full_name: s.profile?.full_name ?? 'Unknown',
+          email: s.profile?.email ?? '',
+          phone: s.profile?.phone ?? undefined,
         },
       })) ?? [];
 

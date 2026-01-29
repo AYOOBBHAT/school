@@ -24,7 +24,7 @@ export async function loadStudents(token: string): Promise<StudentResponse> {
   });
 
   if (!response.ok) {
-    return { students: [] };
+    throw new Error('Failed to load students');
   }
 
   return await response.json();
@@ -47,7 +47,7 @@ export async function loadStudentsForFeeCollection(token: string, classGroupId?:
   });
 
   if (!response.ok) {
-    return { classes: [], unassigned: [] };
+    throw new Error('Failed to load students for fee collection');
   }
 
   return await response.json();
@@ -64,7 +64,7 @@ export async function loadClassesForFeeCollection(token: string): Promise<ClassR
   });
 
   if (!response.ok) {
-    return { classes: [] };
+    throw new Error('Failed to load classes for fee collection');
   }
 
   return await response.json();
