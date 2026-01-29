@@ -141,6 +141,14 @@ export default function FeeCollection() {
         return;
       }
       
+      // Debug logging
+      console.log('[FeeCollection] Received data:', {
+        classesCount: data.classes?.length || 0,
+        unassignedCount: data.unassigned?.length || 0,
+        selectedClass,
+        searchQuery
+      });
+      
       // The /students-admin endpoint returns { classes: [...], unassigned: [...] }
       // Extract students from classes array
       let studentsList: Student[] = [];
@@ -149,6 +157,7 @@ export default function FeeCollection() {
         // Extract students from all classes (or just the selected class if filtered)
         data.classes.forEach((cls: any) => {
           if (cls.students && Array.isArray(cls.students)) {
+            console.log(`[FeeCollection] Class ${cls.name} has ${cls.students.length} students`);
             cls.students.forEach((s: any) => {
               studentsList.push({
                 id: s.id,
@@ -175,16 +184,22 @@ export default function FeeCollection() {
         });
       }
       
+      console.log(`[FeeCollection] Extracted ${studentsList.length} students from response`);
+      
       // Only update state if this is still the latest request
       if (requestId === latestRequestRef.current) {
+        // Update allStudents - the debounced effect will handle updating students
+        // This ensures single source of truth for filtering
         setAllStudents(studentsList);
-        // Apply search filter immediately on the newly loaded students
-        // Note: The debounced effect will also handle this, but this ensures immediate update
-        if (searchQuery.trim()) {
-          applySearchFilter(studentsList, searchQuery);
-        } else {
+        console.log(`[FeeCollection] Updated allStudents with ${studentsList.length} students`);
+        
+        // If there's no search query, immediately update students (no need to wait for debounce)
+        // But only if we're not loading (to prevent race conditions)
+        if (!searchQuery.trim()) {
+          console.log(`[FeeCollection] No search query, setting ${studentsList.length} students immediately`);
           setStudents(studentsList);
         }
+        // If there's a search query, let the debounced effect handle it
       }
     } catch (error) {
       console.error('Error loading students:', error);
@@ -202,6 +217,7 @@ export default function FeeCollection() {
   // Apply search filter (predictive - starts with, but also includes partial matches)
   const applySearchFilter = (studentList: Student[], query: string) => {
     if (!query.trim()) {
+      console.log(`[FeeCollection] No search query, setting all ${studentList.length} students`);
       setStudents(studentList);
       return;
     }
@@ -216,6 +232,7 @@ export default function FeeCollection() {
       const rollMatches = rollNumberLower.includes(queryLower);
       return nameStartsWith || nameContains || rollMatches;
     });
+    console.log(`[FeeCollection] Filtered ${filtered.length} students from ${studentList.length} with query "${query}"`);
     setStudents(filtered);
   };
 
@@ -224,20 +241,31 @@ export default function FeeCollection() {
   useEffect(() => {
     // Don't filter if we're loading new students (prevents race condition)
     if (loadingStudents) {
+      console.log('[FeeCollection] Debounced effect skipped - loading students');
       return;
     }
     
-    // Don't filter if allStudents is empty and there's no search query
-    if (allStudents.length === 0 && searchQuery.trim() === '') {
+    // Don't filter if allStudents is empty
+    if (allStudents.length === 0) {
+      console.log('[FeeCollection] Debounced effect skipped - no students available');
+      // If there's no search query and no students, ensure students state is empty
+      if (!searchQuery.trim()) {
+        setStudents([]);
+      }
       return;
     }
+    
+    console.log(`[FeeCollection] Debounced effect triggered - allStudents: ${allStudents.length}, searchQuery: "${searchQuery}"`);
     
     const timeoutId = setTimeout(() => {
       // Only apply filter if we're not loading (double-check to prevent race condition)
-      if (!loadingStudents) {
+      if (!loadingStudents && allStudents.length > 0) {
+        console.log(`[FeeCollection] Debounced effect executing - filtering ${allStudents.length} students`);
         // allStudents is already filtered by class from loadStudents() if selectedClass is set
         // So we just need to apply the search filter
         applySearchFilter(allStudents, searchQuery);
+      } else {
+        console.log('[FeeCollection] Debounced effect cancelled - loading or no students');
       }
     }, 150); // 150ms debounce for better performance
 
@@ -538,11 +566,12 @@ export default function FeeCollection() {
               value={selectedClass}
               onChange={(e) => {
                 const newClass = e.target.value;
+                console.log(`[FeeCollection] Class filter changed to: ${newClass}`);
                 setSelectedClass(newClass);
                 setSearchQuery(''); // Clear search when class changes
-                // Clear students immediately to prevent showing stale data
-                // New data will be loaded by the useEffect that watches selectedClass
-                setStudents([]);
+                // Clear allStudents to prevent debounced effect from using stale data
+                setAllStudents([]);
+                setStudents([]); // Clear displayed students immediately
               }}
               className="w-full border border-gray-300 rounded-lg px-4 py-2"
             >
