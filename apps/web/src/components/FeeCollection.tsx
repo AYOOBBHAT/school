@@ -40,6 +40,7 @@ export default function FeeCollection() {
   const [monthlyLedger, setMonthlyLedger] = useState<MonthlyLedgerEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingClasses, setLoadingClasses] = useState(false);
+  const [loadingStudents, setLoadingStudents] = useState(false); // Track students loading state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
   const [activeFeeTab, setActiveFeeTab] = useState<'class-fee' | 'transport-fee' | 'custom-fee'>('class-fee');
@@ -121,15 +122,22 @@ export default function FeeCollection() {
     // Increment request counter for race condition guard
     const requestId = ++latestRequestRef.current;
     
+    // Set loading state to prevent debounced effect from running with stale data
+    setLoadingStudents(true);
+    
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) return;
+      if (!token) {
+        setLoadingStudents(false);
+        return;
+      }
 
       const data = await loadStudentsForFeeCollection(token, selectedClass || undefined);
       
       // Race condition guard: only update state if this is still the latest request
       if (requestId !== latestRequestRef.current) {
         console.log('[FeeCollection] Ignoring stale request result');
+        setLoadingStudents(false);
         return;
       }
       
@@ -183,6 +191,11 @@ export default function FeeCollection() {
       // IMPORTANT: Do NOT clear students/allStudents on error
       // Only log the error and let the user see the existing data
       // This prevents the disappearing students bug
+    } finally {
+      // Only clear loading state if this is still the latest request
+      if (requestId === latestRequestRef.current) {
+        setLoadingStudents(false);
+      }
     }
   };
 
@@ -209,19 +222,27 @@ export default function FeeCollection() {
   // Debounced search handler - re-applies when search query or students list changes
   // Note: allStudents is already filtered by class from the backend when selectedClass changes
   useEffect(() => {
-    // Don't filter if allStudents is empty (might be loading or error state)
+    // Don't filter if we're loading new students (prevents race condition)
+    if (loadingStudents) {
+      return;
+    }
+    
+    // Don't filter if allStudents is empty and there's no search query
     if (allStudents.length === 0 && searchQuery.trim() === '') {
       return;
     }
     
     const timeoutId = setTimeout(() => {
-      // allStudents is already filtered by class from loadStudents() if selectedClass is set
-      // So we just need to apply the search filter
-      applySearchFilter(allStudents, searchQuery);
+      // Only apply filter if we're not loading (double-check to prevent race condition)
+      if (!loadingStudents) {
+        // allStudents is already filtered by class from loadStudents() if selectedClass is set
+        // So we just need to apply the search filter
+        applySearchFilter(allStudents, searchQuery);
+      }
     }, 150); // 150ms debounce for better performance
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, allStudents]);
+  }, [searchQuery, allStudents, loadingStudents]);
 
   const loadStudentFeeData = async (studentId: string) => {
     setLoading(true);
@@ -516,8 +537,12 @@ export default function FeeCollection() {
             <select
               value={selectedClass}
               onChange={(e) => {
-                setSelectedClass(e.target.value);
+                const newClass = e.target.value;
+                setSelectedClass(newClass);
                 setSearchQuery(''); // Clear search when class changes
+                // Clear students immediately to prevent showing stale data
+                // New data will be loaded by the useEffect that watches selectedClass
+                setStudents([]);
               }}
               className="w-full border border-gray-300 rounded-lg px-4 py-2"
             >
