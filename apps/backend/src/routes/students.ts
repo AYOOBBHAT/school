@@ -3,6 +3,67 @@ import { requireRoles } from '../middleware/auth.js';
 
 const router = Router();
 
+// ======================================================
+// ADMIN/STAFF: LIST STUDENTS (for principal / clerk / teacher)
+// ======================================================
+// Used by Clerk/Principal dashboards and management views.
+// Returns a flat list of students with basic profile info, scoped to the school.
+router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
+  const { user } = req;
+  if (!user) {
+    return res.status(500).json({ error: 'Server misconfigured' });
+  }
+
+  // Use shared admin client (bypass RLS but enforce school_id in query)
+  const { adminSupabase } = await import('../utils/supabaseAdmin.js');
+
+  try {
+    const { data, error } = await adminSupabase
+      .from('students')
+      .select(
+        `
+        id,
+        roll_number,
+        status,
+        profile_id,
+        profiles:profile_id (
+          id,
+          full_name,
+          email,
+          phone
+        )
+      `
+      )
+      .eq('school_id', user.schoolId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[students:list] Error fetching students:', error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    const students =
+      (data || []).map((s: any) => ({
+        id: s.id,
+        roll_number: s.roll_number,
+        status: s.status,
+        profile_id: s.profile_id,
+        profile: {
+          id: s.profiles?.id ?? s.profile_id,
+          full_name: s.profiles?.full_name ?? 'Unknown',
+          email: s.profiles?.email ?? '',
+          phone: s.profiles?.phone ?? undefined,
+        },
+      })) ?? [];
+
+    return res.json({ students });
+  } catch (err: any) {
+    console.error('[students:list] Unexpected error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
 // Get student's own attendance
 router.get('/attendance', requireRoles(['student']), async (req, res) => {
   const { user } = req;
