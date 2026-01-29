@@ -39,7 +39,7 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
       )
       .eq('school_id', user.schoolId)
       .eq('status', 'active')
-      .order('created_at', { ascending: false });
+      .order('roll_number', { ascending: true, nullsFirst: false });
 
     if (error) {
       console.error('[students:list] Error fetching students:', error);
