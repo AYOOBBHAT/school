@@ -169,8 +169,8 @@ router.get('/student/:studentId/monthly-ledger', requireRoles(['clerk', 'princip
     }
 
     if (!result) {
-      return res.json({
-        student_id: studentId,
+    return res.json({
+      student_id: studentId,
         monthly_ledger: [],
         pagination: {
           page,
@@ -260,10 +260,10 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
 
     // Prepare metadata for RPC
     const paymentMeta = {
-      transaction_id: transaction_id || null,
-      cheque_number: cheque_number || null,
-      bank_name: bank_name || null,
-      notes: notes || null
+          transaction_id: transaction_id || null,
+          cheque_number: cheque_number || null,
+          bank_name: bank_name || null,
+          notes: notes || null
     };
 
     // ✅ ONE RPC call - all payment logic happens atomically in PostgreSQL
