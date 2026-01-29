@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, FormEvent } from 'react';
+import { useState, useEffect, useMemo, useCallback, FormEvent, useRef } from 'react';
 import { supabase } from '../utils/supabase';
 import {
   loadClassesForFeeCollection,
@@ -58,6 +58,9 @@ export default function FeeCollection() {
   const [showPaymentHistory, setShowPaymentHistory] = useState(false);
   const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  
+  // Race condition guard: track the latest request ID
+  const latestRequestRef = useRef(0);
 
   useEffect(() => {
     loadClasses();
@@ -115,11 +118,21 @@ export default function FeeCollection() {
   };
 
   const loadStudents = async () => {
+    // Increment request counter for race condition guard
+    const requestId = ++latestRequestRef.current;
+    
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
       const data = await loadStudentsForFeeCollection(token, selectedClass || undefined);
+      
+      // Race condition guard: only update state if this is still the latest request
+      if (requestId !== latestRequestRef.current) {
+        console.log('[FeeCollection] Ignoring stale request result');
+        return;
+      }
+      
       // The /students-admin endpoint returns { classes: [...], unassigned: [...] }
       // Extract students from classes array
       let studentsList: Student[] = [];
@@ -154,16 +167,22 @@ export default function FeeCollection() {
         });
       }
       
-      setAllStudents(studentsList);
-      // Apply search filter immediately on the newly loaded students
-      // Note: The debounced effect will also handle this, but this ensures immediate update
-      if (searchQuery.trim()) {
-        applySearchFilter(studentsList, searchQuery);
-      } else {
-        setStudents(studentsList);
+      // Only update state if this is still the latest request
+      if (requestId === latestRequestRef.current) {
+        setAllStudents(studentsList);
+        // Apply search filter immediately on the newly loaded students
+        // Note: The debounced effect will also handle this, but this ensures immediate update
+        if (searchQuery.trim()) {
+          applySearchFilter(studentsList, searchQuery);
+        } else {
+          setStudents(studentsList);
+        }
       }
     } catch (error) {
       console.error('Error loading students:', error);
+      // IMPORTANT: Do NOT clear students/allStudents on error
+      // Only log the error and let the user see the existing data
+      // This prevents the disappearing students bug
     }
   };
 
@@ -190,6 +209,11 @@ export default function FeeCollection() {
   // Debounced search handler - re-applies when search query or students list changes
   // Note: allStudents is already filtered by class from the backend when selectedClass changes
   useEffect(() => {
+    // Don't filter if allStudents is empty (might be loading or error state)
+    if (allStudents.length === 0 && searchQuery.trim() === '') {
+      return;
+    }
+    
     const timeoutId = setTimeout(() => {
       // allStudents is already filtered by class from loadStudents() if selectedClass is set
       // So we just need to apply the search filter
