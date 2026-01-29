@@ -61,10 +61,9 @@ export default function FeeCollection() {
 
   useEffect(() => {
     loadClasses();
-    loadStudents();
   }, []);
 
-  // Reload students when class filter changes
+  // Load / reload students when class filter changes (runs once on mount as well)
   useEffect(() => {
     loadStudents();
     // Keep search query but it will be re-applied to the new filtered list

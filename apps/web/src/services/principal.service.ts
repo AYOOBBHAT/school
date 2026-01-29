@@ -770,7 +770,7 @@ export async function loadClassesForFees(token: string): Promise<ClassResponse> 
   });
 
   if (!response.ok) {
-    return { classes: [] };
+    throw new Error('Failed to load classes for fees');
   }
 
   return await response.json();
@@ -782,7 +782,7 @@ export async function loadStudentsAdminForFees(token: string): Promise<StudentsA
   });
 
   if (!response.ok) {
-    return { classes: [], unassigned: [] };
+    throw new Error('Failed to load students for fees');
   }
 
   return await response.json();
@@ -1034,7 +1034,7 @@ export async function loadStudentsForSalary(token: string): Promise<{ students: 
   });
 
   if (!response.ok) {
-    return { students: [] };
+    throw new Error('Failed to load students for salary');
   }
 
   return await response.json();
