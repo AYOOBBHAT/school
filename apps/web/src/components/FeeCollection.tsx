@@ -201,11 +201,18 @@ export default function FeeCollection() {
         }
         // If there's a search query, let the debounced effect handle it
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading students:', error);
       // IMPORTANT: Do NOT clear students/allStudents on error
       // Only log the error and let the user see the existing data
       // This prevents the disappearing students bug
+      
+      // Show error message to user if no students are loaded
+      if (allStudents.length === 0 && students.length === 0) {
+        const errorMessage = error?.message || 'Failed to load students';
+        console.error('[FeeCollection] API Error:', errorMessage);
+        // Error will be visible in the UI through the empty state message
+      }
     } finally {
       // Only clear loading state if this is still the latest request
       if (requestId === latestRequestRef.current) {
@@ -655,20 +662,78 @@ export default function FeeCollection() {
             <div className="p-2 bg-gray-50 text-xs text-gray-600 border-b">
               All students in {classes.find(c => c.id === selectedClass)?.name || 'selected class'} ({students.length})
             </div>
-            {students.slice(0, 50).map(student => (
-              <div
-                key={student.id}
-                onClick={() => handleStudentSelect(student)}
-                className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${
-                  selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''
-                }`}
-              >
-                <div className="font-semibold text-gray-900">{student.name}</div>
-                <div className="text-sm text-gray-600">
-                  Roll: {student.roll_number} | Class: {student.class}
+            {loadingStudents ? (
+              <div className="p-4 text-center text-gray-500">Loading students...</div>
+            ) : students.length === 0 ? (
+              <div className="p-4 text-center text-gray-500">No students found in this class</div>
+            ) : (
+              students.slice(0, 50).map(student => (
+                <div
+                  key={student.id}
+                  onClick={() => handleStudentSelect(student)}
+                  className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${
+                    selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''
+                  }`}
+                >
+                  <div className="font-semibold text-gray-900">{student.name}</div>
+                  <div className="text-sm text-gray-600">
+                    Roll: {student.roll_number} | Class: {student.class}
+                  </div>
                 </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Show all students when no search query and no class filter (default view) */}
+        {!searchQuery && !selectedClass && (
+          <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto">
+            {loadingStudents ? (
+              <div className="p-4 text-center text-gray-500">Loading students...</div>
+            ) : students.length === 0 ? (
+              <div className="p-4 text-center text-gray-500">
+                {allStudents.length === 0 ? (
+                  <div>
+                    <p>No students found. Please check:</p>
+                    <ul className="text-xs mt-2 text-left list-disc list-inside space-y-1">
+                      <li>Are there active students in the system?</li>
+                      <li>Is your authentication token valid?</li>
+                      <li>Check browser console for API errors</li>
+                    </ul>
+                  </div>
+                ) : (
+                  <div>
+                    <p>Start typing to search for students</p>
+                    <p className="text-xs mt-1 text-gray-400">Or select a class to filter</p>
+                  </div>
+                )}
               </div>
-            ))}
+            ) : (
+              <>
+                <div className="p-2 bg-gray-50 text-xs text-gray-600 border-b">
+                  All students ({students.length} total) - Type to search or select a class to filter
+                </div>
+                {students.slice(0, 50).map(student => (
+                  <div
+                    key={student.id}
+                    onClick={() => handleStudentSelect(student)}
+                    className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition ${
+                      selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300' : ''
+                    }`}
+                  >
+                    <div className="font-semibold text-gray-900">{student.name}</div>
+                    <div className="text-sm text-gray-600">
+                      Roll: {student.roll_number} | Class: {student.class}
+                    </div>
+                  </div>
+                ))}
+                {students.length > 50 && (
+                  <div className="p-4 text-center text-sm text-gray-500 bg-gray-50">
+                    Showing first 50 students. Use search or class filter to narrow down results.
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
