@@ -32,6 +32,7 @@ interface FeeComponent {
 export default function FeeCollection() {
   const [students, setStudents] = useState<Student[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]); // Store all students for filtering
+  const [totalStudentsCount, setTotalStudentsCount] = useState<number>(0); // Total students from API
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClass, setSelectedClass] = useState<string>(''); // Empty = all classes
   const [classes, setClasses] = useState<ClassGroup[]>([]);
@@ -134,7 +135,8 @@ export default function FeeCollection() {
         return;
       }
 
-      const data = await loadStudentsForFeeCollection(token, selectedClass || undefined);
+      // Use proper pagination - always page 1, limit 50 for initial load
+      const data = await loadStudentsForFeeCollection(token, selectedClass || undefined, 1, 50);
       
       // Race condition guard: only update state if this is still the latest request
       if (requestId !== latestRequestRef.current) {
@@ -204,7 +206,10 @@ export default function FeeCollection() {
         // Update allStudents - the debounced effect will handle updating students
         // This ensures single source of truth for filtering
         setAllStudents(studentsList);
-        console.log(`[FeeCollection] Updated allStudents with ${studentsList.length} students`);
+        // Store total count from API response (never use studentsList.length as total)
+        const totalFromAPI = (data as any).total_students || (data as any).pagination?.total || 0;
+        setTotalStudentsCount(totalFromAPI);
+        console.log(`[FeeCollection] Updated allStudents with ${studentsList.length} students (total from API: ${totalFromAPI})`);
         
         // If there's no search query, immediately update students (no need to wait for debounce)
         // But only if we're not loading (to prevent race conditions)
@@ -675,7 +680,7 @@ export default function FeeCollection() {
         {!searchQuery && selectedClass && (
           <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto">
             <div className="p-2 bg-gray-50 text-xs text-gray-600 border-b">
-              All students in {classes.find(c => c.id === selectedClass)?.name || 'selected class'} ({students.length})
+              Showing {students.length} of {totalStudentsCount || 0} students in {classes.find(c => c.id === selectedClass)?.name || 'selected class'}
             </div>
             {loadingStudents ? (
               <div className="p-4 text-center text-gray-500">Loading students...</div>
@@ -726,7 +731,7 @@ export default function FeeCollection() {
             ) : (
               <>
                 <div className="p-2 bg-gray-50 text-xs text-gray-600 border-b">
-                  All students ({students.length} total) - Type to search or select a class to filter
+                  Showing {allStudents.length} of {totalStudentsCount || 0} students - Type to search or select a class to filter
                 </div>
                 {students.slice(0, 50).map(student => (
                   <div

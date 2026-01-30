@@ -165,6 +165,13 @@ export interface StudentsAdminResponse {
   }>;
   students?: Array<any>;
   total_students?: number;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    total_pages: number;
+    has_more?: boolean;
+  };
 }
 
 // Assignment types
