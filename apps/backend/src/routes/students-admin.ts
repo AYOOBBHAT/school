@@ -105,8 +105,11 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
     }
 
     // Add pagination (critical for 1M+ users)
+    // Always use reasonable limits for scalability
+    const requestedLimit = parseInt(req.query.limit as string) || 50;
+    const maxLimit = 100; // Maximum 100 per page for performance
     const page = parseInt(req.query.page as string) || 1;
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100); // Max 100 per page
+    const limit = Math.min(requestedLimit, maxLimit);
     const offset = (page - 1) * limit;
 
     const result = await (query as any)
@@ -243,7 +246,8 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
         page,
         limit,
         total: count || 0,
-        total_pages: Math.ceil((count || 0) / limit)
+        total_pages: Math.ceil((count || 0) / limit),
+        has_more: (count || 0) > (offset + limit)
       }
     });
   } catch (err: any) {

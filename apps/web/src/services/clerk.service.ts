@@ -36,21 +36,23 @@ export async function loadStudents(token: string): Promise<StudentResponse> {
  * @param classGroupId - Optional class group ID to filter by
  * @returns Students data with classes structure
  */
-export async function loadStudentsForFeeCollection(token: string, classGroupId?: string): Promise<StudentsAdminResponse> {
-  let url = `${API_URL}${ROUTES.studentsAdmin}`;
+export async function loadStudentsForFeeCollection(
+  token: string, 
+  classGroupId?: string,
+  page: number = 1,
+  limit: number = 50
+): Promise<StudentsAdminResponse> {
   const params = new URLSearchParams();
   
   if (classGroupId) {
     params.append('class_group_id', classGroupId);
   }
   
-  // Add pagination to ensure we get all students (increase limit if needed)
-  params.append('page', '1');
-  params.append('limit', '100'); // Get up to 100 students per page
+  // Use proper pagination - always reasonable limits for scalability
+  params.append('page', page.toString());
+  params.append('limit', Math.min(limit, 100).toString()); // Max 100 per page
   
-  if (params.toString()) {
-    url += `?${params.toString()}`;
-  }
+  const url = `${API_URL}${ROUTES.studentsAdmin}?${params.toString()}`;
 
   console.log('[clerk.service] Loading students from:', url);
 
