@@ -38,9 +38,21 @@ export async function loadStudents(token: string): Promise<StudentResponse> {
  */
 export async function loadStudentsForFeeCollection(token: string, classGroupId?: string): Promise<StudentsAdminResponse> {
   let url = `${API_URL}${ROUTES.studentsAdmin}`;
+  const params = new URLSearchParams();
+  
   if (classGroupId) {
-    url += `?class_group_id=${classGroupId}`;
+    params.append('class_group_id', classGroupId);
   }
+  
+  // Add pagination to ensure we get all students (increase limit if needed)
+  params.append('page', '1');
+  params.append('limit', '100'); // Get up to 100 students per page
+  
+  if (params.toString()) {
+    url += `?${params.toString()}`;
+  }
+
+  console.log('[clerk.service] Loading students from:', url);
 
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` }
@@ -53,12 +65,21 @@ export async function loadStudentsForFeeCollection(token: string, classGroupId?:
       url,
       status: response.status,
       statusText: response.statusText,
-      error: errorMessage
+      error: errorMessage,
+      classGroupId
     });
     throw new Error(errorMessage);
   }
 
-  return await response.json();
+  const data = await response.json();
+  console.log('[clerk.service] Successfully loaded students:', {
+    classesCount: data.classes?.length || 0,
+    unassignedCount: data.unassigned?.length || 0,
+    total_students: data.total_students,
+    classGroupId
+  });
+  
+  return data;
 }
 
 /**
