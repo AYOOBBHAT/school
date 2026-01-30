@@ -110,7 +110,9 @@ export default function FeeCollection() {
       if (!token) return;
 
       const data = await loadClassesForFeeCollection(token);
-      setClasses(data.classes || []);
+      const classesList = data.classes || [];
+      console.log('[FeeCollection] Loaded classes:', classesList.map((c: any) => ({ id: c.id, name: c.name })));
+      setClasses(classesList);
     } catch (error) {
       console.error('Error loading classes:', error);
     } finally {
@@ -141,12 +143,15 @@ export default function FeeCollection() {
         return;
       }
       
-      // Debug logging
+      // Debug logging - detailed response inspection
       console.log('[FeeCollection] Received data:', {
         classesCount: data.classes?.length || 0,
         unassignedCount: data.unassigned?.length || 0,
         selectedClass,
-        searchQuery
+        searchQuery,
+        total_students: (data as any).total_students,
+        pagination: (data as any).pagination,
+        fullResponse: data
       });
       
       // The /students-admin endpoint returns { classes: [...], unassigned: [...] }
@@ -154,21 +159,29 @@ export default function FeeCollection() {
       let studentsList: Student[] = [];
       
       if (data.classes && Array.isArray(data.classes)) {
+        console.log(`[FeeCollection] Processing ${data.classes.length} classes`);
         // Extract students from all classes (or just the selected class if filtered)
         data.classes.forEach((cls: any) => {
+          console.log(`[FeeCollection] Processing class: ${cls.name} (id: ${cls.id}), students: ${cls.students?.length || 0}`);
           if (cls.students && Array.isArray(cls.students)) {
             console.log(`[FeeCollection] Class ${cls.name} has ${cls.students.length} students`);
             cls.students.forEach((s: any) => {
+              const studentName = s.profile?.full_name || 'Unknown';
+              console.log(`[FeeCollection] Adding student: ${studentName} (id: ${s.id}, roll: ${s.roll_number})`);
               studentsList.push({
                 id: s.id,
-                name: s.profile?.full_name || 'Unknown',
+                name: studentName,
                 roll_number: s.roll_number || 'N/A',
                 class: cls.name || 'N/A',
                 class_group_id: cls.id
               });
             });
+          } else {
+            console.warn(`[FeeCollection] Class ${cls.name} has no students array or it's not an array:`, cls);
           }
         });
+      } else {
+        console.warn('[FeeCollection] No classes array in response or it\'s not an array:', data.classes);
       }
       
       // Also include unassigned students if no class filter is selected
@@ -573,7 +586,9 @@ export default function FeeCollection() {
               value={selectedClass}
               onChange={(e) => {
                 const newClass = e.target.value;
-                console.log(`[FeeCollection] Class filter changed to: ${newClass}`);
+                const selectedClassObj = classes.find(c => c.id === newClass);
+                console.log(`[FeeCollection] Class filter changed to: ${newClass} (${selectedClassObj?.name || 'unknown'})`);
+                console.log('[FeeCollection] Available classes:', classes.map((c: any) => ({ id: c.id, name: c.name })));
                 setSelectedClass(newClass);
                 setSearchQuery(''); // Clear search when class changes
                 // Clear allStudents to prevent debounced effect from using stale data
