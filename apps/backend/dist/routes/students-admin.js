@@ -125,27 +125,68 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
         // Group students by class
         const studentsByClass = {};
         const unassignedStudents = [];
+        const classIdsToFetch = new Set();
         studentsWithClasses.forEach((student) => {
-            if (student.class_group_id && student.class_groups) {
+            if (student.class_group_id) {
                 const classId = student.class_group_id;
                 if (!studentsByClass[classId]) {
                     studentsByClass[classId] = [];
                 }
                 studentsByClass[classId].push(student);
+                // If class_groups relation wasn't loaded, we'll fetch it separately
+                if (!student.class_groups) {
+                    classIdsToFetch.add(classId);
+                }
             }
             else {
                 unassignedStudents.push(student);
             }
         });
+        // Fetch class details for classes that weren't loaded in the relation
+        const classDetailsMap = {};
+        if (classIdsToFetch.size > 0) {
+            const { data: classDetails, error: classError } = await adminSupabase
+                .from('class_groups')
+                .select(`
+          id,
+          name,
+          description,
+          classifications:class_classifications(
+            classification_value:classification_values(
+              id,
+              value,
+              classification_type:classification_types(id, name)
+            )
+          )
+        `)
+                .in('id', Array.from(classIdsToFetch))
+                .eq('school_id', user.schoolId);
+            if (!classError && classDetails) {
+                classDetails.forEach((cls) => {
+                    const classifications = (cls.classifications || []).map((cc) => ({
+                        type: cc.classification_value?.classification_type?.name || 'Unknown',
+                        value: cc.classification_value?.value || 'Unknown',
+                        type_id: cc.classification_value?.classification_type?.id || '',
+                        value_id: cc.classification_value?.id || ''
+                    }));
+                    classDetailsMap[cls.id] = {
+                        ...cls,
+                        classifications
+                    };
+                });
+            }
+        }
         // Get class details for each class
         const classesWithStudents = Object.keys(studentsByClass).map(classId => {
             const classStudents = studentsByClass[classId];
             const firstStudent = classStudents[0];
+            // Use class_groups from relation if available, otherwise use fetched classDetailsMap
+            const classGroup = firstStudent.class_groups || classDetailsMap[classId];
             return {
                 id: classId,
-                name: firstStudent.class_groups?.name || 'Unknown Class',
-                description: firstStudent.class_groups?.description || '',
-                classifications: firstStudent.class_groups?.classifications || [],
+                name: classGroup?.name || 'Unknown Class',
+                description: classGroup?.description || '',
+                classifications: classGroup?.classifications || [],
                 students: classStudents.map((s) => ({
                     id: s.id,
                     roll_number: s.roll_number,
