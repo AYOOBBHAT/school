@@ -47,7 +47,15 @@ export async function loadStudentsForFeeCollection(token: string, classGroupId?:
   });
 
   if (!response.ok) {
-    throw new Error('Failed to load students for fee collection');
+    const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+    const errorMessage = errorData?.error || `Failed to load students (${response.status})`;
+    console.error('[clerk.service] Failed to load students:', {
+      url,
+      status: response.status,
+      statusText: response.statusText,
+      error: errorMessage
+    });
+    throw new Error(errorMessage);
   }
 
   return await response.json();
