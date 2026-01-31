@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireRoles } from '../middleware/auth.js';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
+import { cacheFetch, invalidateCache } from '../utils/cache.js';
 
 const router = Router();
 
@@ -14,42 +15,236 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
   // Use service role key to bypass RLS for admin operations
 
   try {
+    // For principal, use cache for summary (when no filters applied)
+    const isPrincipalSummary = user.role === 'principal' && !class_group_id && !subject_id && !section_id;
+    const cacheKey = `school:${user.schoolId || ''}:principal:students:summary`;
+
+    if (isPrincipalSummary) {
+      const cached = await cacheFetch(cacheKey, async () => {
+        return await fetchStudentsSummary(user.schoolId);
+      });
+
+      return res.json(cached);
+    }
+
+    // For filtered queries or other roles, fetch directly (no cache)
+    const result = await fetchStudentsData(user, req.query);
+    return res.json(result);
+  } catch (err: any) {
+    console.error('[students-admin] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+/**
+ * Fetch students summary with proper total count (for principal dashboard)
+ * Groups by class and returns total_students from DB query
+ */
+async function fetchStudentsSummary(schoolId: string | null | undefined) {
+  if (!schoolId) {
+    throw new Error('School ID is required');
+  }
+  // Get total count of all active students (separate query for accuracy)
+  const { count: totalCount, error: countError } = await adminSupabase
+    .from('students')
+    .select('*', { count: 'exact', head: true })
+    .eq('school_id', schoolId)
+    .eq('status', 'active');
+
+  if (countError) {
+    console.error('[students-admin] Error getting total count:', countError);
+    throw new Error(countError.message);
+  }
+
+  // Get students grouped by class (with pagination for large datasets)
+  const { data: students, error: studentsError } = await adminSupabase
+    .from('students')
+    .select(`
+      id,
+      roll_number,
+      status,
+      admission_date,
+      class_group_id,
+      section_id,
+      profile:profiles!students_profile_id_fkey(
+        id,
+        full_name,
+        email,
+        phone,
+        created_at
+      ),
+      class_groups:class_group_id(
+        id,
+        name,
+        description,
+        classifications:class_classifications(
+          classification_value:classification_values(
+            id,
+            value,
+            classification_type:classification_types(id, name)
+          )
+        )
+      ),
+      sections:section_id(
+        id,
+        name
+      )
+    `)
+    .eq('school_id', schoolId)
+    .eq('status', 'active')
+    .order('roll_number', { ascending: true, nullsFirst: false })
+    .limit(10000); // High limit for summary (cached, so acceptable)
+
+  if (studentsError) {
+    console.error('[students-admin] Error fetching students:', studentsError);
+    throw new Error(studentsError.message);
+  }
+
+  // Group students by class
+  const studentsByClass: Record<string, any[]> = {};
+  const unassignedStudents: any[] = [];
+  const classIdsToFetch: Set<string> = new Set();
+
+  (students || []).forEach((student: any) => {
+    if (student.class_group_id) {
+      const classId = student.class_group_id;
+      if (!studentsByClass[classId]) {
+        studentsByClass[classId] = [];
+      }
+      studentsByClass[classId].push(student);
+      
+      if (!student.class_groups) {
+        classIdsToFetch.add(classId);
+      }
+    } else {
+      unassignedStudents.push(student);
+    }
+  });
+
+  // Fetch class details for classes that weren't loaded in the relation
+  const classDetailsMap: Record<string, any> = {};
+  if (classIdsToFetch.size > 0) {
+    const { data: classDetails, error: classError } = await adminSupabase
+      .from('class_groups')
+      .select(`
+        id,
+        name,
+        description,
+        classifications:class_classifications(
+          classification_value:classification_values(
+            id,
+            value,
+            classification_type:classification_types(id, name)
+          )
+        )
+      `)
+      .in('id', Array.from(classIdsToFetch))
+      .eq('school_id', schoolId);
+
+    if (!classError && classDetails) {
+      classDetails.forEach((cls: any) => {
+        const classifications = (cls.classifications || []).map((cc: any) => ({
+          type: cc.classification_value?.classification_type?.name || 'Unknown',
+          value: cc.classification_value?.value || 'Unknown',
+          type_id: cc.classification_value?.classification_type?.id || '',
+          value_id: cc.classification_value?.id || ''
+        }));
+        classDetailsMap[cls.id] = {
+          ...cls,
+          classifications
+        };
+      });
+    }
+  }
+
+  // Build classes array with student counts
+  const classesWithStudents = Object.keys(studentsByClass).map(classId => {
+    const classStudents = studentsByClass[classId];
+    const firstStudent = classStudents[0];
+    const classGroup = firstStudent.class_groups || classDetailsMap[classId];
+    
+    return {
+      id: classId,
+      name: classGroup?.name || 'Unknown Class',
+      description: classGroup?.description || '',
+      classifications: classGroup?.classifications || [],
+      students: classStudents.map((s: any) => ({
+        id: s.id,
+        roll_number: s.roll_number,
+        status: s.status,
+        admission_date: s.admission_date,
+        section_id: s.section_id,
+        section_name: s.sections?.name || null,
+        profile: s.profile
+      })),
+      student_count: classStudents.length
+    };
+  });
+
+  // Sort classes by name
+  classesWithStudents.sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    classes: classesWithStudents,
+    unassigned: unassignedStudents.map((s: any) => ({
+      id: s.id,
+      roll_number: s.roll_number,
+      status: s.status,
+      admission_date: s.admission_date,
+      profile: s.profile
+    })),
+    total_students: totalCount || 0, // Use count from separate query, not students.length
+    pagination: {
+      page: 1,
+      limit: 10000,
+      total: totalCount || 0,
+      total_pages: 1
+    }
+  };
+}
+
+/**
+ * Fetch students data with filters and pagination (for filtered queries)
+ */
+async function fetchStudentsData(user: any, queryParams: any) {
+  try {
+    const { class_group_id, subject_id, section_id } = queryParams;
     let classGroupIds: string[] = [];
 
     // For teachers, only show students from their assigned classes
     if (user.role === 'teacher') {
-      const { data: assignments, error: assignmentError } = await adminSupabase
-        .from('teacher_assignments')
-        .select('class_group_id, section_id, subject_id')
-        .eq('teacher_id', user.id)
-        .eq('school_id', user.schoolId);
+    const { data: assignments, error: assignmentError } = await adminSupabase
+      .from('teacher_assignments')
+      .select('class_group_id, section_id, subject_id')
+      .eq('teacher_id', user.id)
+      .eq('school_id', user.schoolId);
 
-      if (assignmentError) {
-        console.error('[students-admin] Error fetching teacher assignments:', assignmentError);
-        return res.status(400).json({ error: assignmentError.message });
-      }
+    if (assignmentError) {
+      console.error('[students-admin] Error fetching teacher assignments:', assignmentError);
+      throw new Error(assignmentError.message);
+    }
 
-      if (!assignments || assignments.length === 0) {
-        return res.json({ classes: [], unassigned: [], total_students: 0 });
-      }
+    if (!assignments || assignments.length === 0) {
+      return { classes: [], unassigned: [], total_students: 0, pagination: { page: 1, limit: 50, total: 0, total_pages: 1 } };
+    }
 
-      // Filter by query params if provided
-      let filteredAssignments = assignments;
-      if (class_group_id) {
-        filteredAssignments = filteredAssignments.filter((a: any) => a.class_group_id === class_group_id);
-      }
-      if (subject_id) {
-        filteredAssignments = filteredAssignments.filter((a: any) => a.subject_id === subject_id);
-      }
-      if (section_id) {
-        filteredAssignments = filteredAssignments.filter((a: any) => a.section_id === section_id);
-      }
+    // Filter by query params if provided
+    let filteredAssignments = assignments;
+    if (class_group_id) {
+      filteredAssignments = filteredAssignments.filter((a: any) => a.class_group_id === class_group_id);
+    }
+    if (subject_id) {
+      filteredAssignments = filteredAssignments.filter((a: any) => a.subject_id === subject_id);
+    }
+    if (section_id) {
+      filteredAssignments = filteredAssignments.filter((a: any) => a.section_id === section_id);
+    }
 
-      classGroupIds = [...new Set(filteredAssignments.map((a: any) => a.class_group_id))];
+    classGroupIds = [...new Set(filteredAssignments.map((a: any) => a.class_group_id))];
 
-      if (classGroupIds.length === 0) {
-        return res.json({ classes: [], unassigned: [], total_students: 0 });
-      }
+    if (classGroupIds.length === 0) {
+      return { classes: [], unassigned: [], total_students: 0, pagination: { page: 1, limit: 50, total: 0, total_pages: 1 } };
+    }
     }
 
     // Build query
@@ -106,11 +301,35 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
 
     // Add pagination (critical for 1M+ users)
     // Always use reasonable limits for scalability
-    const requestedLimit = parseInt(req.query.limit as string) || 50;
+    const requestedLimit = parseInt(queryParams.limit as string) || 50;
     const maxLimit = 100; // Maximum 100 per page for performance
-    const page = parseInt(req.query.page as string) || 1;
+    const page = parseInt(queryParams.page as string) || 1;
     const limit = Math.min(requestedLimit, maxLimit);
     const offset = (page - 1) * limit;
+
+    // Get total count first (separate query for accuracy)
+    const countQuery = adminSupabase
+      .from('students')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', user.schoolId)
+      .eq('status', 'active');
+
+    if (user.role === 'teacher' && classGroupIds.length > 0) {
+      countQuery.in('class_group_id', classGroupIds);
+    }
+    if (class_group_id && user.role !== 'teacher') {
+      countQuery.eq('class_group_id', class_group_id as string);
+    }
+    if (section_id) {
+      countQuery.eq('section_id', section_id as string);
+    }
+
+    const { count: totalCount, error: countError } = await countQuery;
+
+    if (countError) {
+      console.error('[students-admin] Error getting total count:', countError);
+      throw new Error(countError.message);
+    }
 
     const result = await (query as any)
       .select('*', { count: 'exact' })
@@ -121,7 +340,7 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
 
     if (error) {
       console.error('[students-admin] Error fetching students:', error);
-      return res.status(400).json({ error: error.message });
+      throw new Error(error.message);
     }
 
     // Transform classifications for classes
@@ -232,7 +451,7 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
     // Sort classes by name
     classesWithStudents.sort((a, b) => a.name.localeCompare(b.name));
 
-    return res.json({
+    return {
       classes: classesWithStudents,
       unassigned: unassignedStudents.map((s: any) => ({
         id: s.id,
@@ -241,20 +460,20 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
         admission_date: s.admission_date,
         profile: s.profile
       })),
-      total_students: count || 0,
+      total_students: totalCount || 0, // Use totalCount from separate query, not count from paginated query
       pagination: {
         page,
         limit,
-        total: count || 0,
-        total_pages: Math.ceil((count || 0) / limit),
-        has_more: (count || 0) > (offset + limit)
+        total: totalCount || 0,
+        total_pages: Math.ceil((totalCount || 0) / limit),
+        has_more: (totalCount || 0) > (offset + limit)
       }
-    });
+    };
   } catch (err: any) {
-    console.error('[students-admin] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    console.error('[students-admin] Error in fetchStudentsData:', err);
+    throw err;
   }
-});
+}
 
 // Get student's current fee configuration
 router.get('/:studentId/fee-config', requireRoles(['principal', 'clerk']), async (req, res) => {
@@ -868,6 +1087,10 @@ router.put('/:studentId', requireRoles(['principal', 'clerk']), async (req, res)
     }
 
     console.log('[students-admin] Student updated successfully:', updatedStudent);
+    
+    // Invalidate cache after student update
+    await invalidateCache(`school:${user.schoolId}:principal:students:summary`);
+
     return res.json({ student: updatedStudent, message: 'Student updated successfully' });
   } catch (err: any) {
     console.error('[students-admin] Error:', err);
@@ -953,6 +1176,9 @@ router.post('/:studentId/promote', requireRoles(['principal', 'clerk']), async (
       from_class: student.class_group_id,
       to_class: target_class_id
     });
+
+    // Invalidate cache after student promotion
+    await invalidateCache(`school:${user.schoolId}:principal:students:summary`);
 
     return res.json({
       student: updatedStudent,
@@ -1042,6 +1268,9 @@ router.post('/class/:classId/promote', requireRoles(['principal', 'clerk']), asy
       to_class: targetClass.name,
       students_count: students.length
     });
+
+    // Invalidate cache after class promotion
+    await invalidateCache(`school:${user.schoolId}:principal:students:summary`);
 
     return res.json({
       message: `Successfully moved ${students.length} students from ${sourceClass.name} to ${targetClass.name}`,

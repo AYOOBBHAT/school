@@ -34,11 +34,30 @@ export async function cacheFetch<T>(
 
 /**
  * Invalidate cache entry (used after writes)
- * @param key - Cache key to invalidate
+ * @param key - Cache key to invalidate (supports wildcard patterns like "school:123:salary:unpaid:*")
  */
 export async function invalidateCache(key: string) {
   try {
-    await redis.del(key);
+    if (key.includes('*')) {
+      // Wildcard pattern - invalidate all matching keys
+      // For Upstash Redis, we need to invalidate all possible combinations
+      // Since we know the pattern, we'll invalidate common time scopes
+      const baseKey = key.replace(/\*/g, '');
+      const timeScopes = ['last_month', 'last_2_months', 'last_3_months', 'last_6_months', 'last_12_months', 'current_academic_year'];
+      const suffixes = ['all', ...timeScopes];
+      
+      const keysToDelete: string[] = [];
+      for (const suffix of suffixes) {
+        keysToDelete.push(`${baseKey}${suffix}`);
+      }
+      
+      if (keysToDelete.length > 0) {
+        // Delete all matching keys
+        await Promise.all(keysToDelete.map(k => redis.del(k).catch(() => {})));
+      }
+    } else {
+      await redis.del(key);
+    }
   } catch (error) {
     // Log but don't throw - cache invalidation failure shouldn't break the request
     console.error('[cache] Failed to invalidate cache:', error);
