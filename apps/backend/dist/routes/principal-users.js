@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Joi from 'joi';
 import { requireRoles } from '../middleware/auth.js';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
+import { invalidateCache } from '../utils/cache.js';
 const router = Router();
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -675,6 +676,8 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
                 console.error('[principal-users] Error setting up fee configuration:', feeErr);
             }
         }
+        // Invalidate cache after student creation
+        await invalidateCache(`school:${user.schoolId}:principal:students:summary`);
         return res.status(201).json({
             message: 'Student added successfully',
             user: { id: authData.user.id, email: value.email, full_name: value.full_name }

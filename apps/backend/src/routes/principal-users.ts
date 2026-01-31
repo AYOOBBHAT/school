@@ -3,6 +3,7 @@ import Joi from 'joi';
 import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
+import { invalidateCache } from '../utils/cache.js';
 
 const router = Router();
 
@@ -761,6 +762,9 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
         console.error('[principal-users] Error setting up fee configuration:', feeErr);
       }
     }
+
+    // Invalidate cache after student creation
+    await invalidateCache(`school:${user.schoolId}:principal:students:summary`);
 
     return res.status(201).json({
       message: 'Student added successfully',
