@@ -1,20 +1,24 @@
--- Migration: Atomic Fee Payment Collection RPC (Simplified)
--- Purpose: Move fee payment writes to PostgreSQL for atomic operations
--- Author: Senior Developer - Production Optimization
+-- Migration: Fix pending_amount check constraint violation
+-- Purpose: Fix bug in collect_fee_payment_atomic where v_remaining was incorrectly calculated
 -- Date: 2026-01-XX
 --
--- This function handles payment distribution, component updates, and receipt generation
--- All writes happen in a single transaction with row locking
+-- Issue: Line 134 was subtracting rec.pending_amount instead of v_amount_to_pay,
+--        which could cause pending_amount to go negative, violating the check constraint
+--        "monthly_fee_components_pending_amount_check" (pending_amount >= 0)
+--
+-- Fix: 
+--   1. Declare v_amount_to_pay variable
+--   2. Calculate v_amount_to_pay = least(v_remaining, rec.pending_amount) before update
+--   3. Use greatest(0, pending_amount - v_amount_to_pay) to ensure pending_amount >= 0
+--   4. Subtract v_amount_to_pay (not rec.pending_amount) from v_remaining
 
 -- ============================================
--- RPC Function: collect_fee_payment_atomic
+-- RPC Function: collect_fee_payment_atomic (Fixed)
 -- ============================================
--- Drop existing function if it exists (to handle parameter name changes)
 
 drop function if exists collect_fee_payment_atomic(uuid, uuid, uuid[], numeric, date, text, uuid, jsonb);
 drop function if exists collect_fee_payment_atomic(uuid, uuid, uuid[], numeric, date, text, uuid);
 
--- Create the function
 create or replace function collect_fee_payment_atomic(
   p_school_id uuid,
   p_student_id uuid,
@@ -35,7 +39,7 @@ declare
   rec record;
   v_total_paid numeric := 0;
   v_error_message text;
-  v_amount_to_pay numeric;
+  v_amount_to_pay numeric; -- FIX: Declare variable for amount actually paid
 begin
   -- Validate input
   if p_school_id is null or p_student_id is null or p_component_ids is null 
@@ -88,7 +92,7 @@ begin
       continue;
     end if;
 
-    -- Calculate amount to pay for this component
+    -- FIX: Calculate amount to pay BEFORE using it
     v_amount_to_pay := least(v_remaining, rec.pending_amount);
 
     -- Insert payment record
@@ -121,13 +125,13 @@ begin
       (p_meta->>'notes')
     );
 
-    -- Update component amounts
+    -- FIX: Update component amounts with greatest(0, ...) to ensure pending_amount >= 0
     update monthly_fee_components
     set 
       paid_amount = paid_amount + v_amount_to_pay,
-      pending_amount = greatest(0, pending_amount - v_amount_to_pay), -- Ensure pending_amount >= 0 to satisfy check constraint
+      pending_amount = greatest(0, pending_amount - v_amount_to_pay), -- FIX: Ensure pending_amount >= 0 to satisfy check constraint
       status = case
-        when (pending_amount - v_amount_to_pay) <= 0 then 'paid'
+        when (pending_amount - v_amount_to_pay) <= 0.01 then 'paid' -- Use 0.01 to handle rounding
         when (paid_amount + v_amount_to_pay) > 0 then 'partially-paid'
         else status
       end,
@@ -135,7 +139,8 @@ begin
     where id = rec.id;
 
     v_total_paid := v_total_paid + v_amount_to_pay;
-    v_remaining := v_remaining - v_amount_to_pay; -- Fix: subtract actual amount paid, not rec.pending_amount
+    -- FIX: Subtract actual amount paid, not rec.pending_amount
+    v_remaining := v_remaining - v_amount_to_pay;
   end loop;
 
   -- Validate that payment was distributed
@@ -166,25 +171,9 @@ $$;
 
 -- Add comment
 comment on function collect_fee_payment_atomic is 
-  'Atomically collects fee payments for multiple components. Handles payment distribution, component updates, and receipt generation in a single transaction.';
+  'Atomically collects fee payments for multiple components. Handles payment distribution, component updates, and receipt generation in a single transaction. FIXED: Correctly calculates v_remaining and ensures pending_amount >= 0.';
 
 -- ============================================
 -- Refresh schema cache
 -- ============================================
 NOTIFY pgrst, 'reload schema';
-
--- ============================================
--- VERIFICATION
--- ============================================
--- Test the function:
---
--- SELECT collect_fee_payment_atomic(
---   'school-uuid'::uuid,
---   'student-uuid'::uuid,
---   ARRAY['component-uuid-1'::uuid, 'component-uuid-2'::uuid],
---   5000.00::numeric,
---   '2026-01-15'::date,
---   'cash',
---   'user-uuid'::uuid,
---   '{"transaction_id": null, "notes": "Test payment"}'::jsonb
--- );

@@ -64,6 +64,27 @@ export default function FeeDetailsDrawer({
     }
   }, [isOpen, student]);
 
+  // Lock body scroll when drawer is open (production-grade UX)
+  useEffect(() => {
+    if (isOpen) {
+      // Save current scroll position
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+      document.body.style.overflow = 'hidden';
+      
+      return () => {
+        // Restore scroll position when drawer closes
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        document.body.style.overflow = '';
+        window.scrollTo(0, scrollY);
+      };
+    }
+  }, [isOpen]);
+
   // Close drawer on ESC key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -260,22 +281,28 @@ export default function FeeDetailsDrawer({
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop with smooth fade-in animation */}
       <div
-        className="fixed inset-0 bg-black/40 z-40 transition-opacity"
+        className={`fixed inset-0 bg-black/40 z-40 transition-opacity duration-300 ${
+          isOpen ? 'opacity-100' : 'opacity-0'
+        }`}
         onClick={onClose}
+        aria-hidden="true"
       />
 
-      {/* Drawer */}
+      {/* Drawer with smooth slide-in animation */}
       <div
         className={`fixed top-0 right-0 h-full w-[460px] bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         } flex flex-col`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drawer-title"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b bg-gray-50">
           <div className="flex-1">
-            <h2 className="text-xl font-bold text-gray-900">{student.name}</h2>
+            <h2 id="drawer-title" className="text-xl font-bold text-gray-900">{student.name}</h2>
             <div className="text-sm text-gray-600 mt-1">
               Roll: {student.roll_number} | Class: {student.class}
             </div>

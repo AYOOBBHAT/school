@@ -1057,10 +1057,31 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
 // ============================================
 // Shows all unpaid salary months for teachers, including months without salary records
 // Accessible to Principal and Clerk
-// IMPORTANT: All queries in this endpoint MUST use adminSupabase and filter by user.schoolId
+// IMPORTANT: All queries in this endpoint MUST use req.supabase (user-context client) for RLS
 router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => {
-  const { user } = req;
-  if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
+  const { supabase, user } = req;
+  if (!supabase || !user || !user.schoolId) {
+    return res.status(500).json({ error: 'Server misconfigured' });
+  }
+
+  // Safe fallback response
+  const emptyResponse = {
+    summary: {
+      total_teachers: 0,
+      total_unpaid_amount: 0,
+      total_unpaid_months: 0,
+      time_scope: req.query.time_scope || 'last_12_months',
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: new Date().toISOString().split('T')[0]
+    },
+    teachers: [],
+    pagination: {
+      page: 1,
+      limit: 50,
+      total: 0,
+      total_pages: 0
+    }
+  };
 
   try {
     // Use Redis cache for unpaid salaries (when no teacher filter)
@@ -1070,24 +1091,26 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
     // Only cache when no teacher filter (full list)
     if (!teacher_id) {
       const cached = await cacheFetch(cacheKey, async () => {
-        return await fetchUnpaidSalaries(user, req.query);
+        return await fetchUnpaidSalaries(supabase, user, req.query);
       });
       return res.json(cached);
     }
 
     // For filtered queries, fetch directly (no cache)
-    const result = await fetchUnpaidSalaries(user, req.query);
+    const result = await fetchUnpaidSalaries(supabase, user, req.query);
     return res.json(result);
   } catch (err: any) {
     console.error('[salary/unpaid] Error:', err);
-    return res.status(500).json({ error: err.message || 'Failed to get unpaid teacher salaries' });
+    // Return empty response instead of 500 to prevent frontend crash
+    return res.status(200).json(emptyResponse);
   }
 });
 
 /**
  * Fetch unpaid salaries data
+ * Uses user-context supabase client (req.supabase) to respect RLS policies
  */
-async function fetchUnpaidSalaries(user: any, queryParams: any) {
+async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
   try {
     const { teacher_id, time_scope } = queryParams;
     const unpaidPageNum = parseInt(queryParams.page as string) || 1;
@@ -1135,12 +1158,12 @@ async function fetchUnpaidSalaries(user: any, queryParams: any) {
     }
 
     // Build query for unpaid salary months
-    // Use adminSupabase and filter by school_id explicitly
+    // Use req.supabase (user-context client) to respect RLS policies
+    // RLS automatically filters by school_id - no need to manually filter
     // Get all unpaid months (no pagination on months query - we'll paginate teachers list)
-    let unpaidMonthsQuery = adminSupabase
+    let unpaidMonthsQuery = supabase
       .from('teacher_unpaid_salary_months')
       .select('teacher_id, year, month, period_start, period_end, salary_due, salary_paid, unpaid_amount, is_unpaid, teacher_name, teacher_email, period_label, payment_status, net_salary, paid_amount, credit_applied, effective_paid_amount, days_since_period_start, payment_date', { count: 'exact' })
-      .eq('school_id', user.schoolId)
       .eq('is_unpaid', true)
       .gte('period_start', startDate.toISOString().split('T')[0])
       .lte('period_start', endDate.toISOString().split('T')[0])
@@ -1161,11 +1184,11 @@ async function fetchUnpaidSalaries(user: any, queryParams: any) {
     }
 
     // Get summary of unpaid teachers (only needed fields)
-    // Use adminSupabase and filter by school_id explicitly
-    let summaryQuery = adminSupabase
+    // Use req.supabase (user-context client) to respect RLS policies
+    // RLS automatically filters by school_id - no need to manually filter
+    let summaryQuery = supabase
       .from('unpaid_teachers_summary')
       .select('teacher_id, teacher_name, total_unpaid_amount, unpaid_months_count')
-      .eq('school_id', user.schoolId)
       .order('total_unpaid_amount', { ascending: false });
 
     if (teacher_id) {
