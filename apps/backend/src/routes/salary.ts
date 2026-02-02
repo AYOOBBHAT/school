@@ -1109,6 +1109,7 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
 /**
  * Fetch unpaid salaries data
  * Uses user-context supabase client (req.supabase) to respect RLS policies
+ * CRITICAL: Explicitly filters by school_id for defense-in-depth security
  */
 async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
   try {
@@ -1116,6 +1117,11 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
     const unpaidPageNum = parseInt(queryParams.page as string) || 1;
     const unpaidLimitNum = Math.min(parseInt(queryParams.limit as string) || 50, 100);
     
+    // Validate inputs
+    if (!user.schoolId) {
+      throw new Error('User school_id is required');
+    }
+
     // Validate time scope
     const validTimeScopes = ['last_month', 'last_2_months', 'last_3_months', 'last_6_months', 'last_12_months', 'current_academic_year'];
     const timeScope = (time_scope as string) || 'last_12_months';
@@ -1126,6 +1132,7 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
 
     // Calculate date range based on time scope
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     let startDate: Date;
     let endDate: Date = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -1157,17 +1164,22 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
         startDate = new Date(today.getFullYear(), today.getMonth() - 12, 1);
     }
 
+    const startDateStr = startDate.toISOString().split('T')[0];
+    const endDateStr = endDate.toISOString().split('T')[0];
+
+    console.log(`[salary/unpaid] Fetching for school: ${user.schoolId}, time_scope: ${timeScope}, date_range: ${startDateStr} to ${endDateStr}`);
+
     // Build query for unpaid salary months
-    // Use req.supabase (user-context client) to respect RLS policies
-    // RLS automatically filters by school_id - no need to manually filter
-    // Get all unpaid months (no pagination on months query - we'll paginate teachers list)
+    // CRITICAL: Explicitly filter by school_id for security (defense-in-depth)
+    // RLS should also filter, but explicit filter ensures no data leakage
     // Note: View columns are: teacher_id, school_id, teacher_name, teacher_email, month, year, period_start, period_label, net_salary, paid_amount, credit_applied, effective_paid_amount, pending_amount, payment_status, payment_date, is_unpaid, days_since_period_start
     let unpaidMonthsQuery = supabase
       .from('teacher_unpaid_salary_months')
-      .select('teacher_id, year, month, period_start, pending_amount, is_unpaid, teacher_name, teacher_email, period_label, payment_status, net_salary, paid_amount, credit_applied, effective_paid_amount, days_since_period_start, payment_date', { count: 'exact' })
+      .select('teacher_id, school_id, year, month, period_start, pending_amount, is_unpaid, teacher_name, teacher_email, period_label, payment_status, net_salary, paid_amount, credit_applied, effective_paid_amount, days_since_period_start, payment_date', { count: 'exact' })
+      .eq('school_id', user.schoolId) // CRITICAL: Explicit school_id filter for security
       .eq('is_unpaid', true)
-      .gte('period_start', startDate.toISOString().split('T')[0])
-      .lte('period_start', endDate.toISOString().split('T')[0])
+      .gte('period_start', startDateStr)
+      .lte('period_start', endDateStr)
       .order('teacher_id', { ascending: true })
       .order('year', { ascending: false })
       .order('month', { ascending: false });
@@ -1184,12 +1196,14 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
       throw new Error(unpaidMonthsError.message);
     }
 
+    console.log(`[salary/unpaid] Found ${unpaidMonths?.length || 0} unpaid months (count: ${count || 0})`);
+
     // Get summary of unpaid teachers (only needed fields)
-    // Use req.supabase (user-context client) to respect RLS policies
-    // RLS automatically filters by school_id - no need to manually filter
+    // CRITICAL: Explicitly filter by school_id for security
     let summaryQuery = supabase
       .from('unpaid_teachers_summary')
       .select('teacher_id, teacher_name, total_unpaid_amount, unpaid_months_count')
+      .eq('school_id', user.schoolId) // CRITICAL: Explicit school_id filter for security
       .order('total_unpaid_amount', { ascending: false });
 
     if (teacher_id) {
@@ -1203,9 +1217,25 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
       throw new Error(summaryError.message);
     }
 
+    console.log(`[salary/unpaid] Found ${unpaidTeachersSummary?.length || 0} teachers in summary`);
+
+    // Security validation: Ensure all data belongs to user's school (defense-in-depth)
+    if (unpaidMonths && unpaidMonths.length > 0) {
+      const invalidMonths = unpaidMonths.filter((m: any) => m.school_id !== user.schoolId);
+      if (invalidMonths.length > 0) {
+        console.error(`[salary/unpaid] SECURITY ALERT: Found ${invalidMonths.length} months from different school!`);
+        throw new Error('Data security validation failed');
+      }
+    }
+
     // Group unpaid months by teacher
     const teacherMonthsMap = new Map<string, any[]>();
     (unpaidMonths || []).forEach((month: any) => {
+      // Additional security check
+      if (month.school_id !== user.schoolId) {
+        console.error(`[salary/unpaid] SECURITY ALERT: Month from different school: ${month.school_id} vs ${user.schoolId}`);
+        return; // Skip this month
+      }
       if (!teacherMonthsMap.has(month.teacher_id)) {
         teacherMonthsMap.set(month.teacher_id, []);
       }
@@ -1273,20 +1303,20 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
     const totalUnpaidAmount = teachersList.reduce((sum, t) => sum + t.total_unpaid_amount, 0);
     const totalUnpaidMonths = teachersList.reduce((sum, t) => sum + t.unpaid_months_count, 0);
 
-    // Apply pagination to teachers list (no double pagination - return directly)
+    // Apply pagination to teachers list
     const page = unpaidPageNum;
     const limit = unpaidLimitNum;
     const offset = (page - 1) * limit;
     const paginatedTeachers = teachersList.slice(offset, offset + limit);
 
-    return {
+    const result = {
       summary: {
         total_teachers: totalTeachers,
         total_unpaid_amount: totalUnpaidAmount,
         total_unpaid_months: totalUnpaidMonths,
         time_scope: timeScope,
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0]
+        start_date: startDateStr,
+        end_date: endDateStr
       },
       teachers: paginatedTeachers,
       pagination: {
@@ -1296,6 +1326,10 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
         total_pages: Math.ceil(teachersList.length / limit)
       }
     };
+
+    console.log(`[salary/unpaid] Returning ${paginatedTeachers.length} teachers (page ${page}/${Math.ceil(teachersList.length / limit)}), total: ${totalTeachers}, total_unpaid: ₹${totalUnpaidAmount.toFixed(2)}`);
+
+    return result;
   } catch (err: any) {
     console.error('[salary/unpaid] Error in fetchUnpaidSalaries:', err);
     throw err;
