@@ -1161,9 +1161,10 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
     // Use req.supabase (user-context client) to respect RLS policies
     // RLS automatically filters by school_id - no need to manually filter
     // Get all unpaid months (no pagination on months query - we'll paginate teachers list)
+    // Note: View columns are: teacher_id, school_id, teacher_name, teacher_email, month, year, period_start, period_label, net_salary, paid_amount, credit_applied, effective_paid_amount, pending_amount, payment_status, payment_date, is_unpaid, days_since_period_start
     let unpaidMonthsQuery = supabase
       .from('teacher_unpaid_salary_months')
-      .select('teacher_id, year, month, period_start, period_end, salary_due, salary_paid, unpaid_amount, is_unpaid, teacher_name, teacher_email, period_label, payment_status, net_salary, paid_amount, credit_applied, effective_paid_amount, days_since_period_start, payment_date', { count: 'exact' })
+      .select('teacher_id, year, month, period_start, pending_amount, is_unpaid, teacher_name, teacher_email, period_label, payment_status, net_salary, paid_amount, credit_applied, effective_paid_amount, days_since_period_start, payment_date', { count: 'exact' })
       .eq('is_unpaid', true)
       .gte('period_start', startDate.toISOString().split('T')[0])
       .lte('period_start', endDate.toISOString().split('T')[0])
@@ -1221,7 +1222,7 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
         return b.month - a.month;
       });
       
-      const totalUnpaid = months.reduce((sum, m) => sum + parseFloat(m.unpaid_amount || 0), 0);
+      const totalUnpaid = months.reduce((sum, m) => sum + parseFloat(m.pending_amount || 0), 0);
       const oldestMonth = sortedMonths.length > 0 
         ? sortedMonths[sortedMonths.length - 1] 
         : null;
@@ -1260,7 +1261,7 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
           paid_amount: parseFloat(m.paid_amount || 0),
           credit_applied: parseFloat(m.credit_applied || 0),
           effective_paid_amount: parseFloat(m.effective_paid_amount || 0),
-          unpaid_amount: parseFloat(m.unpaid_amount || 0),
+          unpaid_amount: parseFloat(m.pending_amount || 0),
           days_since_period_start: m.days_since_period_start,
           payment_date: m.payment_date
         }))
