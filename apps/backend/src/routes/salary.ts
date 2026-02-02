@@ -1576,5 +1576,110 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
   }
 });
 
+// ============================================
+// Get Salary Records (Simple endpoint)
+// ============================================
+router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
+  const { user } = req;
+  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+
+  try {
+    let query = adminSupabase
+      .from('teacher_salary_records')
+      .select(`
+        *,
+        teacher:profiles!teacher_salary_records_teacher_id_fkey(
+          id,
+          full_name,
+          email,
+          role
+        )
+      `)
+      .eq('school_id', user.schoolId);
+
+    // Teachers can only see their own records
+    if (user.role === 'teacher') {
+      query = query.eq('teacher_id', user.id);
+    }
+
+    const { data: records, error } = await query
+      .order('year', { ascending: false })
+      .order('month', { ascending: false });
+
+    if (error) {
+      console.error('[salary] Error fetching records:', error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.json({ records: records || [] });
+  } catch (err: any) {
+    console.error('[salary] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// ============================================
+// Get Salary Records by Role
+// ============================================
+router.get('/:role', requireRoles(['principal', 'clerk']), async (req, res) => {
+  const { user } = req;
+  if (!user) return res.status(500).json({ error: 'Server misconfigured' });
+
+  const { role } = req.params;
+
+  // Validate role parameter
+  const validRoles = ['teacher', 'clerk', 'principal'];
+  if (!validRoles.includes(role)) {
+    return res.status(400).json({ error: 'Invalid role. Must be one of: teacher, clerk, principal' });
+  }
+
+  try {
+    // First, get all teachers with the specified role in this school
+    const { data: teachers, error: teachersError } = await adminSupabase
+      .from('profiles')
+      .select('id')
+      .eq('school_id', user.schoolId)
+      .eq('role', role);
+
+    if (teachersError) {
+      console.error('[salary] Error fetching teachers by role:', teachersError);
+      return res.status(400).json({ error: teachersError.message });
+    }
+
+    if (!teachers || teachers.length === 0) {
+      return res.json({ records: [] });
+    }
+
+    const teacherIds = teachers.map(t => t.id);
+
+    // Get salary records for these teachers
+    const { data: records, error } = await adminSupabase
+      .from('teacher_salary_records')
+      .select(`
+        *,
+        teacher:profiles!teacher_salary_records_teacher_id_fkey(
+          id,
+          full_name,
+          email,
+          role
+        )
+      `)
+      .eq('school_id', user.schoolId)
+      .in('teacher_id', teacherIds)
+      .order('year', { ascending: false })
+      .order('month', { ascending: false });
+
+    if (error) {
+      console.error('[salary] Error fetching records by role:', error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    return res.json({ records: records || [] });
+  } catch (err: any) {
+    console.error('[salary] Error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
 export default router;
 
