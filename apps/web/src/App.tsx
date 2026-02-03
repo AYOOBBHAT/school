@@ -8,11 +8,29 @@ import ResetPassword from './pages/ResetPassword';
 import ForgotPassword from './pages/ForgotPassword';
 import AdminDashboard from './pages/AdminDashboard';
 
-// Lazy load dashboard components for code splitting
-const PrincipalDashboard = lazy(() => import('./pages/principal/PrincipalDashboard'));
-const StudentDashboard = lazy(() => import('./pages/student/StudentDashboard'));
-const TeacherDashboard = lazy(() => import('./pages/teacher/TeacherDashboard'));
-const ClerkDashboard = lazy(() => import('./pages/clerk/ClerkDashboard'));
+// Lazy load dashboard components for code splitting with retry logic
+const lazyWithRetry = (componentImport: () => Promise<any>, retries = 3) => {
+  return lazy(async () => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await componentImport();
+      } catch (error) {
+        if (i === retries - 1) {
+          console.error('Failed to load component after retries:', error);
+          throw error;
+        }
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+    throw new Error('Failed to load component');
+  });
+};
+
+const PrincipalDashboard = lazyWithRetry(() => import('./pages/principal/PrincipalDashboard'));
+const StudentDashboard = lazyWithRetry(() => import('./pages/student/StudentDashboard'));
+const TeacherDashboard = lazyWithRetry(() => import('./pages/teacher/TeacherDashboard'));
+const ClerkDashboard = lazyWithRetry(() => import('./pages/clerk/ClerkDashboard'));
 
 function Navbar() {
   const handleScrollTo = (e: MouseEvent<HTMLAnchorElement>, id: string) => {

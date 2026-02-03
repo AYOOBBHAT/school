@@ -6,11 +6,29 @@ import { useTeacherAuth } from './hooks/useTeacherAuth';
 import { Sidebar } from './layout/Sidebar';
 import { ClassesOverview } from './overview/ClassesOverview';
 
-// Lazy load heavy dashboard sections
-const AttendanceView = lazy(() => import('./attendance/AttendanceView'));
-const MarksEntryView = lazy(() => import('./marks/MarksEntryView'));
-const SalaryView = lazy(() => import('./salary/SalaryView'));
-const StudentFeeStatusView = lazy(() => import('./fees/StudentFeeStatusView'));
+// Lazy load heavy dashboard sections with retry logic
+const lazyWithRetry = (componentImport: () => Promise<any>, retries = 3) => {
+  return lazy(async () => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await componentImport();
+      } catch (error) {
+        if (i === retries - 1) {
+          console.error('Failed to load component after retries:', error);
+          throw error;
+        }
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+    throw new Error('Failed to load component');
+  });
+};
+
+const AttendanceView = lazyWithRetry(() => import('./attendance/AttendanceView'));
+const MarksEntryView = lazyWithRetry(() => import('./marks/MarksEntryView'));
+const SalaryView = lazyWithRetry(() => import('./salary/SalaryView'));
+const StudentFeeStatusView = lazyWithRetry(() => import('./fees/StudentFeeStatusView'));
 
 export default function TeacherDashboard() {
   const navigate = useNavigate();
