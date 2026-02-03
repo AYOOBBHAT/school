@@ -13,7 +13,6 @@ const PrincipalDashboard = lazy(() => import('./pages/principal/PrincipalDashboa
 const StudentDashboard = lazy(() => import('./pages/student/StudentDashboard'));
 const TeacherDashboard = lazy(() => import('./pages/teacher/TeacherDashboard'));
 const ClerkDashboard = lazy(() => import('./pages/clerk/ClerkDashboard'));
-const SalaryPage = lazy(() => import('./pages/SalaryPage'));
 
 function Navbar() {
   const handleScrollTo = (e: MouseEvent<HTMLAnchorElement>, id: string) => {
@@ -436,12 +435,12 @@ export default function App() {
         <Route path="/principal/subjects" element={<PrincipalDashboard />} />
         <Route path="/principal/students" element={<PrincipalDashboard />} />
         <Route path="/principal/exams" element={<PrincipalDashboard />} />
-        <Route path="/principal/salary" element={<SalaryPage role="principal" />} />
+        <Route path="/principal/salary" element={<PrincipalDashboard />} />
         <Route path="/principal/fees" element={<PrincipalDashboard />} />
         <Route path="/clerk" element={<ClerkDashboard />} />
         <Route path="/clerk/fees" element={<ClerkDashboard />} />
         <Route path="/clerk/payments" element={<ClerkDashboard />} />
-        <Route path="/clerk/salary" element={<SalaryPage role="clerk" />} />
+        <Route path="/clerk/salary" element={<ClerkDashboard />} />
         <Route path="/clerk/marks" element={<ClerkDashboard />} />
         <Route path="/teacher/classes" element={<TeacherDashboard />} />
         <Route path="/teacher" element={<TeacherDashboard />} />
