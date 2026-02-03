@@ -3,7 +3,6 @@ import Joi from 'joi';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
 import { requireRoles } from '../middleware/auth.js';
 import { cacheFetch, invalidateCache } from '../utils/cache.js';
-import { safeQuery } from '../utils/supabaseSafeQuery.js';
 
 const router = Router();
 

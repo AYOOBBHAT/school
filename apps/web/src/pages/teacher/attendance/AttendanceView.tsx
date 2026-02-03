@@ -35,8 +35,10 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
         const records = await loadAttendanceForDateService(token, selectedAssignment.class_group_id, attendanceDate);
         // Map records to student list format
         const result: Record<string, 'present' | 'absent' | 'late'> = {};
-        students.forEach((student) => {
-          result[student.id] = records[student.id] || 'present';
+        (students ?? []).forEach((student) => {
+          if (student?.id) {
+            result[student.id] = records[student.id] || 'present';
+          }
         });
         setAttendanceRecords(result);
       } catch (error) {
@@ -55,7 +57,7 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
       if (!token || !userId) return;
 
       const attendanceAssignments = await loadAttendanceAssignmentsService(token, userId);
-      setAssignments(attendanceAssignments);
+      setAssignments(attendanceAssignments ?? []);
     } catch (error) {
       console.error('Error loading assignments:', error);
     } finally {
@@ -69,14 +71,16 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
       if (!token) return;
 
       const allStudents = await loadStudentsForAttendance(token, assignment.class_group_id, assignment.section_id || undefined);
-      setStudents(allStudents);
+      setStudents(allStudents ?? []);
       setSelectedAssignment(assignment);
       
       // Load attendance records for the current date
       const records = await loadAttendanceForDateService(token, assignment.class_group_id, attendanceDate);
       const result: Record<string, 'present' | 'absent' | 'late'> = {};
-      allStudents.forEach((student) => {
-        result[student.id] = records[student.id] || 'present';
+      (allStudents ?? []).forEach((student) => {
+        if (student?.id) {
+          result[student.id] = records[student.id] || 'present';
+        }
       });
       setAttendanceRecords(result);
     } catch (error) {
@@ -127,17 +131,17 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {assignments.map((assignment) => (
+              {(assignments ?? []).filter(Boolean).map((assignment) => (
                 <button
-                  key={assignment.id}
-                  onClick={() => loadStudents(assignment)}
+                  key={assignment?.id || Math.random()}
+                  onClick={() => assignment && loadStudents(assignment)}
                   className="bg-teal-50 hover:bg-teal-100 p-4 rounded-lg text-left transition border-2 border-teal-200"
                 >
-                  <div className="font-semibold text-teal-800">{assignment.class_groups.name}</div>
-                  {assignment.sections && (
+                  <div className="font-semibold text-teal-800">{assignment?.class_groups?.name ?? 'N/A'}</div>
+                  {assignment?.sections && (
                     <div className="text-sm text-gray-600">Section: {assignment.sections.name}</div>
                   )}
-                  {!assignment.sections && (
+                  {!assignment?.sections && (
                     <div className="text-sm text-gray-500">All Sections</div>
                   )}
                   <div className="text-teal-600 mt-2">📅 Attendance Class</div>
@@ -153,10 +157,10 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
           <div className="flex justify-between items-center mb-4">
             <div>
               <h3 className="text-xl font-bold">
-                {selectedAssignment.class_groups.name}
-                {selectedAssignment.sections && ` - ${selectedAssignment.sections.name}`}
+                {selectedAssignment?.class_groups?.name ?? 'N/A'}
+                {selectedAssignment?.sections && ` - ${selectedAssignment.sections.name}`}
               </h3>
-              <p className="text-gray-600">{selectedAssignment.subjects.name}</p>
+              <p className="text-gray-600">{selectedAssignment?.subjects?.name ?? 'N/A'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Date</label>
@@ -183,18 +187,20 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {students.map((student) => (
-                      <tr key={student.id}>
-                        <td className="px-4 py-3 text-sm">{student.roll_number || 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm font-medium">{student.profile.full_name}</td>
+                    {(students ?? []).filter(Boolean).map((student) => (
+                      <tr key={student?.id || Math.random()}>
+                        <td className="px-4 py-3 text-sm">{student?.roll_number ?? 'N/A'}</td>
+                        <td className="px-4 py-3 text-sm font-medium">{student?.profile?.full_name ?? 'N/A'}</td>
                         <td className="px-4 py-3">
                           <select
-                            value={attendanceRecords[student.id] || 'present'}
+                            value={attendanceRecords[student?.id || ''] || 'present'}
                             onChange={(e) => {
-                              setAttendanceRecords({
-                                ...attendanceRecords,
-                                [student.id]: e.target.value as 'present' | 'absent' | 'late'
-                              });
+                              if (student?.id) {
+                                setAttendanceRecords({
+                                  ...attendanceRecords,
+                                  [student.id]: e.target.value as 'present' | 'absent' | 'late'
+                                });
+                              }
                             }}
                             className="px-3 py-1 border rounded-md text-sm"
                           >

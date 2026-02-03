@@ -56,7 +56,7 @@ export async function invalidateCache(key: string) {
         await Promise.all(keysToDelete.map(k => redis.del(k).catch(() => {})));
       }
     } else {
-      await redis.del(key);
+    await redis.del(key);
     }
   } catch (error) {
     // Log but don't throw - cache invalidation failure shouldn't break the request
