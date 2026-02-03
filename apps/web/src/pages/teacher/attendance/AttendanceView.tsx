@@ -17,7 +17,7 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [attendanceRecords, setAttendanceRecords] = useState<Record<string, 'present' | 'absent' | 'late'>>({});
+  const [exceptions, setExceptions] = useState<Record<string, 'absent' | 'late'>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,14 +33,14 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
         if (!token) return;
 
         const records = await loadAttendanceForDateService(token, selectedAssignment.class_group_id, attendanceDate);
-        // Map records to student list format
-        const result: Record<string, 'present' | 'absent' | 'late'> = {};
+        // Only store exceptions (absent/late), not present
+        const exceptionsMap: Record<string, 'absent' | 'late'> = {};
         (students ?? []).forEach((student) => {
-          if (student?.id) {
-            result[student.id] = records[student.id] || 'present';
+          if (student?.id && records[student.id] && records[student.id] !== 'present') {
+            exceptionsMap[student.id] = records[student.id] as 'absent' | 'late';
           }
         });
-        setAttendanceRecords(result);
+        setExceptions(exceptionsMap);
       } catch (error) {
         console.error('Error loading attendance records:', error);
       }
@@ -74,18 +74,47 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
       setStudents(allStudents ?? []);
       setSelectedAssignment(assignment);
       
-      // Load attendance records for the current date
+      // Load attendance records for the current date - only store exceptions
       const records = await loadAttendanceForDateService(token, assignment.class_group_id, attendanceDate);
-      const result: Record<string, 'present' | 'absent' | 'late'> = {};
+      const exceptionsMap: Record<string, 'absent' | 'late'> = {};
       (allStudents ?? []).forEach((student) => {
-        if (student?.id) {
-          result[student.id] = records[student.id] || 'present';
+        if (student?.id && records[student.id] && records[student.id] !== 'present') {
+          exceptionsMap[student.id] = records[student.id] as 'absent' | 'late';
         }
       });
-      setAttendanceRecords(result);
+      setExceptions(exceptionsMap);
     } catch (error) {
       console.error('Error loading students:', error);
     }
+  };
+
+  const getStatus = (id: string): 'present' | 'absent' | 'late' => {
+    return exceptions[id] ?? 'present';
+  };
+
+  const updateStatus = (id: string, status: 'present' | 'absent' | 'late') => {
+    setExceptions(prev => {
+      if (status === 'present') {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      }
+      return { ...prev, [id]: status };
+    });
+  };
+
+  const markAllPresent = () => {
+    setExceptions({});
+  };
+
+  const markAllAbsent = () => {
+    const allAbsent: Record<string, 'absent'> = {};
+    (students ?? []).forEach(s => {
+      if (s?.id) {
+        allAbsent[s.id] = 'absent';
+      }
+    });
+    setExceptions(allAbsent);
   };
 
   const handleSaveAttendance = async () => {
@@ -95,15 +124,15 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) throw new Error('No authentication token');
 
-      const attendanceData = Object.entries(attendanceRecords).map(([studentId, status]) => ({
-        student_id: studentId,
+      const payload = (students ?? []).map(s => ({
+        student_id: s.id,
         class_group_id: selectedAssignment.class_group_id,
         date: attendanceDate,
-        status,
+        status: exceptions[s.id] ?? 'present',
         school_id: profile.school_id
       }));
 
-      await saveAttendanceService(token, attendanceData);
+      await saveAttendanceService(token, payload);
       alert('Attendance saved successfully!');
     } catch (error: any) {
       alert(error.message || 'Failed to save attendance');
@@ -177,6 +206,20 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
             <div className="text-center py-8 text-gray-500">No students found in this class.</div>
           ) : (
             <>
+              <div className="flex gap-3 mb-4">
+                <button 
+                  onClick={markAllPresent} 
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                >
+                  ✓ Mark All Present
+                </button>
+                <button 
+                  onClick={markAllAbsent} 
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+                >
+                  ✕ Mark All Absent
+                </button>
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -192,22 +235,32 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
                         <td className="px-4 py-3 text-sm">{student?.roll_number ?? 'N/A'}</td>
                         <td className="px-4 py-3 text-sm font-medium">{student?.profile?.full_name ?? 'N/A'}</td>
                         <td className="px-4 py-3">
-                          <select
-                            value={attendanceRecords[student?.id || ''] || 'present'}
-                            onChange={(e) => {
-                              if (student?.id) {
-                                setAttendanceRecords({
-                                  ...attendanceRecords,
-                                  [student.id]: e.target.value as 'present' | 'absent' | 'late'
-                                });
-                              }
-                            }}
-                            className="px-3 py-1 border rounded-md text-sm"
-                          >
-                            <option value="present">Present</option>
-                            <option value="absent">Absent</option>
-                            <option value="late">Late</option>
-                          </select>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => student?.id && updateStatus(student.id, 'present')}
+                              className={getStatus(student?.id || '') === 'present'
+                                ? 'bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700'
+                                : 'bg-gray-200 px-3 py-1 rounded hover:bg-gray-300'}
+                            >
+                              ✓
+                            </button>
+                            <button
+                              onClick={() => student?.id && updateStatus(student.id, 'absent')}
+                              className={getStatus(student?.id || '') === 'absent'
+                                ? 'bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700'
+                                : 'bg-gray-200 px-3 py-1 rounded hover:bg-gray-300'}
+                            >
+                              ✕
+                            </button>
+                            <button
+                              onClick={() => student?.id && updateStatus(student.id, 'late')}
+                              className={getStatus(student?.id || '') === 'late'
+                                ? 'bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600'
+                                : 'bg-gray-200 px-3 py-1 rounded hover:bg-gray-300'}
+                            >
+                              ⏰
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

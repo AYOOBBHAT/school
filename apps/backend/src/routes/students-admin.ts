@@ -331,12 +331,11 @@ async function fetchStudentsData(user: any, queryParams: any) {
       throw new Error(countError.message);
     }
 
-    const result = await (query as any)
-      .select('*', { count: 'exact' })
+    const result = await query
       .order('roll_number', { ascending: true, nullsFirst: false })
       .range(offset, offset + limit - 1);
     
-    const { data: students, error, count } = result;
+    const { data: students, error } = result;
 
     if (error) {
       console.error('[students-admin] Error fetching students:', error);
