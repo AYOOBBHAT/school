@@ -221,9 +221,16 @@ export async function loadStudentsForAttendance(token: string, classGroupId: str
         }
         cls.students.forEach((student: any) => {
           if (!sectionId || student.section_id === sectionId) {
+            // Ensure profile is always included, even if null/undefined
+            // Preserve all student properties but ensure profile exists
             allStudents.push({
               ...student,
-              section_name: student.section_id ? sectionsMap[student.section_id] || null : null
+              section_name: student.section_id ? sectionsMap[student.section_id] || null : null,
+              profile: student.profile || {
+                id: student.id || '',
+                full_name: 'N/A',
+                email: student.email || ''
+              }
             });
           }
         });
