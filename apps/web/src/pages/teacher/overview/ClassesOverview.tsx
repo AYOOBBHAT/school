@@ -4,11 +4,7 @@ import { Assignment, Student } from '../types';
 import { loadTeacherAssignments } from '../../../services/teacher.service';
 import { loadStudentsForAttendance } from '../../../services/teacher.service';
 
-interface ClassesOverviewProps {
-  currentView: 'classes' | 'attendance' | 'marks' | 'salary' | 'fees';
-}
-
-export function ClassesOverview({ currentView }: ClassesOverviewProps) {
+export function ClassesOverview() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -16,7 +12,7 @@ export function ClassesOverview({ currentView }: ClassesOverviewProps) {
 
   useEffect(() => {
     loadAssignments();
-  }, [currentView]);
+  }, []);
 
   const loadAssignments = async () => {
     try {

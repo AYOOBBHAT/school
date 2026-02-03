@@ -1,5 +1,5 @@
-import  { useState, lazy } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { lazy } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { supabase } from '../../utils/supabase';
 import { LazyLoader } from '../../components/LazyLoader';
 import { useTeacherAuth } from './hooks/useTeacherAuth';
@@ -33,7 +33,6 @@ const StudentFeeStatusView = lazyWithRetry(() => import('./fees/StudentFeeStatus
 export default function TeacherDashboard() {
   const navigate = useNavigate();
   const { profile, loading } = useTeacherAuth();
-  const [currentView, setCurrentView] = useState<'classes' | 'attendance' | 'marks' | 'salary' | 'fees'>('classes');
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -51,8 +50,6 @@ export default function TeacherDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Sidebar
-        currentView={currentView}
-        setCurrentView={setCurrentView}
         profile={profile}
         onLogout={handleLogout}
       />
@@ -60,31 +57,46 @@ export default function TeacherDashboard() {
       {/* Main Content */}
       <div className="ml-64">
         <div className="p-6">
-          {currentView === 'classes' && <ClassesOverview currentView={currentView} />}
-          {currentView === 'attendance' && (
-            <LazyLoader>
-              <AttendanceView profile={profile} />
-            </LazyLoader>
-          )}
-          {currentView === 'marks' && (
-            <LazyLoader>
-              <MarksEntryView profile={profile} />
-            </LazyLoader>
-          )}
-          {currentView === 'salary' && (
-            <LazyLoader>
-              <SalaryView profile={profile} />
-            </LazyLoader>
-          )}
-          {currentView === 'fees' && (
-            <LazyLoader>
-              <StudentFeeStatusView
-                students={[]}
-                studentFeeStatus={{}}
-                loadingFees={false}
-              />
-            </LazyLoader>
-          )}
+          <Routes>
+            <Route path="classes" element={<ClassesOverview />} />
+            <Route
+              path="attendance"
+              element={
+                <LazyLoader>
+                  <AttendanceView profile={profile} />
+                </LazyLoader>
+              }
+            />
+            <Route
+              path="marks"
+              element={
+                <LazyLoader>
+                  <MarksEntryView profile={profile} />
+                </LazyLoader>
+              }
+            />
+            <Route
+              path="salary"
+              element={
+                <LazyLoader>
+                  <SalaryView profile={profile} />
+                </LazyLoader>
+              }
+            />
+            <Route
+              path="fees"
+              element={
+                <LazyLoader>
+                  <StudentFeeStatusView
+                    students={[]}
+                    studentFeeStatus={{}}
+                    loadingFees={false}
+                  />
+                </LazyLoader>
+              }
+            />
+            <Route path="*" element={<Navigate to="classes" replace />} />
+          </Routes>
         </div>
       </div>
     </div>
