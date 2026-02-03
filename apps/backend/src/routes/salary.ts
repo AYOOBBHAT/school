@@ -1172,10 +1172,11 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
     // Build query for unpaid salary months
     // CRITICAL: Explicitly filter by school_id for security (defense-in-depth)
     // RLS should also filter, but explicit filter ensures no data leakage
-    // Note: View columns are: teacher_id, school_id, teacher_name, teacher_email, month, year, period_start, period_label, net_salary, paid_amount, credit_applied, effective_paid_amount, pending_amount, payment_status, payment_date, is_unpaid, days_since_period_start
+    // Note: View columns are: teacher_id, school_id, teacher_name, teacher_email, month, year, period_start, period_label, net_salary, paid_amount, pending_amount, payment_status, payment_date, is_unpaid, days_since_period_start
+    // Note: credit_applied and effective_paid_amount don't exist in current view version
     let unpaidMonthsQuery = supabase
       .from('teacher_unpaid_salary_months')
-      .select('teacher_id, school_id, year, month, period_start, pending_amount, is_unpaid, teacher_name, teacher_email, period_label, payment_status, net_salary, paid_amount, credit_applied, effective_paid_amount, days_since_period_start, payment_date', { count: 'exact' })
+      .select('teacher_id, school_id, year, month, period_start, pending_amount, is_unpaid, teacher_name, teacher_email, period_label, payment_status, net_salary, paid_amount, days_since_period_start, payment_date', { count: 'exact' })
       .eq('school_id', user.schoolId) // CRITICAL: Explicit school_id filter for security
       .eq('is_unpaid', true)
       .gte('period_start', startDateStr)
@@ -1289,8 +1290,6 @@ async function fetchUnpaidSalaries(supabase: any, user: any, queryParams: any) {
           payment_status: m.payment_status,
           net_salary: parseFloat(m.net_salary || 0),
           paid_amount: parseFloat(m.paid_amount || 0),
-          credit_applied: parseFloat(m.credit_applied || 0),
-          effective_paid_amount: parseFloat(m.effective_paid_amount || 0),
           unpaid_amount: parseFloat(m.pending_amount || 0),
           days_since_period_start: m.days_since_period_start,
           payment_date: m.payment_date
