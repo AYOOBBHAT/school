@@ -3,6 +3,7 @@ import Joi from 'joi';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
 import { requireRoles } from '../middleware/auth.js';
 import { cacheFetch, invalidateCache } from '../utils/cache.js';
+import { safeQuery } from '../utils/supabaseSafeQuery.js';
 
 const router = Router();
 
@@ -187,7 +188,7 @@ router.post('/structure', requireRoles(['principal']), async (req, res) => {
     return res.json({ structure: result });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -231,13 +232,13 @@ router.get('/structure/:teacherId', requireRoles(['principal', 'clerk', 'teacher
 
     if (error && error.code !== 'PGRST116') { // PGRST116 = not found
       console.error('[salary] Error fetching structure:', error);
-      return res.status(400).json({ error: error.message });
+      return res.status(500).json({ message: error.message });
     }
 
     return res.json({ structure: structure || null });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -269,13 +270,13 @@ router.get('/structures', requireRoles(['principal', 'clerk']), async (req, res)
 
     if (error) {
       console.error('[salary] Error fetching structures:', error);
-      return res.status(400).json({ error: error.message });
+      return res.status(500).json({ message: error.message });
     }
 
     return res.json({ structures: structures || [] });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -426,7 +427,7 @@ router.post('/generate', requireRoles(['principal', 'clerk']), async (req, res) 
     return res.json({ salaryRecord });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -491,7 +492,7 @@ router.get('/records', requireRoles(['principal', 'clerk', 'teacher']), async (r
     return res.json({ records: records || [] });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -549,7 +550,7 @@ router.put('/records/:recordId/approve', requireRoles(['principal']), async (req
     return res.json({ salaryRecord: updated });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -618,7 +619,7 @@ router.put('/records/:recordId/mark-paid', requireRoles(['clerk']), async (req, 
     return res.json({ salaryRecord: updated });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -649,7 +650,7 @@ router.get('/reports', requireRoles(['principal', 'clerk']), async (req, res) =>
 
     if (error) {
       console.error('[salary] Error fetching reports:', error);
-      return res.status(400).json({ error: error.message });
+      return res.status(500).json({ message: error.message });
     }
 
     // Calculate analytics
@@ -686,7 +687,7 @@ router.get('/reports', requireRoles(['principal', 'clerk']), async (req, res) =>
     });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -732,7 +733,7 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
 
     if (structureError) {
       console.error('[salary] Error fetching salary structure:', structureError);
-      return res.status(400).json({ error: 'Failed to fetch salary structure' });
+      return res.status(500).json({ message: structureError.message });
     }
 
     if (!salaryStructure) {
@@ -755,7 +756,7 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
 
     if (paymentsError) {
       console.error('[salary] Error fetching existing payments:', paymentsError);
-      return res.status(400).json({ error: 'Failed to fetch existing payments' });
+      return res.status(500).json({ message: paymentsError.message });
     }
 
     // Calculate total payment for this month (existing + new)
@@ -850,7 +851,7 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
     });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -900,13 +901,13 @@ router.get('/payments', requireRoles(['principal', 'clerk', 'teacher']), async (
 
     if (error) {
       console.error('[salary] Error fetching payments:', error);
-      return res.status(400).json({ error: error.message });
+      return res.status(500).json({ message: error.message });
     }
 
     return res.json({ payments: payments || [] });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -948,7 +949,8 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
         .eq('role', 'teacher');
 
       if (teachersError) {
-        return res.status(400).json({ error: teachersError.message });
+        console.error('[salary/summary] Error fetching teachers:', teachersError);
+        return res.status(500).json({ message: teachersError.message });
       }
       teacherIds = (teachers || []).map((t: any) => t.id);
     }
@@ -1048,7 +1050,7 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
     return res.json({ summaries });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -1101,8 +1103,7 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
     return res.json(result);
   } catch (err: any) {
     console.error('[salary/unpaid] Error:', err);
-    // Return empty response instead of 500 to prevent frontend crash
-    return res.status(200).json(emptyResponse);
+    return res.status(500).json({ message: err.message || 'Failed to fetch unpaid salaries' });
   }
 });
 
@@ -1376,7 +1377,7 @@ router.get('/credits/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
 
     if (creditError) {
       console.error('[salary/credits] Error fetching credit balance:', creditError);
-      return res.status(400).json({ error: creditError.message });
+      return res.status(500).json({ message: creditError.message });
     }
 
     // Get credit details
@@ -1398,6 +1399,7 @@ router.get('/credits/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
 
     if (creditsError) {
       console.error('[salary/credits] Error fetching credit details:', creditsError);
+      return res.status(500).json({ message: creditsError.message });
     }
 
     return res.json({
@@ -1407,7 +1409,7 @@ router.get('/credits/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     });
   } catch (err: any) {
     console.error('[salary/credits] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -1438,7 +1440,7 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
 
     if (teacherError) {
       console.error('[salary/history] Error fetching teacher:', teacherError);
-      return res.status(400).json({ error: teacherError.message });
+      return res.status(500).json({ message: teacherError.message });
     }
 
     if (!teacher) {
@@ -1495,6 +1497,7 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     
     if (countError) {
       console.error('[salary/history] Error counting payments:', countError);
+      return res.status(500).json({ message: countError.message });
     }
 
     // Apply pagination
@@ -1509,7 +1512,7 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
 
     if (paymentsError) {
       console.error('[salary/history] Error fetching payment history:', paymentsError);
-      return res.status(400).json({ error: paymentsError.message });
+      return res.status(500).json({ message: paymentsError.message });
     }
 
     // Get payment summary using the database function
@@ -1571,7 +1574,7 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     });
   } catch (err: any) {
     console.error('[salary/history] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -1607,13 +1610,13 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res
 
     if (error) {
       console.error('[salary] Error fetching records:', error);
-      return res.status(400).json({ error: error.message });
+      return res.status(500).json({ message: error.message });
     }
 
     return res.json({ records: records || [] });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
@@ -1642,7 +1645,7 @@ router.get('/:role', requireRoles(['principal', 'clerk']), async (req, res) => {
 
     if (teachersError) {
       console.error('[salary] Error fetching teachers by role:', teachersError);
-      return res.status(400).json({ error: teachersError.message });
+      return res.status(500).json({ message: teachersError.message });
     }
 
     if (!teachers || teachers.length === 0) {
@@ -1670,13 +1673,13 @@ router.get('/:role', requireRoles(['principal', 'clerk']), async (req, res) => {
 
     if (error) {
       console.error('[salary] Error fetching records by role:', error);
-      return res.status(400).json({ error: error.message });
+      return res.status(500).json({ message: error.message });
     }
 
     return res.json({ records: records || [] });
   } catch (err: any) {
     console.error('[salary] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ message: err.message || 'Internal server error' });
   }
 });
 
