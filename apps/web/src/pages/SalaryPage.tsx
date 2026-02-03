@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../utils/supabase';
+import { API_URL } from '../utils/api';
+import { ROUTES } from '../utils/apiRoutes';
 
 interface SalaryRecord {
   id: string;
@@ -18,7 +20,7 @@ interface SalaryRecord {
 }
 
 interface SalaryPageProps {
-  role?: string;
+  role?: string; // This is the viewer's role (principal/clerk), not the teacher role to filter by
 }
 
 export default function SalaryPage({ role }: SalaryPageProps) {
@@ -29,6 +31,8 @@ export default function SalaryPage({ role }: SalaryPageProps) {
   };
 
   // Fetch salary data
+  // Note: For principals and clerks, we want to see ALL salary records (all teachers)
+  // The /api/salary/:role endpoint filters by teacher role, which is not what we want here
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['salary', role],
     queryFn: async () => {
@@ -37,10 +41,9 @@ export default function SalaryPage({ role }: SalaryPageProps) {
         throw new Error('Authentication required');
       }
 
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const endpoint = role 
-        ? `${API_URL}/api/salary/${role}`
-        : `${API_URL}/api/salary`;
+      // Always use the base endpoint to get all salary records
+      // The backend will filter by school_id automatically via RLS
+      const endpoint = `${API_URL}${ROUTES.salary}`;
 
       const response = await fetch(endpoint, {
         headers: {
