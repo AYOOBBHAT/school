@@ -8,6 +8,7 @@ interface SalaryRecord {
   year: number;
   net_salary: number;
   status: string;
+  payment_date?: string | null;
   teacher?: {
     id: string;
     full_name: string;
