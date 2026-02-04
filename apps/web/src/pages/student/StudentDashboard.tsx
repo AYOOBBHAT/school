@@ -13,6 +13,7 @@ import { Tabs } from './layout/Tabs';
 const OverviewTab = lazy(() => import('./overview/OverviewTab'));
 const AttendanceTab = lazy(() => import('./attendance/AttendanceTab'));
 const MarksTab = lazy(() => import('./marks/MarksTab'));
+const StudentFeesView = lazy(() => import('./fees/StudentFeesView'));
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
@@ -28,7 +29,7 @@ export default function StudentDashboard() {
     } else if (activeTab === 'marks') {
       loadMarks();
     } else if (activeTab === 'fees') {
-      // Fees tab removed - billing feature disabled
+      // Fees will be loaded by StudentFeesView component
     }
   }, [activeTab, loadAttendance, loadMarks]);
 
@@ -99,17 +100,9 @@ export default function StudentDashboard() {
           )}
 
           {activeTab === 'fees' && (
-            <div>
-              <h2 className="text-2xl font-bold mb-6">Fees & Payments</h2>
-              <div className="text-center py-12 text-gray-600">
-                Billing has been removed from this deployment.
-              </div>
-              {false && (
-                <>
-                  {/* Fee summary and bills removed */}
-                </>
-              )}
-            </div>
+            <LazyLoader>
+              <StudentFeesView />
+            </LazyLoader>
           )}
         </div>
       </div>

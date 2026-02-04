@@ -38,18 +38,16 @@ export function Tabs({ activeTab, setActiveTab }: TabsProps) {
         >
           Marks
         </button>
-        {false && (
-          <button
-            onClick={() => setActiveTab('fees')}
-            className={`px-6 py-3 font-medium ${
-              activeTab === 'fees'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Fees
-          </button>
-        )}
+        <button
+          onClick={() => setActiveTab('fees')}
+          className={`px-6 py-3 font-medium ${
+            activeTab === 'fees'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Fees
+        </button>
       </div>
     </div>
   );

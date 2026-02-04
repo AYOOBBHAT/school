@@ -95,3 +95,46 @@ export async function fetchStudentMarks(token: string): Promise<{
 
   return await response.json();
 }
+
+/**
+ * Fetch student fee data (summary, bills, payments)
+ * @param token - Authentication token
+ * @returns Fee data with summary, bills, and payments
+ */
+export async function fetchStudentFees(token: string): Promise<{
+  summary: {
+    student_id: string;
+    total_fee: number;
+    paid_amount: number;
+    pending_amount: number;
+  };
+  bills: Array<{
+    id: string;
+    bill_no: string;
+    due_date: string;
+    total_amount: number;
+    status: 'pending' | 'partial' | 'paid';
+    created_at: string;
+  }>;
+  payments: Array<{
+    id: string;
+    bill_id: string | null;
+    amount: number;
+    payment_date: string;
+    method: string;
+    created_at: string;
+  }>;
+}> {
+  const response = await fetch(`${API_URL}/students/fees`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(errorData.error || 'Failed to load fees');
+  }
+
+  return await response.json();
+}

@@ -34,6 +34,7 @@ import salaryRouter from './routes/salary.js';
 import adminRouter from './routes/admin.js';
 import principalUsersRouter from './routes/principal-users.js';
 import clerkFeesRouter from './routes/clerk-fees.js';
+import studentFeesRouter from './routes/studentFees.js';
 
 
 // ======================================================
@@ -183,6 +184,7 @@ app.use('/dashboard', dashboardRouter);
 app.use('/salary', salaryRouter);
 app.use('/principal-users', principalUsersRouter);
 app.use('/clerk-fees', clerkFeesRouter);
+app.use('/students/fees', studentFeesRouter);
 
 
 // ======================================================
