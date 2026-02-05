@@ -98,7 +98,7 @@ function Hero() {
             <div className="bg-white rounded-lg shadow-xl p-4 sm:p-6 max-w-6xl mx-auto">
               <div className="relative w-full overflow-hidden rounded-lg" style={{ minHeight: '400px' }}>
                 <img 
-                  src="https://res.cloudinary.com/dv0l9h188/image/upload/v1763540151/jhelumVerse_fuvbtt.png" 
+                  src="https://res.cloudinary.com/dv0l9h188/image/upload/v1770197740/jh_sj5y88.png" 
                   alt="JhelumVerse Dashboard Preview" 
                   className="w-full h-auto rounded-lg"
                   style={{ display: 'block', maxWidth: '100%', height: 'auto' }}
@@ -115,13 +115,52 @@ function Hero() {
 
 function FeaturesOverview() {
   const features = [
-    { icon: '🏫', title: 'Multi-Tenant for Multiple Schools', desc: 'Each school operates independently with complete data isolation' },
-    { icon: '👥', title: 'Role-Based Dashboards', desc: 'Principal, Clerk, Teacher, Student, Parent — each with tailored views' },
-    { icon: '📊', title: 'Attendance, Homework, Exams', desc: 'Track attendance, manage assignments, and generate report cards' },
-    { icon: '💳', title: 'Fee Collection with UPI/Paytm/Razorpay', desc: 'Accept payments online with integrated payment gateways' },
-    { icon: '💬', title: 'WhatsApp Chatbot for Parents', desc: 'Automated communication and updates via WhatsApp' },
-    { icon: '📱', title: 'Mobile-First Design', desc: 'Fully responsive web app and native mobile apps' }
+    {
+      icon: '🏫',
+      title: 'Multi-Tenant for Multiple Schools',
+      desc: 'Each school operates independently with complete data isolation'
+    },
+    {
+      icon: '👥',
+      title: 'Role-Based Dashboards',
+      desc: 'Principal, Clerk, Teacher, Student, Parent — each with tailored views'
+    },
+    {
+      icon: '📊',
+      title: 'Attendance, Homework, Exams',
+      desc: 'Track attendance, manage assignments, and generate report cards'
+    },
+
+    
+
+    {
+      icon: '💻',
+      title: 'Tech & Coding Learning Hub',
+      desc: 'Students learn programming, software development, and real-world tech skills'
+    },
+    {
+      icon: '🤖',
+      title: 'AI Tools & Automation Training',
+      desc: 'Hands-on learning with modern AI tools, prompt engineering, and smart automations'
+    },
+    {
+      icon: '📚',
+      title: 'Free Foundational Courses',
+      desc: 'Structured video lessons, notes, and practice exercises for core subjects'
+    },
+    {
+      icon: '🎯',
+      title: 'Competitive Exam Preparation',
+      desc: 'Practice papers and mock tests for NTSE, IIT-JEE, NEET, and other exams'
+    },
+    {
+      icon: '📱',
+      title: 'Mobile-First Design',
+      desc: 'Fully responsive web app and native mobile apps for learning anywhere'
+    }
   ];
+
+
 
   return (
     <section id="features" className="py-20 bg-white scroll-mt-20">
