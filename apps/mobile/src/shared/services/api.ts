@@ -1,9 +1,36 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.31.10.67:4000';
+// API configuration - REQUIRED for production builds
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+// Validate required environment variables
+if (!API_BASE_URL) {
+  const errorMsg = 'EXPO_PUBLIC_API_URL is required. Please set it in eas.json build profile or .env file.';
+  if (__DEV__) {
+    console.error('[API] Configuration Error:', errorMsg);
+  }
+  throw new Error(errorMsg);
+}
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  const errorMsg = 'EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are required. Please set them in eas.json build profile or .env file.';
+  if (__DEV__) {
+    console.error('[API] Configuration Error:', errorMsg);
+  }
+  throw new Error(errorMsg);
+}
+
+// Log API configuration in development (never in production)
+if (__DEV__) {
+  console.log('[API] Configuration loaded:', {
+    API_BASE_URL,
+    SUPABASE_URL: SUPABASE_URL ? `${SUPABASE_URL.substring(0, 30)}...` : 'NOT SET',
+    hasSupabaseKey: !!SUPABASE_ANON_KEY,
+  });
+}
 const TOKEN_KEY = '@school_saas:token';
 
 // Initialize Supabase client if configured
