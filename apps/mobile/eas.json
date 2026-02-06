@@ -24,9 +24,9 @@
       "pnpm": "10.22.0",
       "env": {
         "EXPO_USE_PNPM": "1",
-        "EXPO_PUBLIC_API_URL": "https://backend-production-25c8.up.railway.app",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://oqxbgbmlvrzqviurfvpo.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xeGJnYm1sdnJ6cXZpdXJmdnBvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzIxMDEsImV4cCI6MjA3NzgwODEwMX0.7Nsvhus8l11P8QeuxVx_quBRf8fAcQiDXy-QGmyhkQE"
+        "EXPO_PUBLIC_API_URL": "https://backend-production-7f3c.up.railway.app",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ircnocnlhrgmtfpmxgph.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlyY25vY25saHJnbXRmcG14Z3BoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyMDI3NDEsImV4cCI6MjA3ODc3ODc0MX0.w1HP9Qfpf8y3c9BwklGWdWpf3T_eCH8AXCHJcxhCFwY"
       }
     },
     "production": {
@@ -37,9 +37,9 @@
       "pnpm": "10.22.0",
       "env": {
         "EXPO_USE_PNPM": "1",
-        "EXPO_PUBLIC_API_URL": "https://backend-production-25c8.up.railway.app",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://oqxbgbmlvrzqviurfvpo.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xeGJnYm1sdnJ6cXZpdXJmdnBvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzIxMDEsImV4cCI6MjA3NzgwODEwMX0.7Nsvhus8l11P8QeuxVx_quBRf8fAcQiDXy-QGmyhkQE"
+        "EXPO_PUBLIC_API_URL": "https://backend-production-7f3c.up.railway.app",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ircnocnlhrgmtfpmxgph.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlyY25vY25saHJnbXRmcG14Z3BoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyMDI3NDEsImV4cCI6MjA3ODc3ODc0MX0.w1HP9Qfpf8y3c9BwklGWdWpf3T_eCH8AXCHJcxhCFwY"
       }
     }
   },

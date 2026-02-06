@@ -20,6 +20,22 @@ export class AuthService {
     }
   }
 
+  async loginUsername(data: {
+    username: string;
+    password: string;
+    join_code?: string;
+    registration_number?: string;
+  }): Promise<AuthResponse> {
+    try {
+      const response = await authServiceFunctions.loginUsername(data);
+      await this.saveAuth(response);
+      return response;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Login failed';
+      throw new Error(message);
+    }
+  }
+
   async signupPrincipal(data: {
     email: string;
     password: string;

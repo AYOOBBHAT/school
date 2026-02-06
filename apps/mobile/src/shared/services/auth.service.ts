@@ -56,6 +56,47 @@ export async function signupPrincipal(data: {
   return response;
 }
 
+export async function loginUsername(data: {
+  username: string;
+  password: string;
+  join_code?: string;
+  registration_number?: string;
+}): Promise<AuthResponse> {
+  if (__DEV__) {
+    console.log('[Auth Service] Starting username login request to /auth/login-username');
+  }
+  
+  try {
+    const response = await api.post<{ user: User; token: string; session?: any }>('/auth/login-username', data);
+    
+    // Debug logging
+    if (__DEV__) {
+      console.log('[Auth Service] Username login response received:', {
+        hasUser: !!response.user,
+        hasToken: !!response.token,
+        tokenLength: response.token?.length || 0,
+      });
+    }
+    
+    if (!response.token) {
+      console.error('[Auth Service] No token in username login response!', response);
+      throw new Error('Login response missing token');
+    }
+    
+    // Store token for future requests (api.ts will automatically use it)
+    await api.setToken(response.token);
+    
+    return response;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Username login request failed';
+    console.error('[Auth Service] Username login request failed:', {
+      message,
+      endpoint: '/auth/login-username',
+    });
+    throw error instanceof Error ? error : new Error(message);
+  }
+}
+
 export async function signupJoin(data: {
   email: string;
   password: string;

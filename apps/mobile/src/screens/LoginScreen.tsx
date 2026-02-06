@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../shared/components/Button';
 import { Input } from '../shared/components/Input';
@@ -20,22 +20,57 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({ navigation }: LoginScreenProps) {
+  const [loginMode, setLoginMode] = useState<'email' | 'username'>('email');
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [schoolCode, setSchoolCode] = useState('');
+  const [useRegistrationNumber, setUseRegistrationNumber] = useState(false);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { setUser } = useAuth();
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
+    if (loginMode === 'email') {
+      if (!email || !password) {
+        Alert.alert('Error', 'Please fill in all fields');
+        return;
+      }
+    } else {
+      if (!username || !password || !schoolCode) {
+        Alert.alert('Error', 'Please fill in all fields');
+        return;
+      }
     }
 
     setLoading(true);
     try {
-      console.log('[LoginScreen] Attempting login for:', email);
-      const response = await authService.login(email, password);
-      console.log('[LoginScreen] Login successful, user:', response.user?.email);
+      let response;
+      
+      if (loginMode === 'username') {
+        console.log('[LoginScreen] Attempting username login for:', username);
+        const loginData: {
+          username: string;
+          password: string;
+          join_code?: string;
+          registration_number?: string;
+        } = {
+          username,
+          password,
+        };
+        
+        if (useRegistrationNumber) {
+          loginData.registration_number = schoolCode;
+        } else {
+          loginData.join_code = schoolCode;
+        }
+        
+        response = await authService.loginUsername(loginData);
+        console.log('[LoginScreen] Username login successful, user:', response.user?.email);
+      } else {
+        console.log('[LoginScreen] Attempting email login for:', email);
+        response = await authService.login(email, password);
+        console.log('[LoginScreen] Email login successful, user:', response.user?.email);
+      }
       
       // Ensure token is set in API service before navigating (should already be set by saveAuth, but verify)
       if (response.token) {
@@ -142,15 +177,110 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
         </View>
 
         <View style={styles.form}>
-          <Input
-            label="Email"
-            placeholder="Enter your email"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-          />
+          {/* Login Mode Toggle */}
+          <View style={styles.toggleContainer}>
+            <View style={styles.toggleBackground}>
+              <TouchableOpacity
+                style={[
+                  styles.toggleButton,
+                  loginMode === 'email' && styles.toggleButtonActive,
+                ]}
+                onPress={() => {
+                  setLoginMode('email');
+                  setEmail('');
+                  setUsername('');
+                  setSchoolCode('');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.toggleButtonText,
+                    loginMode === 'email' && styles.toggleButtonTextActive,
+                  ]}
+                >
+                  Principal/Staff
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.toggleButton,
+                  loginMode === 'username' && styles.toggleButtonActive,
+                ]}
+                onPress={() => {
+                  setLoginMode('username');
+                  setEmail('');
+                  setUsername('');
+                  setSchoolCode('');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.toggleButtonText,
+                    loginMode === 'username' && styles.toggleButtonTextActive,
+                  ]}
+                >
+                  Student
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {loginMode === 'email' ? (
+            <>
+              <Input
+                label="Email"
+                placeholder="Enter your email"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+              />
+            </>
+          ) : (
+            <>
+              <Input
+                label="Username"
+                placeholder="Enter your username"
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                autoComplete="username"
+              />
+              <View style={styles.schoolCodeContainer}>
+                <View style={styles.schoolCodeHeader}>
+                  <Text style={styles.schoolCodeLabel}>
+                    {useRegistrationNumber ? 'Registration Number' : 'School Code'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setUseRegistrationNumber(!useRegistrationNumber);
+                      setSchoolCode('');
+                    }}
+                  >
+                    <Text style={styles.switchText}>
+                      Use {useRegistrationNumber ? 'Join Code' : 'Registration Number'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Input
+                  placeholder={
+                    useRegistrationNumber
+                      ? 'Enter school registration number'
+                      : 'Enter school join code'
+                  }
+                  value={schoolCode}
+                  onChangeText={(text) => setSchoolCode(text.toUpperCase())}
+                  autoCapitalize="characters"
+                />
+                <Text style={styles.helperText}>
+                  {useRegistrationNumber
+                    ? "Enter your school's registration number"
+                    : "Enter your school's join code (usually provided by your administrator)"}
+                </Text>
+              </View>
+            </>
+          )}
 
           <Input
             label="Password"
@@ -224,6 +354,63 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2563eb',
     fontWeight: '600',
+  },
+  toggleContainer: {
+    marginBottom: 24,
+  },
+  toggleBackground: {
+    flexDirection: 'row',
+    backgroundColor: '#e2e8f0',
+    borderRadius: 8,
+    padding: 4,
+  },
+  toggleButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleButtonActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toggleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  toggleButtonTextActive: {
+    color: '#2563eb',
+  },
+  schoolCodeContainer: {
+    marginBottom: 16,
+  },
+  schoolCodeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  schoolCodeLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  switchText: {
+    fontSize: 12,
+    color: '#2563eb',
+    fontWeight: '600',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 4,
   },
 });
 
