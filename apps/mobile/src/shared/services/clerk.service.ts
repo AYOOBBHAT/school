@@ -101,13 +101,64 @@ export async function loadMarksResults(params: {
   return api.get<{ results: MarksResult[] }>(`/marks/results?${query.toString()}`);
 }
 
+// Dashboard Stats
+export interface DashboardStats {
+  total_students: number;
+  today_collection: number;
+  total_pending: number;
+  recentPayments?: Array<{
+    payment_amount: number;
+    payment_date: string;
+    payment_mode: string;
+  }>;
+}
+
+// For backward compatibility with web app format
+export interface DashboardStatsWebFormat {
+  totalStudents: number;
+  todayCollection: number;
+  totalPending: number;
+  recentPayments: Array<{
+    payment_amount: number;
+    payment_date: string;
+    payment_mode: string;
+  }>;
+}
+
+export async function loadRecentPayments(limit: number = 10): Promise<Array<{
+  payment_amount: number;
+  payment_date: string;
+  payment_mode: string;
+}>> {
+  try {
+    // Get recent payments from monthly_fee_payments
+    // Note: This might need to be implemented in backend or use a different approach
+    // For now, return empty array - can be enhanced later
+    return [];
+  } catch (error) {
+    console.warn('[Clerk Service] Could not load recent payments:', error);
+    return [];
+  }
+}
+
+export async function loadDashboardStats(): Promise<DashboardStatsWebFormat> {
+  // Get stats from dashboard endpoint (role-specific for clerk)
+  const stats = await api.get<DashboardStats>('/dashboard');
+  
+  // Get recent payments (last 10) - for now return empty, can be enhanced
+  const recentPayments = await loadRecentPayments(10);
+  
+  // Convert to web format for consistency
+  return {
+    totalStudents: stats.total_students || 0,
+    todayCollection: stats.today_collection || 0,
+    totalPending: stats.total_pending || 0,
+    recentPayments: recentPayments,
+  };
+}
+
 // Fee Analytics
-export async function loadUnpaidFeeAnalytics(params: {
-  class_group_id?: string;
-  time_scope?: string;
-  page?: number;
-  limit?: number;
-}): Promise<{
+export interface UnpaidFeeAnalytics {
   summary: {
     total_students: number;
     unpaid_count: number;
@@ -150,12 +201,19 @@ export async function loadUnpaidFeeAnalytics(params: {
     total: number;
     total_pages: number;
   };
-}> {
+}
+
+export async function loadUnpaidFeeAnalytics(params: {
+  class_group_id?: string;
+  time_scope?: string;
+  page?: number;
+  limit?: number;
+}): Promise<UnpaidFeeAnalytics> {
   const query = new URLSearchParams();
   if (params.class_group_id) query.append('class_group_id', params.class_group_id);
   if (params.time_scope) query.append('time_scope', params.time_scope);
   if (params.page) query.append('page', params.page.toString());
   if (params.limit) query.append('limit', params.limit.toString());
   
-  return api.get(`/clerk-fees/analytics/unpaid?${query.toString()}`);
+  return api.get<UnpaidFeeAnalytics>(`/clerk-fees/analytics/unpaid?${query.toString()}`);
 }

@@ -23,17 +23,31 @@ const MySalaryScreen = lazy(() =>
     default: module.MySalaryScreen,
   }))
 );
+const StudentFeeStatusScreen = lazy(() =>
+  import('../../features/teacher/screens/StudentFeeStatusScreen').then(module => ({
+    default: module.StudentFeeStatusScreen,
+  }))
+);
 
 const Stack = createNativeStackNavigator();
 
 export default function TeacherStack() {
   return (
     <Suspense fallback={<LoadingSpinner fullScreen />}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="MyClasses" component={MyClassesScreen as React.ComponentType<any>} />
-      <Stack.Screen name="MarkAttendance" component={MarkAttendanceScreen as React.ComponentType<any>} />
-      <Stack.Screen name="EnterMarks" component={EnterMarksScreen as React.ComponentType<any>} />
-      <Stack.Screen name="MySalary" component={MySalaryScreen as React.ComponentType<any>} />
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: true,
+          headerStyle: { backgroundColor: '#fff' },
+          headerTintColor: '#1e293b',
+          headerTitleStyle: { fontWeight: '700' },
+        }}
+        initialRouteName="MyClasses"
+      >
+        <Stack.Screen name="MyClasses" component={MyClassesScreen as React.ComponentType<any>} options={{ title: 'My Classes' }} />
+        <Stack.Screen name="MarkAttendance" component={MarkAttendanceScreen as React.ComponentType<any>} options={{ title: 'Mark Attendance' }} />
+        <Stack.Screen name="EnterMarks" component={EnterMarksScreen as React.ComponentType<any>} options={{ title: 'Enter Marks' }} />
+        <Stack.Screen name="MySalary" component={MySalaryScreen as React.ComponentType<any>} options={{ title: 'My Salary' }} />
+        <Stack.Screen name="StudentFeeStatus" component={StudentFeeStatusScreen as React.ComponentType<any>} options={{ title: 'Student Fee Status' }} />
       </Stack.Navigator>
     </Suspense>
   );

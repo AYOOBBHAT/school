@@ -75,6 +75,41 @@ export async function submitMarksBulk(marks: Mark[]): Promise<{ success: boolean
 }
 
 // Salary
-export async function loadTeacherSalary(): Promise<{ records: SalaryRecord[] }> {
-  return api.get<{ records: SalaryRecord[] }>('/salary/teacher');
+export interface SalaryStructure {
+  id: string;
+  base_salary: number;
+  hra: number;
+  other_allowances: number;
+  fixed_deductions: number;
+  salary_cycle: string;
+  attendance_based_deduction: boolean;
+}
+
+export interface SalaryRecord {
+  id: string;
+  month: number;
+  year: number;
+  gross_salary: number;
+  total_deductions: number;
+  attendance_deduction: number;
+  net_salary: number;
+  status: string;
+  payment_date: string | null;
+  payment_mode: string | null;
+  rejection_reason: string | null;
+}
+
+export async function loadTeacherSalary(teacherId: string): Promise<{
+  structure: SalaryStructure | null;
+  records: SalaryRecord[];
+}> {
+  const [structureRes, recordsRes] = await Promise.all([
+    api.get<{ structure: SalaryStructure }>(`/salary/structure/${teacherId}`).catch(() => ({ structure: null })),
+    api.get<{ records: SalaryRecord[] }>('/salary/records')
+  ]);
+
+  return {
+    structure: structureRes.structure || null,
+    records: recordsRes.records || []
+  };
 }

@@ -46,20 +46,9 @@ export const queryKeys = {
       ['clerk', 'marks-results', params] as const,
   },
   student: {
-    attendance: (params?: {
-      student_id?: string;
-      class_group_id?: string;
-      start_date?: string;
-      end_date?: string;
-    }) => ['student', 'attendance', params] as const,
-    marks: (params?: {
-      student_id?: string;
-      subject_id?: string;
-      exam_id?: string;
-    }) => ['student', 'marks', params] as const,
-    fees: (params?: {
-      student_id?: string;
-      status?: string;
-    }) => ['student', 'fees', params] as const,
+    profile: ['student', 'profile'] as const,
+    attendance: () => ['student', 'attendance'] as const,
+    marks: () => ['student', 'marks'] as const,
+    fees: () => ['student', 'fees'] as const,
   },
 } as const;

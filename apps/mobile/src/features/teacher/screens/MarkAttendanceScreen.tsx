@@ -187,40 +187,71 @@ export function MarkAttendanceScreen({ navigation, route }: Props) {
           {students.length === 0 ? (
             <EmptyState icon="👥" title="No students found" message="This class has no students yet" />
           ) : (
-            students.map(student => (
-              <Card key={student.id} style={styles.studentCard}>
-                <View style={styles.studentHeader}>
-                  <Text style={styles.studentName}>{student.profile?.full_name || student.full_name || 'Unknown'}</Text>
-                  {student.roll_number && <Text style={styles.rollNumber}>Roll: {student.roll_number}</Text>}
-                </View>
-                <View style={styles.attendanceButtons}>
-                  <TouchableOpacity
-                    style={[styles.attendanceButton, attendance[student.id] === 'present' && styles.selected]}
-                    onPress={() => toggleAttendance(student.id, 'present')}
-                  >
-                    <Text style={[styles.buttonText, attendance[student.id] === 'present' && styles.selectedText]}>
-                      Present
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.attendanceButton, attendance[student.id] === 'absent' && styles.selected]}
-                    onPress={() => toggleAttendance(student.id, 'absent')}
-                  >
-                    <Text style={[styles.buttonText, attendance[student.id] === 'absent' && styles.selectedText]}>
-                      Absent
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.attendanceButton, attendance[student.id] === 'late' && styles.selected]}
-                    onPress={() => toggleAttendance(student.id, 'late')}
-                  >
-                    <Text style={[styles.buttonText, attendance[student.id] === 'late' && styles.selectedText]}>
-                      Late
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </Card>
-            ))
+            <>
+              {/* Bulk Actions */}
+              <View style={styles.bulkActions}>
+                <TouchableOpacity
+                  style={[styles.bulkButton, styles.markAllPresent]}
+                  onPress={() => {
+                    const allPresent: Record<string, 'present'> = {};
+                    students.forEach((s) => {
+                      allPresent[s.id] = 'present';
+                    });
+                    setAttendance(allPresent);
+                  }}
+                >
+                  <Text style={styles.bulkButtonText}>✓ Mark All Present</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.bulkButton, styles.markAllAbsent]}
+                  onPress={() => {
+                    const allAbsent: Record<string, 'absent'> = {};
+                    students.forEach((s) => {
+                      allAbsent[s.id] = 'absent';
+                    });
+                    setAttendance(allAbsent);
+                  }}
+                >
+                  <Text style={styles.bulkButtonText}>✕ Mark All Absent</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Students List */}
+              {students.map(student => (
+                <Card key={student.id} style={styles.studentCard}>
+                  <View style={styles.studentHeader}>
+                    <Text style={styles.studentName}>{student.profile?.full_name || student.full_name || 'Unknown'}</Text>
+                    {student.roll_number && <Text style={styles.rollNumber}>Roll: {student.roll_number}</Text>}
+                  </View>
+                  <View style={styles.attendanceButtons}>
+                    <TouchableOpacity
+                      style={[styles.attendanceButton, attendance[student.id] === 'present' && styles.selected]}
+                      onPress={() => toggleAttendance(student.id, 'present')}
+                    >
+                      <Text style={[styles.buttonText, attendance[student.id] === 'present' && styles.selectedText]}>
+                        Present
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.attendanceButton, attendance[student.id] === 'absent' && styles.selected]}
+                      onPress={() => toggleAttendance(student.id, 'absent')}
+                    >
+                      <Text style={[styles.buttonText, attendance[student.id] === 'absent' && styles.selectedText]}>
+                        Absent
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.attendanceButton, attendance[student.id] === 'late' && styles.selected]}
+                      onPress={() => toggleAttendance(student.id, 'late')}
+                    >
+                      <Text style={[styles.buttonText, attendance[student.id] === 'late' && styles.selectedText]}>
+                        Late
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </Card>
+              ))}
+            </>
           )}
         </ScrollView>
       )}
@@ -259,6 +290,11 @@ const styles = StyleSheet.create({
   selected: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
   buttonText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
   selectedText: { color: '#fff' },
+  bulkActions: { flexDirection: 'row', gap: 12, padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  bulkButton: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  markAllPresent: { backgroundColor: '#10b981' },
+  markAllAbsent: { backgroundColor: '#ef4444' },
+  bulkButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   footer: { backgroundColor: '#fff', padding: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0' },
   submitButton: { backgroundColor: '#2563eb', paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
   submitText: { color: '#fff', fontSize: 16, fontWeight: '600' },

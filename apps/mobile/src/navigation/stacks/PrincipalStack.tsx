@@ -39,6 +39,11 @@ const SalaryScreen = lazy(() =>
   }))
 );
 const FeesScreen = lazy(() => import('../../features/principal/screens/FeesScreen'));
+const PrincipalDashboardScreen = lazy(() =>
+  import('../../features/principal/screens/PrincipalDashboardScreen').then(module => ({
+    default: module.PrincipalDashboardScreen,
+  }))
+);
 
 const Stack = createNativeStackNavigator();
 
@@ -51,7 +56,13 @@ export default function PrincipalStack() {
           headerTintColor: '#1e293b',
           headerTitleStyle: { fontWeight: '700' },
         }}
+        initialRouteName="Dashboard"
       >
+      <Stack.Screen
+        name="Dashboard"
+        component={PrincipalDashboardScreen as React.ComponentType<any>}
+        options={{ title: 'Dashboard' }}
+      />
       <Stack.Screen
         name="Students"
         component={StudentsScreen}

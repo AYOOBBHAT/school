@@ -44,28 +44,32 @@ if (SUPABASE_URL && SUPABASE_ANON_KEY) {
  * Always fetches the latest token - never caches
  */
 async function getToken(): Promise<string | null> {
-  // If Supabase is configured, use it
+  let token: string | null = null;
+
+  // If Supabase is configured, try to get from session first
   if (supabaseClient) {
     try {
       const { data } = await supabaseClient.auth.getSession();
-      return data.session?.access_token || null;
+      token = data.session?.access_token || null;
     } catch (error) {
       if (__DEV__) {
         console.error('[API] Error getting Supabase session:', error);
       }
-      return null;
     }
   }
 
-  // Fallback to AsyncStorage for non-Supabase setups
-  try {
-    return await AsyncStorage.getItem(TOKEN_KEY);
-  } catch (error) {
-    if (__DEV__) {
-      console.error('[API] Error getting token from AsyncStorage:', error);
+  // Fallback to AsyncStorage if Supabase didn't return a token
+  if (!token) {
+    try {
+      token = await AsyncStorage.getItem(TOKEN_KEY);
+    } catch (error) {
+      if (__DEV__) {
+        console.error('[API] Error getting token from AsyncStorage:', error);
+      }
     }
-    return null;
   }
+
+  return token;
 }
 
 /**
@@ -236,20 +240,11 @@ export const api = {
   },
 
   /**
-   * Set token in AsyncStorage (for non-Supabase setups)
-   * Note: With Supabase, tokens are managed automatically via getSession()
+   * Set token in AsyncStorage and optionally in Supabase session
+   * Always stores in AsyncStorage as fallback
    */
   setToken: async (token: string | null): Promise<void> => {
-    if (supabaseClient) {
-      // With Supabase, tokens are managed by Supabase auth
-      // This method is kept for backward compatibility but doesn't do anything
-      if (__DEV__) {
-        console.log('[API] setToken called but Supabase is configured - token managed by Supabase');
-      }
-      return;
-    }
-
-    // For non-Supabase setups, store token in AsyncStorage
+    // Always store in AsyncStorage as fallback
     try {
       if (token) {
         await AsyncStorage.setItem(TOKEN_KEY, token);
@@ -261,6 +256,10 @@ export const api = {
         console.error('[API] Error setting token in AsyncStorage:', error);
       }
     }
+
+    // If Supabase is configured, we still store in AsyncStorage
+    // The Supabase session will be set separately if a session object is available
+    // This ensures we always have a token available via AsyncStorage
   },
 
   /**

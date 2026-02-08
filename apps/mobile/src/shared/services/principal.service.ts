@@ -84,6 +84,43 @@ export async function loadSalarySummary(): Promise<{ summary: SalarySummary }> {
 }
 
 // Dashboard
+export interface SchoolInfo {
+  id: string;
+  name: string;
+  join_code?: string | null;
+  registration_number?: string | null;
+  address?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  logo_url?: string | null;
+  created_at?: string | null;
+}
+
+export interface GenderBreakdown {
+  male: number;
+  female: number;
+  other: number;
+  unknown: number;
+  total: number;
+}
+
+export interface DashboardStats {
+  totalStudents: number;
+  totalStaff: number;
+  totalClasses: number;
+  studentsByGender: GenderBreakdown;
+  staffByGender: GenderBreakdown;
+}
+
+export async function loadSchoolInfo(): Promise<SchoolInfo> {
+  return api.get<SchoolInfo>('/school/info');
+}
+
+export async function loadDashboardStats(): Promise<DashboardStats> {
+  const response = await api.get<{ stats: DashboardStats }>('/dashboard/stats');
+  return response.stats;
+}
+
 export async function loadDashboard(): Promise<DashboardStats> {
-  return api.get<DashboardStats>('/dashboard');
+  return loadDashboardStats();
 }

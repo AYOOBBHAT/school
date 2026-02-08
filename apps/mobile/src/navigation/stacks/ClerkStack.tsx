@@ -18,16 +18,45 @@ const MarksResultsScreen = lazy(() =>
     default: module.MarksResultsScreen,
   }))
 );
+const ClerkDashboardScreen = lazy(() =>
+  import('../../features/clerk/screens/ClerkDashboardScreen').then(module => ({
+    default: module.ClerkDashboardScreen,
+  }))
+);
 
 const Stack = createNativeStackNavigator();
 
 export default function ClerkStack() {
   return (
     <Suspense fallback={<LoadingSpinner fullScreen />}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="FeeCollection" component={FeeCollectionScreen as React.ComponentType<any>} />
-      <Stack.Screen name="SalaryPayment" component={SalaryPaymentScreen as React.ComponentType<any>} />
-      <Stack.Screen name="MarksResults" component={MarksResultsScreen as React.ComponentType<any>} />
+      <Stack.Navigator
+        screenOptions={{
+          headerStyle: { backgroundColor: '#fff' },
+          headerTintColor: '#1e293b',
+          headerTitleStyle: { fontWeight: '700' },
+        }}
+        initialRouteName="Dashboard"
+      >
+        <Stack.Screen
+          name="Dashboard"
+          component={ClerkDashboardScreen as React.ComponentType<any>}
+          options={{ title: 'Dashboard' }}
+        />
+        <Stack.Screen
+          name="FeeCollection"
+          component={FeeCollectionScreen as React.ComponentType<any>}
+          options={{ title: 'Fee Collection' }}
+        />
+        <Stack.Screen
+          name="SalaryPayment"
+          component={SalaryPaymentScreen as React.ComponentType<any>}
+          options={{ title: 'Salary Payment' }}
+        />
+        <Stack.Screen
+          name="MarksResults"
+          component={MarksResultsScreen as React.ComponentType<any>}
+          options={{ title: 'Marks & Results' }}
+        />
       </Stack.Navigator>
     </Suspense>
   );
