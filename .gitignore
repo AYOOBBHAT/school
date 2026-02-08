@@ -1,5 +1,6 @@
 # Environment Variables - CRITICAL: Never commit these!
 .env
+.env.example
 .env.local
 .env.development
 .env.production
