@@ -19,24 +19,18 @@ export function useExams() {
   });
 }
 
-export function useStudentsForMarks(
-  params: {
-    class_group_id: string;
-    exam_id: string;
-    subject_id: string;
-  },
-  enabled: boolean = true
-) {
+/** Load students for marks entry by class only (same as web). Exam/subject are only for submit. */
+export function useStudentsForMarks(class_group_id: string, enabled: boolean = true) {
   return useQuery({
-    queryKey: queryKeys.teacher.studentsForMarks(params),
-    queryFn: () => loadStudentsForMarks(params),
-    enabled: enabled && !!params.class_group_id && !!params.exam_id && !!params.subject_id,
-    staleTime: 2 * 60 * 1000, // 2 minutes - marks data changes frequently
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    queryKey: queryKeys.teacher.studentsForMarks(class_group_id),
+    queryFn: () => loadStudentsForMarks(class_group_id),
+    enabled: enabled && !!class_group_id,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
-    placeholderData: (previousData) => previousData, // Keep previous data while refetching
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -45,52 +39,12 @@ export function useSubmitMarks() {
   
   return useMutation({
     mutationFn: submitMarksBulk,
-    onMutate: async (newMarks) => {
-      // Cancel any outgoing refetches
+    onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: queryKeys.teacher.marks });
-
-      // Optimistically update marks
-      const examId = newMarks[0]?.exam_id;
-      const subjectId = newMarks[0]?.subject_id;
-      const classGroupId = newMarks[0]?.class_group_id;
-      
-      if (examId && subjectId && classGroupId) {
-        const previous = queryClient.getQueryData(
-          queryKeys.teacher.studentsForMarks({ class_group_id: classGroupId, exam_id: examId, subject_id: subjectId })
-        );
-
-        // The marks are already submitted, so we just invalidate
-        return { previous, examId, subjectId, classGroupId };
-      }
       return {};
     },
-    onError: (_err, _newMarks, context) => {
-      // Rollback on error if needed
-      if (context?.previous && context?.examId && context?.subjectId && context?.classGroupId) {
-        queryClient.setQueryData(
-          queryKeys.teacher.studentsForMarks({
-            class_group_id: context.classGroupId,
-            exam_id: context.examId,
-            subject_id: context.subjectId,
-          }),
-          context.previous
-        );
-      }
-    },
-    onSettled: (_data, _error, variables) => {
-      // Invalidate only the specific marks query that was updated
-      const examId = variables[0]?.exam_id;
-      const subjectId = variables[0]?.subject_id;
-      const classGroupId = variables[0]?.class_group_id;
-      if (examId && subjectId && classGroupId) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.teacher.studentsForMarks({
-            class_group_id: classGroupId,
-            exam_id: examId,
-            subject_id: subjectId,
-          }),
-        });
-      }
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['teacher', 'students-for-marks'] });
     },
   });
 }

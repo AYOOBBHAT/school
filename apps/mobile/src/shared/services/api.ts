@@ -115,8 +115,8 @@ async function apiRequest<T>(
   retryCount = 0,
   isRetryAfterRefresh = false
 ): Promise<T> {
-  // Normalize URL
-  const baseUrl = API_BASE_URL.replace(/\/+$/, '');
+  // Normalize URL (trim spaces that can slip in from .env)
+  const baseUrl = (API_BASE_URL ?? '').trim().replace(/\/+$/, '');
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${baseUrl}${normalizedPath}`;
 
@@ -134,13 +134,30 @@ async function apiRequest<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // Make the request
+  // Make the request with timeout
   let response: Response;
   try {
-    response = await fetch(url, {
-      ...options,
-      headers,
+    if (__DEV__) {
+      console.log('[API] Making request to:', url, { method: options.method || 'GET' });
+    }
+    
+    // Create a timeout promise (30 seconds)
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Request timeout: Server did not respond within 30 seconds')), 30000);
     });
+    
+    // Race between fetch and timeout
+    response = await Promise.race([
+      fetch(url, {
+        ...options,
+        headers,
+      }),
+      timeoutPromise,
+    ]);
+    
+    if (__DEV__) {
+      console.log('[API] Response received:', { status: response.status, statusText: response.statusText });
+    }
   } catch (networkError: unknown) {
     // Network error - retry up to 2 times with delay
     const error = networkError as Error;

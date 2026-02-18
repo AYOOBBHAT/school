@@ -3,7 +3,7 @@
  * Defines all route parameters for each stack
  */
 
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 
 // Root Stack (Auth + Role Selection)
 export type RootStackParamList = {
@@ -15,19 +15,19 @@ export type RootStackParamList = {
   Student: undefined;
 };
 
-// Principal Stack
+// Principal Stack (order matches web sidebar: Dashboard, Staff, Students, …)
 export type PrincipalStackParamList = {
+  Dashboard: undefined;
   Students: undefined;
-  Classes: undefined;
   Staff: undefined;
-  Subjects: undefined;
   Exams: undefined;
   Classifications: undefined;
+  UnpaidFeeAnalytics: undefined;
   Salary: undefined;
   Fees: undefined;
 };
 
-// Teacher Stack
+// Teacher Stack (matches web: My Classes, Attendance, Marks Entry, My Salary, Student Fee Status)
 export type TeacherStackParamList = {
   MyClasses: undefined;
   MarkAttendance: {
@@ -43,6 +43,7 @@ export type TeacherStackParamList = {
     examId?: string;
   };
   MySalary: undefined;
+  StudentFeeStatus: undefined;
 };
 
 // Clerk Stack
@@ -85,3 +86,9 @@ export type StudentStackScreenProps<T extends keyof StudentStackParamList> = Nat
   StudentStackParamList,
   T
 >;
+
+// Navigation prop types for use inside each stack (so navigate('ScreenName') is typed correctly)
+export type PrincipalStackNavigationProp = NativeStackNavigationProp<PrincipalStackParamList>;
+export type TeacherStackNavigationProp = NativeStackNavigationProp<TeacherStackParamList>;
+export type ClerkStackNavigationProp = NativeStackNavigationProp<ClerkStackParamList>;
+export type StudentStackNavigationProp = NativeStackNavigationProp<StudentStackParamList>;

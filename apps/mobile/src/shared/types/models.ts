@@ -70,11 +70,14 @@ export interface Teacher {
 
 export interface Staff {
   id: string;
-  profile_id: string;
+  profile_id?: string;
   role: 'teacher' | 'clerk';
   subject_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  /** Present when API returns flat profile (e.g. staff-admin) */
+  full_name?: string | null;
+  email?: string | null;
   profiles?: {
     id: string;
     full_name: string;
@@ -435,10 +438,17 @@ export interface SalarySummary {
 
 export interface ClassificationType {
   id: string;
-  type: string;
-  value: string;
-  name?: string | null;
+  name: string;
   school_id: string;
+  display_order?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+export interface ClassificationValue {
+  id: string;
+  value: string;
+  classification_type_id: string;
+  display_order?: number | null;
+  created_at?: string | null;
 }

@@ -80,6 +80,15 @@ export class AuthService {
     this.currentUser = null;
   }
 
+  /**
+   * Clear all stored authentication data
+   * Useful for development/testing or forcing re-login
+   */
+  async clearStoredAuth(): Promise<void> {
+    await this.logout();
+    console.log('[AuthService] All stored auth data cleared');
+  }
+
   async getCurrentUser(): Promise<User | null> {
     if (this.currentUser) {
       return this.currentUser;

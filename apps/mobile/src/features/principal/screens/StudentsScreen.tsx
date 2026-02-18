@@ -8,14 +8,11 @@ import { Card } from '../../../shared/components/Card';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { Button } from '../../../shared/components/Button';
 import { Student, ClassGroup } from '../../../shared/types';
+import type { PrincipalStackScreenProps } from '../../../navigation/types';
 
-import { NavigationProp } from '../../../shared/types';
+type Props = PrincipalStackScreenProps<'Students'>;
 
-interface StudentsScreenProps {
-  navigation: NavigationProp;
-}
-
-export function StudentsScreen({ navigation }: StudentsScreenProps) {
+export function StudentsScreen({ navigation }: Props) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState({
     email: '',

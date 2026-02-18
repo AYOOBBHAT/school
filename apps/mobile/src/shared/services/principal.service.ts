@@ -2,11 +2,10 @@ import { api } from './api';
 import { 
   Student, 
   ClassGroup, 
-  Subject, 
   Staff, 
   Exam, 
-  DashboardStats,
   ClassificationType,
+  ClassificationValue,
   SalarySummary
 } from '../types';
 
@@ -30,28 +29,9 @@ export async function createStudent(data: {
   return api.post<{ success: boolean; student: Student }>('/students-admin', data);
 }
 
-// Classes
+// Classes (load only; used by StudentsScreen filter and prefetch)
 export async function loadClasses(): Promise<{ classes: ClassGroup[] }> {
   return api.get<{ classes: ClassGroup[] }>('/classes');
-}
-
-export async function createClass(data: {
-  name: string;
-  description?: string;
-}): Promise<{ success: boolean; class: ClassGroup }> {
-  return api.post<{ success: boolean; class: ClassGroup }>('/classes', data);
-}
-
-// Subjects
-export async function loadSubjects(): Promise<{ subjects: Subject[] }> {
-  return api.get<{ subjects: Subject[] }>('/subjects');
-}
-
-export async function createSubject(data: {
-  name: string;
-  code?: string;
-}): Promise<{ success: boolean; subject: Subject }> {
-  return api.post<{ success: boolean; subject: Subject }>('/subjects', data);
 }
 
 // Staff
@@ -59,13 +39,26 @@ export async function loadStaff(): Promise<{ staff: Staff[] }> {
   return api.get<{ staff: Staff[] }>('/staff-admin');
 }
 
+/** Create staff (teacher/clerk) - same endpoint and payload as web principal-users/staff */
 export async function createStaff(data: {
   email: string;
   password: string;
   full_name: string;
   role: 'teacher' | 'clerk';
-}): Promise<{ success: boolean; staff: Staff }> {
-  return api.post<{ success: boolean; staff: Staff }>('/staff-admin', data);
+  phone?: string | null;
+  gender?: string | null;
+  salary_start_date?: string | null;
+}): Promise<{ message?: string; user?: { id: string; email: string; full_name: string; role: string } }> {
+  const body: Record<string, unknown> = {
+    email: data.email,
+    password: data.password,
+    full_name: data.full_name,
+    role: data.role,
+  };
+  if (data.phone != null && data.phone !== '') body.phone = data.phone;
+  if (data.gender != null && data.gender !== '') body.gender = data.gender;
+  if (data.role === 'teacher' && data.salary_start_date) body.salary_start_date = data.salary_start_date;
+  return api.post('/principal-users/staff', body);
 }
 
 // Exams
@@ -73,9 +66,29 @@ export async function loadExams(): Promise<{ exams: Exam[] }> {
   return api.get<{ exams: Exam[] }>('/exams');
 }
 
-// Classifications
+// Classifications (same API as web: /classifications/*)
 export async function loadClassificationTypes(): Promise<{ types: ClassificationType[] }> {
-  return api.get<{ types: ClassificationType[] }>('/classification-types');
+  return api.get<{ types: ClassificationType[] }>('/classifications/types');
+}
+
+export async function loadClassificationValues(typeId: string): Promise<{ values: ClassificationValue[] }> {
+  return api.get<{ values: ClassificationValue[] }>(`/classifications/types/${typeId}/values`);
+}
+
+export async function createClassificationType(data: { name: string }): Promise<{ type: ClassificationType }> {
+  return api.post<{ type: ClassificationType }>('/classifications/types', data);
+}
+
+export async function createClassificationValue(data: { classification_type_id: string; value: string }): Promise<{ value: ClassificationValue }> {
+  return api.post<{ value: ClassificationValue }>('/classifications/values', data);
+}
+
+export async function deleteClassificationType(typeId: string): Promise<void> {
+  await api.delete(`/classifications/types/${typeId}`);
+}
+
+export async function deleteClassificationValue(valueId: string): Promise<void> {
+  await api.delete(`/classifications/values/${valueId}`);
 }
 
 // Salary
@@ -110,10 +123,20 @@ export interface DashboardStats {
   totalClasses: number;
   studentsByGender: GenderBreakdown;
   staffByGender: GenderBreakdown;
+  /** Principal: pending approvals count */
+  pending_approvals?: number;
+  /** Teacher/student: today's attendance, total classes */
+  today_attendance?: number;
+  total_classes?: number;
 }
 
 export async function loadSchoolInfo(): Promise<SchoolInfo> {
-  return api.get<SchoolInfo>('/school/info');
+  const response = await api.get<{ school: SchoolInfo } | SchoolInfo>('/school/info');
+  // Handle both { school: {...} } and direct school object (for backward compatibility)
+  if (response && typeof response === 'object' && 'school' in response) {
+    return (response as { school: SchoolInfo }).school;
+  }
+  return response as SchoolInfo;
 }
 
 export async function loadDashboardStats(): Promise<DashboardStats> {

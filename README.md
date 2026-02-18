@@ -370,10 +370,19 @@ VITE_SUPABASE_ANON_KEY=your_anon_key_here
 #### Mobile App (`apps/mobile/.env`)
 
 ```env
-API_URL=http://localhost:4000
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your_anon_key_here
+# For local development on physical device: Use your computer's LAN IP
+# Example: http://192.168.1.100:4000
+# For emulator: Use localhost
+# Example: http://localhost:4000
+EXPO_PUBLIC_API_URL=http://localhost:4000
+
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
 ```
+
+**Important**: Physical devices cannot access `localhost`. Use your computer's IP address instead:
+- Find your IP: `ipconfig` (Windows) or `ifconfig` (Mac/Linux)
+- Example: `EXPO_PUBLIC_API_URL=http://192.168.1.100:4000`
 
 ### 5. Build the Project
 
@@ -398,6 +407,75 @@ pnpm --filter web dev        # Web app (port 5173)
 ```
 
 ## 💻 Development
+
+### Local Development Workflow
+
+#### Quick Start (Backend + Mobile)
+
+1. **Install dependencies** (if not already done):
+   ```bash
+   pnpm install
+   ```
+
+2. **Set up environment variables**:
+   - Copy `.env.example` to `.env` in both `apps/backend/` and `apps/mobile/`
+   - Fill in your actual credentials (Supabase, Redis, etc.)
+   - **Important for mobile**: Use your computer's LAN IP address (not `localhost`) if testing on a physical device
+     - Find your IP: `ipconfig` (Windows) or `ifconfig` (Mac/Linux)
+     - Example: `EXPO_PUBLIC_API_URL=http://192.168.1.100:4000`
+
+3. **Start the backend server**:
+   ```bash
+   cd apps/backend
+   pnpm dev
+   ```
+   Backend will run on `http://localhost:4000` (or your configured PORT)
+
+4. **Start the mobile app** (in a new terminal):
+   ```bash
+   cd apps/mobile
+   pnpm start
+   # or: pnpm dev
+   ```
+   This starts Expo development server with hot reload enabled.
+
+5. **Run on device/emulator**:
+   - **Android Emulator**: Press `a` in the Expo terminal
+   - **iOS Simulator**: Press `i` in the Expo terminal (Mac only)
+   - **Physical Device**: Scan the QR code with Expo Go app
+     - Make sure your phone and computer are on the same Wi-Fi network
+     - Use your computer's LAN IP in `EXPO_PUBLIC_API_URL` (not localhost)
+
+#### Development Tips
+
+- **Hot Reload**: Both backend (via `tsx watch`) and mobile (via Expo) support hot reload
+- **Backend Changes**: Automatically restart on file changes
+- **Mobile Changes**: Automatically reload in the app
+- **Clear Cache**: If mobile app has issues, run `pnpm clean` in `apps/mobile/`
+- **ADB Setup** (for Android debugging):
+  - Install Android Studio and set up Android SDK
+  - Enable USB debugging on your device
+  - Connect device via USB or use wireless debugging
+  - Run `adb devices` to verify connection
+
+#### Troubleshooting Local Development
+
+**Mobile can't connect to backend:**
+- ✅ Check backend is running on port 4000
+- ✅ Verify `EXPO_PUBLIC_API_URL` in mobile `.env` matches backend
+- ✅ For physical device: Use LAN IP, not localhost
+- ✅ For emulator: Use `localhost` or `10.0.2.2` (Android) / `localhost` (iOS)
+- ✅ Check firewall allows connections on port 4000
+
+**Expo runs in CI mode (hot reload disabled):**
+- ✅ Use `pnpm start` or `pnpm dev` (both use `cross-env CI=false`)
+- ✅ Don't use `--non-interactive` flag
+- ✅ Ensure `cross-env` is installed: `pnpm add -D cross-env`
+
+**Backend not starting:**
+- ✅ Check all required env variables are set in `apps/backend/.env`
+- ✅ Verify Supabase credentials are correct
+- ✅ Check port 4000 is not already in use
 
 ### Development Workflow
 

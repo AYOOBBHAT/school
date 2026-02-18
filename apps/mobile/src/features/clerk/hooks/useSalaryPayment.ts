@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   loadUnpaidSalaries,
+  loadSalarySummary,
+  loadSalaryPaymentHistory,
   recordSalaryPayment,
 } from '../../../shared/services/clerk.service';
 import { queryKeys } from '../../../shared/queryKeys';
@@ -10,12 +12,37 @@ export function useUnpaidSalaries(timeScope: string, page?: number, limit?: numb
   return useQuery({
     queryKey: queryKeys.clerk.unpaidSalaries(timeScope, page, limit),
     queryFn: () => loadUnpaidSalaries(timeScope, page, limit),
-    staleTime: 2 * 60 * 1000, // 2 minutes - salary data changes with payments
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
-    placeholderData: (previousData) => previousData, // Keep previous data while refetching
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+/** Same as web: salary summary (total due/paid per teacher) for modal context. */
+export function useSalarySummary() {
+  return useQuery({
+    queryKey: ['clerk', 'salary-summary'] as const,
+    queryFn: loadSalarySummary,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    retry: 1,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+/** Same as web: teacher payment history for View History modal. */
+export function useSalaryPaymentHistory(teacherId: string, enabled: boolean, params?: { page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: ['clerk', 'salary-history', teacherId, params?.page, params?.limit] as const,
+    queryFn: () => loadSalaryPaymentHistory(teacherId, params),
+    enabled: enabled && !!teacherId,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    retry: 1,
+    placeholderData: (previousData) => previousData,
   });
 }
 

@@ -88,10 +88,17 @@ export async function loadMarks(): Promise<{ marks: Mark[] }> {
 
 // Fees
 export interface FeeSummary {
-  student_id: string;
-  total_fee: number;
-  paid_amount: number;
-  pending_amount: number;
+  student_id?: string;
+  total_fee?: number;
+  paid_amount?: number;
+  pending_amount?: number;
+  // Backend returns these field names (camelCase)
+  totalFees?: number;
+  totalPaid?: number;
+  totalRemaining?: number;
+  overdueFees?: number;
+  paidFees?: number;
+  totalFeeStructures?: number;
 }
 
 export interface FeeBill {

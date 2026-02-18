@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StudentScreenWrapper } from '../../../shared/components/StudentScreenWrapper';
 import { useStudentAttendance } from '../hooks/useAttendance';
 
 export function MyAttendanceScreen() {
@@ -9,7 +9,7 @@ export function MyAttendanceScreen() {
   const summary = data?.summary;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <StudentScreenWrapper currentRoute="MyAttendance">
       <Text style={styles.title}>My Attendance</Text>
 
       {/* Summary Cards */}
@@ -74,16 +74,11 @@ export function MyAttendanceScreen() {
         }
         contentContainerStyle={attendance.length === 0 ? styles.emptyContainer : undefined}
       />
-    </SafeAreaView>
+    </StudentScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-    padding: 16,
-  },
   title: {
     fontSize: 24,
     fontWeight: '700',

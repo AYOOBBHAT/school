@@ -78,19 +78,27 @@ export async function loginUsername(data: {
   
   try {
     // Call backend (same as web app)
-    const response = await api.post<{ user: { id: string; email: string }; session: any; password_reset_required?: boolean }>('/auth/login-username', data);
+    const response = await api.post<{ user: User; session: any; password_reset_required?: boolean }>('/auth/login-username', data);
     
     // Debug logging
     if (__DEV__) {
       console.log('[Auth Service] Username login response received:', {
         hasUser: !!response.user,
         hasSession: !!response.session,
+        userRole: response.user?.role,
+        userEmail: response.user?.email,
+        userId: response.user?.id,
       });
     }
     
     if (!response.session) {
       console.error('[Auth Service] No session in username login response!', response);
       throw new Error('Login response missing session');
+    }
+
+    if (!response.user || !response.user.role) {
+      console.error('[Auth Service] User object missing or incomplete!', response);
+      throw new Error('Login response missing user data or role');
     }
 
     // Set session in Supabase client (same as web app)
@@ -107,9 +115,9 @@ export async function loginUsername(data: {
       throw new Error('Supabase client not initialized');
     }
 
-    // Return response with user object (web app expects this format)
+    // Return response with complete user object
     return {
-      user: response.user as User,
+      user: response.user,
       token: response.session.access_token, // Extract token for backward compatibility
     };
   } catch (error: unknown) {

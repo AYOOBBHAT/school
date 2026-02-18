@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StudentScreenWrapper } from '../../../shared/components/StudentScreenWrapper';
 import { useStudentFees } from '../hooks/useFees';
 
 export function MyFeesScreen() {
@@ -10,7 +10,7 @@ export function MyFeesScreen() {
   const payments = data?.payments || [];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <StudentScreenWrapper currentRoute="MyFees">
       <ScrollView
         style={styles.content}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
@@ -104,15 +104,11 @@ export function MyFeesScreen() {
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </StudentScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
   content: {
     flex: 1,
     padding: 16,

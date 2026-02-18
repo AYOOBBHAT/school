@@ -525,7 +525,7 @@ router.post('/login-username', async (req, res) => {
     // Find profile by username and school_id
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, email, role, password_reset_required, school_id')
+      .select('id, email, role, password_reset_required, school_id, full_name')
       .eq('username', username)
       .eq('school_id', school.id)
       .eq('role', 'student')
@@ -558,8 +558,60 @@ router.post('/login-username', async (req, res) => {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
+    // Get school name if school_id exists
+    let schoolName: string | undefined;
+    if (profile.school_id) {
+      const { data: schoolData } = await supabase
+        .from('schools')
+        .select('name')
+        .eq('id', profile.school_id)
+        .single();
+      schoolName = schoolData?.name;
+    }
+
+    // Update app_metadata with school_id and role so they become JWT custom claims
+    if (profile.school_id || profile.role) {
+      const appMetadata: any = {};
+      if (profile.school_id) appMetadata.school_id = profile.school_id;
+      if (profile.role) appMetadata.role = profile.role;
+
+      await supabase.auth.admin.updateUserById(authData.user.id, {
+        app_metadata: appMetadata
+      });
+
+      // Sign out and sign in again to get a fresh token with updated claims
+      await anonSupabase.auth.signOut();
+      const { data: refreshedAuthData, error: refreshError } = await anonSupabase.auth.signInWithPassword({
+        email: profile.email,
+        password
+      });
+
+      if (!refreshError && refreshedAuthData.session) {
+        authData.session = refreshedAuthData.session;
+        authData.user = refreshedAuthData.user;
+      }
+    }
+
+    // Build complete user object matching mobile app's User type (same as email login)
+    const user = {
+      id: profile.id,
+      email: profile.email,
+      role: profile.role,
+      full_name: profile.full_name,
+      schoolId: profile.school_id || '',
+      schoolName
+    };
+
+    // eslint-disable-next-line no-console
+    console.log('[login-username] Login successful:', {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      hasSession: !!authData.session
+    });
+
     return res.json({
-      user: { id: authData.user.id, email: profile.email },
+      user,
       session: authData.session,
       password_reset_required: profile.password_reset_required || false
     });

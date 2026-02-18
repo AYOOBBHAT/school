@@ -27,7 +27,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
   const [useRegistrationNumber, setUseRegistrationNumber] = useState(false);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { setUser } = useAuth();
+  const { setUser, clearStoredAuth } = useAuth();
 
   const handleLogin = async () => {
     if (loginMode === 'email') {
@@ -44,6 +44,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
 
     setLoading(true);
     try {
+      console.log('[LoginScreen] Starting login process...');
       let response;
       
       if (loginMode === 'username') {
@@ -64,13 +65,22 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
           loginData.join_code = schoolCode;
         }
         
+        console.log('[LoginScreen] Calling authService.loginUsername...');
         response = await authService.loginUsername(loginData);
         console.log('[LoginScreen] Username login successful, user:', response.user?.email);
       } else {
         console.log('[LoginScreen] Attempting email login for:', email);
+        console.log('[LoginScreen] Calling authService.login...');
         response = await authService.login(email, password);
         console.log('[LoginScreen] Email login successful, user:', response.user?.email);
       }
+      
+      console.log('[LoginScreen] Login response received:', {
+        hasUser: !!response.user,
+        hasToken: !!response.token,
+        userRole: response.user?.role,
+        userId: response.user?.id,
+      });
       
       // Ensure token is set in API service before navigating (should already be set by saveAuth, but verify)
       if (response.token) {
@@ -78,15 +88,24 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
         console.log('[LoginScreen] Token verified and set in API service before navigation');
       } else {
         console.error('[LoginScreen] WARNING: No token in login response!');
+        throw new Error('Login response missing token');
+      }
+      
+      if (!response.user) {
+        console.error('[LoginScreen] WARNING: No user in login response!');
+        throw new Error('Login response missing user data');
       }
       
       const user = response.user;
+      console.log('[LoginScreen] Setting user in context:', { id: user.id, role: user.role, email: user.email });
       
       // Prefetch role-specific data immediately after login for instant screen loads
       // Do not await - let it run in background while navigation happens
       prefetchRoleData(user.role, user.id);
       
+      console.log('[LoginScreen] Calling setUser...');
       setUser(user);
+      console.log('[LoginScreen] setUser called successfully');
     } catch (error: unknown) {
       console.error('[LoginScreen] Login error:', error);
       const message = error instanceof Error ? error.message : 'Login failed';
@@ -95,6 +114,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
       if (stack) console.error('[LoginScreen] Error stack:', stack);
       Alert.alert('Login Failed', message);
     } finally {
+      console.log('[LoginScreen] Setting loading to false');
       setLoading(false);
     }
   };
@@ -105,7 +125,8 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
    */
   const prefetchRoleData = (role: string, userId: string) => {
     try {
-      if (role === 'principal') {
+      const normalizedRole = (role ?? '').toLowerCase();
+      if (normalizedRole === 'principal') {
         // Prefetch principal dashboard and key screens
         queryClient.prefetchQuery({
           queryKey: queryKeys.principal.dashboard,
@@ -119,7 +140,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
           queryKey: queryKeys.principal.classes,
           queryFn: loadClasses,
         });
-      } else if (role === 'teacher') {
+      } else if (normalizedRole === 'teacher') {
         // Prefetch teacher assignments, attendance, and salary
         queryClient.prefetchQuery({
           queryKey: queryKeys.teacher.assignments(userId),
@@ -131,9 +152,9 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
         });
         queryClient.prefetchQuery({
           queryKey: queryKeys.teacher.salary,
-          queryFn: loadTeacherSalary,
+          queryFn: () => loadTeacherSalary(userId),
         });
-      } else if (role === 'clerk') {
+      } else if (normalizedRole === 'clerk') {
         // Prefetch clerk students, classes, and unpaid salaries
         queryClient.prefetchQuery({
           queryKey: queryKeys.clerk.students,
@@ -147,19 +168,19 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
           queryKey: queryKeys.clerk.unpaidSalaries('all'),
           queryFn: () => loadUnpaidSalaries('all'),
         });
-      } else if (role === 'student') {
+      } else if (normalizedRole === 'student') {
         // Prefetch student attendance, marks, and fees
         queryClient.prefetchQuery({
-          queryKey: queryKeys.student.attendance({ student_id: userId }),
-          queryFn: () => loadAttendance({ student_id: userId }),
+          queryKey: queryKeys.student.attendance(),
+          queryFn: loadAttendance,
         });
         queryClient.prefetchQuery({
-          queryKey: queryKeys.student.marks({ student_id: userId }),
-          queryFn: () => loadMarks({ student_id: userId }),
+          queryKey: queryKeys.student.marks(),
+          queryFn: loadMarks,
         });
         queryClient.prefetchQuery({
-          queryKey: queryKeys.student.fees({ student_id: userId }),
-          queryFn: () => loadFees({ student_id: userId }),
+          queryKey: queryKeys.student.fees(),
+          queryFn: loadFees,
         });
       }
     } catch (error) {
@@ -240,8 +261,8 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
           ) : (
             <>
               <Input
-                label="Username"
-                placeholder="Enter your username"
+                label="Student Username"
+                placeholder="Enter your student username"
                 value={username}
                 onChangeText={setUsername}
                 autoCapitalize="none"
@@ -250,7 +271,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
               <View style={styles.schoolCodeContainer}>
                 <View style={styles.schoolCodeHeader}>
                   <Text style={styles.schoolCodeLabel}>
-                    {useRegistrationNumber ? 'Registration Number' : 'School Code'}
+                    {useRegistrationNumber ? 'School Registration Number' : 'School Join Code'}
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
@@ -264,6 +285,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
                   </TouchableOpacity>
                 </View>
                 <Input
+                  label={useRegistrationNumber ? 'School Registration Number' : 'School Join Code'}
                   placeholder={
                     useRegistrationNumber
                       ? 'Enter school registration number'
@@ -308,6 +330,32 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
               Sign up
             </Text>
           </View>
+
+          {/* Dev: Clear Stored Auth Button */}
+          {__DEV__ && (
+            <TouchableOpacity
+              style={styles.clearAuthButton}
+              onPress={async () => {
+                Alert.alert(
+                  'Clear Stored Auth',
+                  'This will clear all stored authentication data. You will need to log in again.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Clear',
+                      style: 'destructive',
+                      onPress: async () => {
+                        await clearStoredAuth();
+                        Alert.alert('Success', 'Stored auth data cleared. Please reload the app.');
+                      },
+                    },
+                  ]
+                );
+              }}
+            >
+              <Text style={styles.clearAuthText}>🧹 Clear Stored Auth (Dev)</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -411,6 +459,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     marginTop: 4,
+  },
+  clearAuthButton: {
+    marginTop: 24,
+    padding: 12,
+    backgroundColor: '#fef2f2',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    alignItems: 'center',
+  },
+  clearAuthText: {
+    fontSize: 12,
+    color: '#dc2626',
+    fontWeight: '600',
   },
 });
 

@@ -2,7 +2,6 @@ import React, { Suspense, lazy } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
-import { DashboardScreen } from '../screens/DashboardScreen';
 import { useAuth } from './AuthContext';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { LoadingSpinner } from '../shared/components/LoadingSpinner';
@@ -36,60 +35,49 @@ export function AppNavigator() {
     );
   }
 
+  // Render only the stack for the current role (avoids initialRouteName/first-screen issues)
+  const role = (user.role ?? '').toLowerCase();
+  const renderRoleStack = () => {
+    switch (role) {
+      case 'principal':
+        return (
+          <Suspense fallback={<LoadingSpinner fullScreen />}>
+            <PrincipalStack />
+          </Suspense>
+        );
+      case 'teacher':
+        return (
+          <Suspense fallback={<LoadingSpinner fullScreen />}>
+            <TeacherStack />
+          </Suspense>
+        );
+      case 'clerk':
+        return (
+          <Suspense fallback={<LoadingSpinner fullScreen />}>
+            <ClerkStack />
+          </Suspense>
+        );
+      case 'student':
+      default:
+        return (
+          <Suspense fallback={<LoadingSpinner fullScreen />}>
+            <StudentStack />
+          </Suspense>
+        );
+    }
+  };
+
   return (
     <Stack.Navigator
       screenOptions={{
+        headerShown: false,
         headerStyle: { backgroundColor: '#fff' },
         headerTintColor: '#1e293b',
         headerTitleStyle: { fontWeight: '700' },
       }}
     >
-      {/* Student Screens */}
-      <Stack.Screen
-        name="Student"
-        options={{ headerShown: false }}
-      >
-        {() => (
-          <Suspense fallback={<LoadingSpinner fullScreen />}>
-            <StudentStack />
-          </Suspense>
-        )}
-      </Stack.Screen>
-
-      {/* Teacher Screens */}
-      <Stack.Screen
-        name="Teacher"
-        options={{ headerShown: false }}
-      >
-        {() => (
-          <Suspense fallback={<LoadingSpinner fullScreen />}>
-            <TeacherStack />
-          </Suspense>
-        )}
-      </Stack.Screen>
-
-      {/* Principal Screens */}
-      <Stack.Screen
-        name="Principal"
-        options={{ headerShown: false }}
-      >
-        {() => (
-          <Suspense fallback={<LoadingSpinner fullScreen />}>
-            <PrincipalStack />
-          </Suspense>
-        )}
-      </Stack.Screen>
-
-      {/* Clerk Screens */}
-      <Stack.Screen
-        name="Clerk"
-        options={{ headerShown: false }}
-      >
-        {() => (
-          <Suspense fallback={<LoadingSpinner fullScreen />}>
-            <ClerkStack />
-          </Suspense>
-        )}
+      <Stack.Screen name="RoleStack" options={{ headerShown: false }}>
+        {() => renderRoleStack()}
       </Stack.Screen>
     </Stack.Navigator>
   );

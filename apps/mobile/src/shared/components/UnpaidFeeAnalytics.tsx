@@ -6,6 +6,8 @@ import { ClassGroup } from '../types';
 
 interface UnpaidFeeAnalyticsProps {
   userRole: 'clerk' | 'principal';
+  /** Set false to hide payment status distribution (e.g. principal quick action screen) */
+  showChart?: boolean;
 }
 
 interface FeeComponentBreakdown {
@@ -57,7 +59,7 @@ interface AnalyticsData {
   };
 }
 
-export function UnpaidFeeAnalytics({ userRole }: UnpaidFeeAnalyticsProps) {
+export function UnpaidFeeAnalytics({ userRole, showChart = true }: UnpaidFeeAnalyticsProps) {
   const [classes, setClasses] = useState<ClassGroup[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [timeScope, setTimeScope] = useState<string>('last_month');
@@ -241,8 +243,8 @@ export function UnpaidFeeAnalytics({ userRole }: UnpaidFeeAnalyticsProps) {
             </View>
           </View>
 
-          {/* Chart Data (Simple visualization) */}
-          {data.chart_data && (
+          {/* Payment status distribution (optional; omit on principal quick-action screen) */}
+          {showChart && data.chart_data && (
             <View style={styles.chartContainer}>
               <Text style={styles.chartTitle}>Payment Status Distribution</Text>
               <View style={styles.chartLegend}>

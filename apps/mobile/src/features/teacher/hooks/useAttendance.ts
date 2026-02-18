@@ -22,22 +22,22 @@ export function useTeacherAttendanceAssignments(teacherId: string) {
   });
 }
 
+/** Load students for attendance by class + section (same as web: uses students-admin, no date). */
 export function useStudentsForAttendance(
   classGroupId: string,
   sectionId: string | undefined,
-  date: string,
   enabled: boolean = true
 ) {
   return useQuery({
-    queryKey: queryKeys.teacher.studentsForAttendance(classGroupId, sectionId, date),
-    queryFn: () => loadStudentsForAttendance(classGroupId, sectionId, date),
-    enabled: enabled && !!classGroupId && !!date,
-    staleTime: 2 * 60 * 1000, // 2 minutes - attendance data changes frequently
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    queryKey: queryKeys.teacher.studentsForAttendance(classGroupId, sectionId),
+    queryFn: () => loadStudentsForAttendance(classGroupId, sectionId),
+    enabled: enabled && !!classGroupId,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
-    placeholderData: (previousData) => previousData, // Keep previous data while refetching
+    placeholderData: (previousData) => previousData,
   });
 }
 

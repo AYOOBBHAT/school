@@ -23,9 +23,108 @@ export async function loadClasses(): Promise<{ classes: ClassGroup[] }> {
   return api.get<{ classes: ClassGroup[] }>('/classes');
 }
 
-// Fee Collection
-export async function loadStudentMonthlyLedger(studentId: string): Promise<{ ledger: MonthlyLedgerEntry[] }> {
-  return api.get<{ ledger: MonthlyLedgerEntry[] }>(`/students/${studentId}/monthly-ledger`);
+// Fee Collection (same as web: students from students-admin, fee data from clerk-fees)
+/** Student list item for fee collection UI (same shape as web FeeCollection) */
+export interface StudentForFeeCollection {
+  id: string;
+  name: string;
+  roll_number: string;
+  class: string;
+  class_group_id?: string;
+}
+
+/**
+ * Load students for fee collection with optional class filter (same as web: GET students-admin).
+ * Returns flat list parsed from data.classes (and unassigned when no class filter).
+ */
+export async function loadStudentsForFeeCollection(
+  classGroupId?: string,
+  page: number = 1,
+  limit: number = 50
+): Promise<{ students: StudentForFeeCollection[]; classes?: Array<{ id: string; name: string; students?: any[] }>; total_students?: number }> {
+  const params = new URLSearchParams();
+  if (classGroupId) params.append('class_group_id', classGroupId);
+  params.append('page', String(page));
+  params.append('limit', String(Math.min(limit, 100)));
+  const res = await api.get<{ classes?: Array<{ id: string; name: string; students?: any[] }>; unassigned?: any[]; total_students?: number; pagination?: { total: number } }>(
+    `/students-admin?${params.toString()}`
+  );
+  const list: StudentForFeeCollection[] = [];
+  if (res.classes && Array.isArray(res.classes)) {
+    for (const cls of res.classes) {
+      const className = cls.name || 'N/A';
+      for (const s of cls.students || []) {
+        list.push({
+          id: s.id,
+          name: s.profile?.full_name || 'Unknown',
+          roll_number: s.roll_number ?? 'N/A',
+          class: className,
+          class_group_id: cls.id,
+        });
+      }
+    }
+  }
+  if (!classGroupId && res.unassigned && Array.isArray(res.unassigned)) {
+    for (const s of res.unassigned) {
+      list.push({
+        id: s.id,
+        name: s.profile?.full_name || 'Unknown',
+        roll_number: s.roll_number ?? 'N/A',
+        class: 'Unassigned',
+        class_group_id: undefined,
+      });
+    }
+  }
+  const total = res.total_students ?? res.pagination?.total ?? list.length;
+  return { students: list, classes: res.classes, total_students: total };
+}
+
+/**
+ * Load student fee structure and monthly ledger (same as web: GET clerk-fees/student/:id/fee-structure).
+ * Returns fee_structure + monthly_ledger, or message when no fee configured.
+ */
+export async function loadStudentFeeStructure(studentId: string): Promise<{
+  fee_structure: any | null;
+  monthly_ledger: MonthlyLedgerEntry[];
+  message?: string;
+  student?: { id: string; name: string; roll_number: string; class: string };
+}> {
+  const data = await api.get<{ fee_structure: any; monthly_ledger: any[]; message?: string; student?: any }>(
+    `/clerk-fees/student/${studentId}/fee-structure`
+  );
+  if (data.message && data.fee_structure === null) {
+    return { fee_structure: null, monthly_ledger: [], message: data.message, student: data.student };
+  }
+  return {
+    fee_structure: data.fee_structure ?? null,
+    monthly_ledger: data.monthly_ledger || [],
+    message: data.message,
+    student: data.student,
+  };
+}
+
+/** Legacy: load monthly ledger only (use loadStudentFeeStructure for fee collection to get no-fee message). */
+export async function loadStudentMonthlyLedger(studentId: string): Promise<{ ledger: MonthlyLedgerEntry[]; fee_structure?: any | null; message?: string }> {
+  const data = await loadStudentFeeStructure(studentId);
+  return { ledger: data.monthly_ledger, fee_structure: data.fee_structure, message: data.message };
+}
+
+export async function loadStudentPayments(studentId: string): Promise<{
+  payments: Array<{
+    id: string;
+    payment_amount: number;
+    payment_date: string;
+    payment_mode: string;
+    receipt_number?: string;
+    transaction_id?: string;
+    cheque_number?: string;
+    bank_name?: string;
+    monthly_fee_components?: { fee_name: string; fee_type: string; period_month?: number; period_year?: number };
+    received_by_profile?: { full_name: string };
+  }>;
+  pagination: { page: number; limit: number; total: number; total_pages: number };
+}> {
+  return api.get<{ payments: any[]; pagination: any }>(`/clerk-fees/student/${studentId}/payments`);
 }
 
 export async function collectFeePayment(data: {
@@ -34,9 +133,11 @@ export async function collectFeePayment(data: {
   payment_date: string;
   payment_mode: 'cash' | 'upi' | 'online' | 'card' | 'cheque' | 'bank_transfer';
   transaction_id?: string;
+  cheque_number?: string;
+  bank_name?: string;
   notes?: string;
-}): Promise<{ success: boolean }> {
-  return api.post<{ success: boolean }>('/clerk-fees/collect', data);
+}): Promise<{ success: boolean; receipt_number?: string; payment?: any; message?: string }> {
+  return api.post<{ success: boolean; receipt_number?: string; payment?: any; message?: string }>('/clerk-fees/collect', data);
 }
 
 // Salary Payment
@@ -71,6 +172,64 @@ export async function loadUnpaidSalaries(
   }>(`/salary/unpaid?${query.toString()}`);
 }
 
+/** Same as web: GET /salary/summary for total due/paid per teacher (optional for modal). */
+export async function loadSalarySummary(): Promise<{
+  summaries: Array<{
+    teacher_id: string;
+    teacher_name?: string;
+    teacher?: { id: string; full_name?: string; email?: string };
+    total_salary_due?: number;
+    total_salary_paid?: number;
+    total_unpaid?: number;
+    unpaid_months?: number;
+    pending_salary?: number;
+  }>;
+}> {
+  return api.get<{ summaries: any[] }>('/salary/summary');
+}
+
+/** Same as web: GET /salary/history/:teacherId for payment history (View History). */
+export async function loadSalaryPaymentHistory(
+  teacherId: string,
+  params?: { page?: number; limit?: number; start_date?: string; end_date?: string; payment_type?: string; payment_mode?: string }
+): Promise<{
+  payments: Array<{
+    id: string;
+    payment_date: string;
+    amount: number;
+    payment_type: string;
+    payment_type_label?: string;
+    payment_mode: string;
+    payment_proof?: string | null;
+    notes?: string | null;
+    salary_month?: number | null;
+    salary_year?: number | null;
+    salary_period_label?: string | null;
+    running_total?: number;
+    created_at: string;
+  }>;
+  summary?: {
+    total_paid: number;
+    total_payments: number;
+    average_payment: number;
+    pending_amount: number;
+    total_paid_till_date: number;
+    by_type?: Record<string, number>;
+    by_mode?: Record<string, number>;
+    date_range?: { first_payment_date: string | null; last_payment_date: string | null };
+  };
+  pagination?: { page: number; limit: number; total: number; total_pages: number };
+}> {
+  const q = new URLSearchParams();
+  if (params?.page) q.append('page', String(params.page));
+  if (params?.limit) q.append('limit', String(params.limit));
+  if (params?.start_date) q.append('start_date', params.start_date);
+  if (params?.end_date) q.append('end_date', params.end_date);
+  if (params?.payment_type) q.append('payment_type', params.payment_type);
+  if (params?.payment_mode) q.append('payment_mode', params.payment_mode);
+  return api.get<{ payments: any[]; summary?: any; pagination?: any }>(`/salary/history/${teacherId}?${q.toString()}`);
+}
+
 export async function recordSalaryPayment(data: {
   teacher_id: string;
   payment_date: string;
@@ -81,8 +240,8 @@ export async function recordSalaryPayment(data: {
   salary_month: number;
   salary_year: number;
   payment_type: 'salary' | 'advance' | 'adjustment' | 'bonus' | 'loan' | 'other';
-}): Promise<{ success: boolean; excess_amount?: number }> {
-  return api.post<{ success: boolean; excess_amount?: number }>('/salary/payment', data);
+}): Promise<{ success: boolean; excess_amount?: number; credit_applied?: { applied_amount?: number; months_applied?: number; remaining_credit?: number } }> {
+  return api.post<{ success: boolean; excess_amount?: number; credit_applied?: any }>('/salary/payments', data);
 }
 
 // Marks & Results

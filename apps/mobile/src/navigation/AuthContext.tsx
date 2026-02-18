@@ -7,6 +7,7 @@ interface AuthContextType {
   setUser: (user: User | null) => void;
   loading: boolean;
   logout: () => Promise<void>;
+  clearStoredAuth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -42,8 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const handleClearStoredAuth = async () => {
+    await authService.clearStoredAuth();
+    setUser(null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, setUser: handleSetUser, loading, logout: handleLogout }}>
+    <AuthContext.Provider value={{ user, setUser: handleSetUser, loading, logout: handleLogout, clearStoredAuth: handleClearStoredAuth }}>
       {children}
     </AuthContext.Provider>
   );

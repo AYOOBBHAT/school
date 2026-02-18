@@ -1,64 +1,61 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTeacherAssignments } from '../hooks/useTeacherAssignments';
+import { useStudentsForFeeStatus } from '../hooks/useStudentsForFeeStatus';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { Card } from '../../../shared/components/Card';
 import { EmptyState } from '../../../shared/components/EmptyState';
-import { useAuth } from '../../../navigation/AuthContext';
-import { NavigationProp } from '../../../shared/types';
+import type { TeacherStackScreenProps } from '../../../navigation/types';
+import type { StudentForFeeStatus } from '../../../shared/services/teacher.service';
 
-interface StudentFeeStatusScreenProps {
-  navigation: NavigationProp;
-}
+type Props = TeacherStackScreenProps<'StudentFeeStatus'>;
 
-export function StudentFeeStatusScreen({ navigation }: StudentFeeStatusScreenProps) {
-  const { user } = useAuth();
-  const { data: assignmentsData, isLoading, refetch, isRefetching } = useTeacherAssignments(user?.id || '');
-  const assignments = assignmentsData?.assignments || [];
-
-  // For now, this is a placeholder. In a full implementation, we would:
-  // 1. Load all students from assigned classes
-  // 2. Load fee status for each student
-  // 3. Display in a table format
+export function StudentFeeStatusScreen({ navigation }: Props) {
+  const { data, isLoading, refetch, isRefetching } = useStudentsForFeeStatus();
+  const students = data?.students ?? [];
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading..." fullScreen />;
+    return <LoadingSpinner message="Loading students..." fullScreen />;
   }
+
+  const displayName = (s: StudentForFeeStatus) =>
+    s.profile?.full_name ?? s.profiles?.full_name ?? '—';
+  const displayRoll = (s: StudentForFeeStatus) => s.roll_number ?? '—';
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Student Fee Status (Read-Only)</Text>
         <Text style={styles.subtitle}>
-          View fee status for students in your assigned classes. You cannot modify fees.
+          View students in your assigned classes. Fee details are managed by the office. You cannot modify fees.
         </Text>
       </View>
 
       <FlatList
-        data={assignments}
+        data={students}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
-        contentContainerStyle={assignments.length === 0 ? styles.emptyContainer : styles.list}
+        contentContainerStyle={students.length === 0 ? styles.emptyContainer : styles.list}
         ListEmptyComponent={
           <EmptyState
-            icon="📚"
-            title="No classes assigned"
-            message="Contact your principal to assign you to classes"
+            icon="👥"
+            title="No students found"
+            message="No students in your assigned classes yet"
           />
         }
         renderItem={({ item }) => (
-          <Card style={styles.classCard}>
-            <Text style={styles.className}>{item.class_groups?.name || 'Unknown Class'}</Text>
-            {item.sections && (
-              <Text style={styles.sectionName}>Section: {item.sections.name}</Text>
+          <Card style={styles.studentCard}>
+            <View style={styles.studentRow}>
+              <Text style={styles.rollNumber}>{displayRoll(item)}</Text>
+              <Text style={styles.studentName}>{displayName(item)}</Text>
+            </View>
+            <View style={styles.feeRow}>
+              <Text style={styles.feeLabel}>Fee status:</Text>
+              <Text style={styles.feeValue}>—</Text>
+            </View>
+            {item.class_groups?.name && (
+              <Text style={styles.className}>Class: {item.class_groups.name}</Text>
             )}
-            <Text style={styles.infoText}>
-              Fee status view for students in this class will be available soon.
-            </Text>
-            <Text style={styles.noteText}>
-              Note: This is a read-only view. You cannot modify student fees.
-            </Text>
           </Card>
         )}
       />
@@ -73,9 +70,12 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, color: '#64748b', lineHeight: 20 },
   list: { padding: 16 },
   emptyContainer: { flex: 1 },
-  classCard: { marginBottom: 12, padding: 16 },
-  className: { fontSize: 18, fontWeight: '700', color: '#1e293b', marginBottom: 4 },
-  sectionName: { fontSize: 14, color: '#64748b', marginBottom: 8 },
-  infoText: { fontSize: 14, color: '#64748b', marginTop: 8, fontStyle: 'italic' },
-  noteText: { fontSize: 12, color: '#94a3b8', marginTop: 4 },
+  studentCard: { marginBottom: 12, padding: 16 },
+  studentRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  rollNumber: { fontSize: 14, color: '#64748b', marginRight: 12, minWidth: 60 },
+  studentName: { fontSize: 16, fontWeight: '600', color: '#1e293b', flex: 1 },
+  feeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  feeLabel: { fontSize: 13, color: '#64748b', marginRight: 8 },
+  feeValue: { fontSize: 13, fontWeight: '600', color: '#64748b' },
+  className: { fontSize: 12, color: '#94a3b8', marginTop: 4 },
 });

@@ -6,10 +6,10 @@ import { loadDashboardStats, DashboardStats } from '../../../shared/services/cle
 import { queryKeys } from '../../../shared/queryKeys';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { Card } from '../../../shared/components/Card';
-import { NavigationProp } from '../../../shared/types';
+import { ClerkStackNavigationProp } from '../../../shared/types';
 
 interface ClerkDashboardScreenProps {
-  navigation: NavigationProp;
+  navigation: ClerkStackNavigationProp;
 }
 
 export function ClerkDashboardScreen({ navigation }: ClerkDashboardScreenProps) {
@@ -103,7 +103,7 @@ export function ClerkDashboardScreen({ navigation }: ClerkDashboardScreenProps) 
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => navigation.navigate('Clerk', { screen: 'FeeCollection' })}
+            onPress={() => navigation.navigate('FeeCollection')}
           >
             <Text style={styles.actionIcon}>💰</Text>
             <View style={styles.actionContent}>
@@ -113,7 +113,7 @@ export function ClerkDashboardScreen({ navigation }: ClerkDashboardScreenProps) 
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => navigation.navigate('Clerk', { screen: 'SalaryPayment' })}
+            onPress={() => navigation.navigate('SalaryPayment')}
           >
             <Text style={styles.actionIcon}>💵</Text>
             <View style={styles.actionContent}>
@@ -123,7 +123,7 @@ export function ClerkDashboardScreen({ navigation }: ClerkDashboardScreenProps) 
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => navigation.navigate('Clerk', { screen: 'MarksResults' })}
+            onPress={() => navigation.navigate('MarksResults')}
           >
             <Text style={styles.actionIcon}>📊</Text>
             <View style={styles.actionContent}>

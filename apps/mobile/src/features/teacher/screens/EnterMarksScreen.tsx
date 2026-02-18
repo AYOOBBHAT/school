@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useExams, useStudentsForMarks, useSubmitMarks } from '../hooks/useMarks';
@@ -14,20 +14,22 @@ type Props = TeacherStackScreenProps<'EnterMarks'>;
 
 export function EnterMarksScreen({ navigation, route }: Props) {
   const { user } = useAuth();
+  const { classGroupId, subjectId } = route.params || {};
   const [selectedExam, setSelectedExam] = useState<string>('');
-  const [selectedClass, setSelectedClass] = useState<string>('');
-  const [selectedSubject, setSelectedSubject] = useState<string>('');
+  const [selectedClass, setSelectedClass] = useState<string>(classGroupId || '');
+  const [selectedSubject, setSelectedSubject] = useState<string>(subjectId || '');
   const [marks, setMarks] = useState<Record<string, { marks_obtained: string; max_marks: string }>>({});
+
+  useEffect(() => {
+    if (classGroupId) setSelectedClass(classGroupId);
+    if (subjectId) setSelectedSubject(subjectId);
+  }, [classGroupId, subjectId]);
 
   const { data: examsData } = useExams();
   const { data: assignmentsData, isLoading } = useTeacherAssignments(user?.id || '');
   const { data: studentsData, isLoading: loadingStudents } = useStudentsForMarks(
-    {
-      class_group_id: selectedClass,
-      exam_id: selectedExam,
-      subject_id: selectedSubject,
-    },
-    !!(selectedExam && selectedClass && selectedSubject)
+    selectedClass,
+    !!selectedClass
   );
   const submitMarksMutation = useSubmitMarks();
 
@@ -69,8 +71,20 @@ export function EnterMarksScreen({ navigation, route }: Props) {
   const updateMarks = (studentId: string, field: 'marks_obtained' | 'max_marks', value: string) => {
     setMarks(prev => ({
       ...prev,
-      [studentId]: { ...prev[studentId], [field]: value, marks_obtained: prev[studentId]?.marks_obtained || '', max_marks: prev[studentId]?.max_marks || '100' },
+      [studentId]: {
+        ...prev[studentId],
+        [field]: value,
+        marks_obtained: prev[studentId]?.marks_obtained ?? '',
+        max_marks: prev[studentId]?.max_marks ?? '100',
+      },
     }));
+  };
+
+  const resetForm = () => {
+    setSelectedExam('');
+    setSelectedClass(classGroupId || '');
+    setSelectedSubject(subjectId || '');
+    setMarks({});
   };
 
   const submitMarks = () => {
@@ -78,7 +92,7 @@ export function EnterMarksScreen({ navigation, route }: Props) {
       Alert.alert('Validation Error', 'Please select Exam, Class, and Subject');
       return;
     }
-
+    // Same as web: filter entries with both marks_obtained and max_marks
     const marksArray = Object.entries(marks)
       .filter(([_, data]) => data.marks_obtained && data.max_marks)
       .map(([studentId, data]) => ({
@@ -97,8 +111,8 @@ export function EnterMarksScreen({ navigation, route }: Props) {
 
     submitMarksMutation.mutate(marksArray, {
       onSuccess: () => {
-        Alert.alert('Success', 'Marks submitted successfully');
-        navigation.goBack();
+        Alert.alert('Success', 'Marks saved successfully!');
+        setMarks({});
       },
       onError: (error: unknown) => {
         const message = error instanceof Error ? error.message : 'Failed to submit marks';
@@ -110,6 +124,10 @@ export function EnterMarksScreen({ navigation, route }: Props) {
   if (isLoading) {
     return <LoadingSpinner message="Loading..." fullScreen />;
   }
+
+  const selectedExamName = exams.find((e) => e.id === selectedExam)?.name ?? '';
+  const selectedClassName = classes.find((c) => c.id === selectedClass)?.name ?? '';
+  const selectedSubjectName = subjects.find((s) => s.id === selectedSubject)?.name ?? '';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -185,14 +203,22 @@ export function EnterMarksScreen({ navigation, route }: Props) {
         <LoadingSpinner message="Loading students..." />
       ) : (
         <ScrollView style={styles.content}>
+          {selectedExam && selectedClass && selectedSubject && (
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>Enter Marks for Students</Text>
+              <Text style={styles.sectionSubtext}>
+                {selectedExamName} - {selectedClassName} - {selectedSubjectName}
+              </Text>
+            </View>
+          )}
           {students.length === 0 && selectedExam && selectedClass && selectedSubject ? (
-            <EmptyState icon="👥" title="No students found" message="This class has no students yet" />
+            <EmptyState icon="👥" title="No students found" message="No students found in this class." />
           ) : selectedExam && selectedClass && selectedSubject ? (
             students.map(student => (
               <Card key={student.id} style={styles.studentCard}>
                 <View style={styles.studentHeader}>
-                  <Text style={styles.studentName}>{student.profile?.full_name || student.full_name || 'Unknown'}</Text>
-                  {student.roll_number && <Text style={styles.rollNumber}>Roll: {student.roll_number}</Text>}
+                  <Text style={styles.rollNumber}>{student.roll_number ?? 'N/A'}</Text>
+                  <Text style={styles.studentName}>{student.profile?.full_name ?? student.full_name ?? 'N/A'}</Text>
                 </View>
                 <View style={styles.marksInput}>
                   <View style={styles.inputGroup}>
@@ -200,7 +226,7 @@ export function EnterMarksScreen({ navigation, route }: Props) {
                     <TextInput
                       style={styles.input}
                       keyboardType="decimal-pad"
-                      value={marks[student.id]?.marks_obtained || ''}
+                      value={marks[student.id]?.marks_obtained ?? ''}
                       onChangeText={(text) => updateMarks(student.id, 'marks_obtained', text)}
                       placeholder="0"
                     />
@@ -210,7 +236,7 @@ export function EnterMarksScreen({ navigation, route }: Props) {
                     <TextInput
                       style={styles.input}
                       keyboardType="decimal-pad"
-                      value={marks[student.id]?.max_marks || '100'}
+                      value={marks[student.id]?.max_marks ?? '100'}
                       onChangeText={(text) => updateMarks(student.id, 'max_marks', text)}
                       placeholder="100"
                     />
@@ -222,10 +248,15 @@ export function EnterMarksScreen({ navigation, route }: Props) {
         </ScrollView>
       )}
 
-      {students.length > 0 && selectedExam && selectedClass && selectedSubject && (
+      {selectedExam && selectedClass && selectedSubject && (
         <View style={styles.footer}>
-          <TouchableOpacity style={styles.submitButton} onPress={submitMarks}>
-            <Text style={styles.submitText}>Submit Marks</Text>
+          {students.length > 0 && (
+            <TouchableOpacity style={styles.submitButton} onPress={submitMarks}>
+              <Text style={styles.submitText}>Submit Marks</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.resetButton} onPress={resetForm}>
+            <Text style={styles.resetText}>Reset</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -245,15 +276,20 @@ const styles = StyleSheet.create({
   pickerItemText: { fontSize: 14, color: '#64748b' },
   pickerItemTextSelected: { fontSize: 14, color: '#fff', fontWeight: '600' },
   content: { flex: 1, padding: 16 },
+  sectionCard: { backgroundColor: '#fff', padding: 16, borderRadius: 8, marginBottom: 16, borderWidth: 1, borderColor: '#e2e8f0' },
+  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#1e293b', marginBottom: 4 },
+  sectionSubtext: { fontSize: 14, color: '#64748b' },
   studentCard: { marginBottom: 12, padding: 16 },
-  studentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  studentHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+  rollNumber: { fontSize: 14, color: '#64748b', minWidth: 48 },
   studentName: { fontSize: 16, fontWeight: '600', color: '#1e293b', flex: 1 },
-  rollNumber: { fontSize: 12, color: '#64748b', marginLeft: 8 },
   marksInput: { flexDirection: 'row', gap: 12 },
   inputGroup: { flex: 1 },
   label: { fontSize: 12, color: '#64748b', marginBottom: 4 },
   input: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#fff' },
-  footer: { backgroundColor: '#fff', padding: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0' },
+  footer: { backgroundColor: '#fff', padding: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0', gap: 12 },
   submitButton: { backgroundColor: '#2563eb', paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
   submitText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  resetButton: { paddingVertical: 14, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' },
+  resetText: { fontSize: 16, color: '#64748b' },
 });

@@ -2,21 +2,29 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, FlatList, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTeacherSalary } from '../hooks/useTeacherSalary';
+import { usePaymentHistory } from '../hooks/usePaymentHistory';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { Card } from '../../../shared/components/Card';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { useAuth } from '../../../navigation/AuthContext';
-import { NavigationProp } from '../../../shared/types';
+import type { TeacherStackScreenProps } from '../../../navigation/types';
 
-interface MySalaryScreenProps {
-  navigation: NavigationProp;
-}
+type Props = TeacherStackScreenProps<'MySalary'>;
 
-export function MySalaryScreen({ navigation }: MySalaryScreenProps) {
+export function MySalaryScreen({ navigation }: Props) {
   const { user } = useAuth();
   const { data: salaryData, isLoading, refetch, isRefetching } = useTeacherSalary(user?.id || '');
   const [showPaymentHistory, setShowPaymentHistory] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const { data: paymentHistoryData, isLoading: loadingHistory, refetch: refetchHistory } = usePaymentHistory(
+    user?.id || '',
+    showPaymentHistory,
+    1,
+    50
+  );
+  const payments = paymentHistoryData?.payments ?? [];
+  const summary = paymentHistoryData?.summary;
+  const pagination = paymentHistoryData?.pagination;
 
   const salaryStructure = salaryData?.structure;
   const salaryRecords = salaryData?.records || [];
@@ -27,7 +35,7 @@ export function MySalaryScreen({ navigation }: MySalaryScreenProps) {
   });
 
   if (isLoading) {
-    return <LoadingSpinner message="Loading salary..." fullScreen />;
+    return <LoadingSpinner message="Loading salary information..." fullScreen />;
   }
 
   return (
@@ -58,7 +66,7 @@ export function MySalaryScreen({ navigation }: MySalaryScreenProps) {
                 </Text>
               </View>
               <View style={styles.structureItem}>
-                <Text style={styles.structureLabel}>HRA</Text>
+                <Text style={styles.structureLabel}>HRA (House Rent Allowance)</Text>
                 <Text style={styles.structureValue}>
                   ₹{parseFloat(String(salaryStructure.hra || 0)).toLocaleString()}
                 </Text>
@@ -78,7 +86,8 @@ export function MySalaryScreen({ navigation }: MySalaryScreenProps) {
               <View style={styles.structureItem}>
                 <Text style={styles.structureLabel}>Salary Cycle</Text>
                 <Text style={styles.structureValue}>
-                  {(salaryStructure.salary_cycle || 'monthly').toUpperCase()}
+                  {(salaryStructure.salary_cycle || 'monthly').charAt(0).toUpperCase() +
+                    (salaryStructure.salary_cycle || 'monthly').slice(1).toLowerCase()}
                 </Text>
               </View>
               <View style={styles.structureItem}>
@@ -88,7 +97,7 @@ export function MySalaryScreen({ navigation }: MySalaryScreenProps) {
                 </Text>
               </View>
               <View style={[styles.structureItem, styles.grossSalaryItem]}>
-                <Text style={styles.grossLabel}>Gross Salary</Text>
+                <Text style={styles.grossLabel}>Gross Salary (Base + HRA + Allowances)</Text>
                 <Text style={styles.grossValue}>
                   ₹{(
                     parseFloat(String(salaryStructure.base_salary || 0)) +
@@ -109,7 +118,7 @@ export function MySalaryScreen({ navigation }: MySalaryScreenProps) {
         <Card style={styles.recordsCard}>
           <Text style={styles.sectionTitle}>Salary History</Text>
           {sortedRecords.length === 0 ? (
-            <EmptyState icon="💰" title="No salary records" message="Salary records will appear here once generated" />
+            <EmptyState icon="💰" title="No salary records" message="No salary records found." />
           ) : (
             <FlatList
               data={sortedRecords}
@@ -188,7 +197,7 @@ export function MySalaryScreen({ navigation }: MySalaryScreenProps) {
                     )}
                     {item.status === 'rejected' && item.rejection_reason && (
                       <View style={styles.rejectionReason}>
-                        <Text style={styles.rejectionLabel}>Rejection Reason:</Text>
+                        <Text style={styles.rejectionLabel}>Reason:</Text>
                         <Text style={styles.rejectionText}>{item.rejection_reason}</Text>
                       </View>
                     )}
@@ -219,9 +228,18 @@ export function MySalaryScreen({ navigation }: MySalaryScreenProps) {
             />
           )}
         </Card>
+
+        {/* Salary slip note (same as web) */}
+        {sortedRecords.some((r) => r.status === 'paid') && (
+          <View style={styles.slipNote}>
+            <Text style={styles.slipNoteText}>
+              💡 <Text style={styles.slipNoteBold}>Note:</Text> Tap "View Slip" on paid salaries to view your salary slip.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
-      {/* Payment History Modal - Placeholder for now */}
+      {/* Payment History Modal - matches web TeacherPaymentHistory */}
       {showPaymentHistory && (
         <Modal
           visible={showPaymentHistory}
@@ -236,10 +254,74 @@ export function MySalaryScreen({ navigation }: MySalaryScreenProps) {
                 <Text style={styles.closeButton}>Close</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalContent}>
-              <Text style={styles.modalMessage}>
-                Payment history feature coming soon. For now, you can view payment details in individual salary records above.
-              </Text>
+            <ScrollView
+              style={styles.modalContent}
+              refreshControl={
+                <RefreshControl refreshing={loadingHistory} onRefresh={() => refetchHistory()} />
+              }
+            >
+              {loadingHistory && payments.length === 0 ? (
+                <LoadingSpinner message="Loading payment history..." />
+              ) : (
+                <>
+                  {summary && (
+                    <View style={styles.summaryCard}>
+                      <Text style={styles.summaryTitle}>Summary</Text>
+                      <View style={styles.summaryRow}>
+                        <Text style={styles.summaryLabel}>Total paid (till date)</Text>
+                        <Text style={styles.summaryValue}>
+                          ₹{(summary.total_paid_till_date ?? summary.total_paid ?? 0).toLocaleString()}
+                        </Text>
+                      </View>
+                      {(summary.pending_amount ?? 0) > 0 && (
+                        <View style={styles.summaryRow}>
+                          <Text style={styles.summaryLabel}>Pending</Text>
+                          <Text style={[styles.summaryValue, styles.pendingValue]}>
+                            ₹{(summary.pending_amount ?? 0).toLocaleString()}
+                          </Text>
+                        </View>
+                      )}
+                      {(summary.total_payments ?? 0) > 0 && (
+                        <View style={styles.summaryRow}>
+                          <Text style={styles.summaryLabel}>Payments count</Text>
+                          <Text style={styles.summaryValue}>{summary.total_payments ?? 0}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                  <Text style={styles.paymentsListTitle}>Payments</Text>
+                  {payments.length === 0 ? (
+                    <Text style={styles.modalMessage}>No payment history yet.</Text>
+                  ) : (
+                    payments.map((p) => (
+                      <View key={p.id} style={styles.paymentItem}>
+                        <View style={styles.paymentRow}>
+                          <Text style={styles.paymentDate}>
+                            {p.payment_date ? new Date(p.payment_date).toLocaleDateString() : '—'}
+                          </Text>
+                          <Text style={styles.paymentAmount}>₹{(p.amount ?? 0).toLocaleString()}</Text>
+                        </View>
+                        <View style={styles.paymentMeta}>
+                          <Text style={styles.paymentType}>
+                            {(p.payment_type_label || p.payment_type || 'salary').replace(/_/g, ' ')}
+                          </Text>
+                          {(p.payment_mode && (
+                            <Text style={styles.paymentMode}>{(p.payment_mode || '').toUpperCase()}</Text>
+                          ))}
+                          {p.salary_period_label && (
+                            <Text style={styles.paymentPeriod}>{p.salary_period_label}</Text>
+                          )}
+                        </View>
+                      </View>
+                    ))
+                  )}
+                  {pagination && pagination.total_pages > 1 && (
+                    <Text style={styles.paginationText}>
+                      Page {pagination.page} of {pagination.total_pages} ({pagination.total} total)
+                    </Text>
+                  )}
+                </>
+              )}
             </ScrollView>
           </SafeAreaView>
         </Modal>
@@ -267,6 +349,9 @@ const styles = StyleSheet.create({
   grossValue: { fontSize: 24, fontWeight: '700', color: '#10b981' },
   noStructure: { textAlign: 'center', color: '#64748b', paddingVertical: 16 },
   recordsCard: { margin: 16, marginTop: 0, padding: 16 },
+  slipNote: { margin: 16, marginTop: 0, padding: 16, backgroundColor: '#eff6ff', borderRadius: 8, borderWidth: 1, borderColor: '#bfdbfe' },
+  slipNoteText: { fontSize: 14, color: '#1e40af', lineHeight: 20 },
+  slipNoteBold: { fontWeight: '700' },
   recordItem: { marginBottom: 16, padding: 16, backgroundColor: '#f8fafc', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' },
   recordHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   recordMonth: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
@@ -298,4 +383,20 @@ const styles = StyleSheet.create({
   closeButton: { fontSize: 16, color: '#2563eb', fontWeight: '600' },
   modalContent: { flex: 1, padding: 16 },
   modalMessage: { fontSize: 16, color: '#64748b', lineHeight: 24 },
+  summaryCard: { marginBottom: 16, padding: 16, backgroundColor: '#f0fdf4', borderRadius: 12, borderWidth: 1, borderColor: '#bbf7d0' },
+  summaryTitle: { fontSize: 16, fontWeight: '700', color: '#166534', marginBottom: 12 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  summaryLabel: { fontSize: 14, color: '#64748b' },
+  summaryValue: { fontSize: 16, fontWeight: '600', color: '#1e293b' },
+  pendingValue: { color: '#dc2626' },
+  paymentsListTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 12 },
+  paymentItem: { marginBottom: 12, padding: 12, backgroundColor: '#f8fafc', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' },
+  paymentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  paymentDate: { fontSize: 14, fontWeight: '600', color: '#1e293b' },
+  paymentAmount: { fontSize: 16, fontWeight: '700', color: '#10b981' },
+  paymentMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  paymentType: { fontSize: 12, color: '#64748b', textTransform: 'capitalize' },
+  paymentMode: { fontSize: 12, color: '#64748b' },
+  paymentPeriod: { fontSize: 12, color: '#94a3b8' },
+  paginationText: { fontSize: 13, color: '#64748b', marginTop: 16, textAlign: 'center' },
 });

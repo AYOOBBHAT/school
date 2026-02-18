@@ -1,23 +1,30 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  loadStudents,
   loadClasses,
-  loadStudentMonthlyLedger,
+  loadStudentsForFeeCollection,
+  loadStudentFeeStructure,
+  loadStudentPayments,
   collectFeePayment,
 } from '../../../shared/services/clerk.service';
 import { queryKeys } from '../../../shared/queryKeys';
 
-export function useClerkStudents() {
+/** Load students for fee collection (same as web: students-admin with optional class filter). */
+export function useStudentsForFeeCollection(classGroupId: string | undefined, page: number = 1, limit: number = 50) {
   return useQuery({
-    queryKey: queryKeys.clerk.students,
-    queryFn: loadStudents,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    queryKey: queryKeys.clerk.studentsForFeeCollection(classGroupId, page, limit),
+    queryFn: () => loadStudentsForFeeCollection(classGroupId, page, limit),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
-    placeholderData: (previousData) => previousData, // Keep previous data while refetching
+    placeholderData: (previousData) => previousData,
   });
+}
+
+/** Legacy: flat students list - use useStudentsForFeeCollection for fee collection. */
+export function useClerkStudents() {
+  return useStudentsForFeeCollection(undefined, 1, 100);
 }
 
 export function useClerkClasses() {
@@ -33,52 +40,54 @@ export function useClerkClasses() {
   });
 }
 
-export function useStudentMonthlyLedger(studentId: string, enabled: boolean = true) {
+/** Load student fee structure + monthly ledger (same as web: clerk-fees/student/:id/fee-structure). */
+export function useStudentFeeStructure(studentId: string, enabled: boolean = true) {
   return useQuery({
     queryKey: queryKeys.clerk.studentLedger(studentId),
-    queryFn: () => loadStudentMonthlyLedger(studentId),
+    queryFn: () => loadStudentFeeStructure(studentId),
     enabled: enabled && !!studentId,
-    staleTime: 2 * 60 * 1000, // 2 minutes - fee data changes frequently
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
-    placeholderData: (previousData) => previousData, // Keep previous data while refetching
+    placeholderData: (previousData) => previousData,
   });
 }
 
+/** Alias: returns ledger + fee_structure + message from fee-structure endpoint. */
+export function useStudentMonthlyLedger(studentId: string, enabled: boolean = true) {
+  return useStudentFeeStructure(studentId, enabled);
+}
+
+export function useStudentPayments(studentId: string, enabled: boolean = true) {
+  return useQuery({
+    queryKey: queryKeys.clerk.studentPayments(studentId),
+    queryFn: () => loadStudentPayments(studentId),
+    enabled: enabled && !!studentId,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    retry: 1,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+export type CollectFeePaymentVariables = Parameters<typeof collectFeePayment>[0] & { studentId?: string };
+
 export function useCollectFeePayment() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: collectFeePayment,
-    onMutate: async (paymentData) => {
-      // Cancel any outgoing refetches for the student ledger
-      const studentId = paymentData.monthly_fee_component_ids[0]?.split('_')[0];
-      if (studentId) {
-        await queryClient.cancelQueries({ queryKey: queryKeys.clerk.studentLedger(studentId) });
-        const previous = queryClient.getQueryData(queryKeys.clerk.studentLedger(studentId));
-        return { previous, studentId };
-      }
-      return {};
-    },
-    onError: (_err, _paymentData, context) => {
-      // Rollback on error
-      if (context?.previous && context?.studentId) {
-        queryClient.setQueryData(queryKeys.clerk.studentLedger(context.studentId), context.previous);
-      }
+    mutationFn: (variables: CollectFeePaymentVariables) => {
+      const { studentId: _s, ...payload } = variables;
+      return collectFeePayment(payload);
     },
     onSettled: (_, __, variables) => {
-      // Invalidate only the specific student ledger that was updated
-      const studentId = variables.monthly_fee_component_ids[0]?.split('_')[0];
-      if (studentId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.clerk.studentLedger(studentId) });
+      if (variables.studentId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.clerk.studentLedger(variables.studentId) });
       }
-      // Invalidate fee analytics queries (they depend on fee payment data)
-      queryClient.invalidateQueries({ 
-        queryKey: queryKeys.clerk.feeAnalytics({}),
-        exact: false 
-      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clerk.feeAnalytics({}), exact: false });
     },
   });
 }

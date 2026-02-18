@@ -1,6 +1,10 @@
 import React, { Suspense, lazy } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
+import { StudentTabBar } from '../../shared/components/StudentTabBar';
+import { useAuth } from '../AuthContext';
 
 // Lazy load all student screens for better performance
 const OverviewScreen = lazy(() =>
@@ -26,39 +30,222 @@ const MyFeesScreen = lazy(() =>
 
 const Stack = createNativeStackNavigator();
 
+// Role guard component
+function StudentRoleGuard({ children }: { children: React.ReactNode }) {
+  const { user, logout } = useAuth();
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Authentication Required</Text>
+          <Text style={styles.errorText}>Please log in to access student features.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if ((user.role ?? '').toLowerCase() !== 'student') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Access Denied</Text>
+          <Text style={styles.errorText}>
+            This section is only available for students.{'\n'}
+            You are currently logged in as: <Text style={styles.roleText}>{user.role}</Text>
+          </Text>
+          <Text style={styles.errorHint}>
+            Please log out and log in with a student account to access these features.
+          </Text>
+          
+          {/* Logout Button - Made very visible */}
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={async () => {
+              console.log('[StudentStack] Logout button pressed');
+              await logout();
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.logoutButtonText}>🚪 LOG OUT</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 export default function StudentStack() {
-  return (
-    <Suspense fallback={<LoadingSpinner fullScreen />}>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: true,
-          headerStyle: { backgroundColor: '#fff' },
-          headerTintColor: '#1e293b',
-          headerTitleStyle: { fontWeight: '700' },
+  const { logout } = useAuth();
+
+  // Logout button component for header - defined inside to access context
+  const LogoutButton = () => {
+    console.log('[StudentStack] LogoutButton component rendering');
+    return (
+      <TouchableOpacity
+        onPress={async () => {
+          console.log('[StudentStack] Logout button pressed from header');
+          await logout();
         }}
-        initialRouteName="Overview"
+        style={styles.headerLogoutButton}
+        activeOpacity={0.7}
       >
+        <Text style={styles.headerLogoutText}>🚪 Logout</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <StudentRoleGuard>
+      <Suspense fallback={<LoadingSpinner fullScreen />}>
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: true,
+            headerStyle: { backgroundColor: '#fff' },
+            headerTintColor: '#1e293b',
+            headerTitleStyle: { fontWeight: '700' },
+            headerRight: LogoutButton,
+          }}
+          initialRouteName="Overview"
+        >
         <Stack.Screen
           name="Overview"
           component={OverviewScreen}
-          options={{ title: 'Overview' }}
+          options={{ 
+            title: 'Student Dashboard',
+            headerTitle: () => (
+              <View style={styles.headerContainer}>
+                <Text style={styles.headerTitle}>Student Dashboard</Text>
+              </View>
+            ),
+          }}
         />
         <Stack.Screen
           name="MyAttendance"
           component={MyAttendanceScreen}
-          options={{ title: 'My Attendance' }}
+          options={{ 
+            title: 'Student Dashboard',
+            headerTitle: () => (
+              <View style={styles.headerContainer}>
+                <Text style={styles.headerTitle}>Student Dashboard</Text>
+              </View>
+            ),
+          }}
         />
         <Stack.Screen
           name="MyMarks"
           component={MyMarksScreen}
-          options={{ title: 'My Marks' }}
+          options={{ 
+            title: 'Student Dashboard',
+            headerTitle: () => (
+              <View style={styles.headerContainer}>
+                <Text style={styles.headerTitle}>Student Dashboard</Text>
+              </View>
+            ),
+          }}
         />
         <Stack.Screen
           name="MyFees"
           component={MyFeesScreen}
-          options={{ title: 'My Fees' }}
+          options={{ 
+            title: 'Student Dashboard',
+            headerTitle: () => (
+              <View style={styles.headerContainer}>
+                <Text style={styles.headerTitle}>Student Dashboard</Text>
+              </View>
+            ),
+          }}
         />
       </Stack.Navigator>
     </Suspense>
+    </StudentRoleGuard>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#dc2626',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 24,
+  },
+  roleText: {
+    fontWeight: '700',
+    color: '#1e293b',
+    textTransform: 'capitalize',
+  },
+  errorHint: {
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginTop: 16,
+    fontStyle: 'italic',
+  },
+  logoutButton: {
+    marginTop: 40,
+    paddingVertical: 18,
+    paddingHorizontal: 48,
+    backgroundColor: '#dc2626',
+    borderRadius: 12,
+    minWidth: 200,
+    borderWidth: 3,
+    borderColor: '#991b1b',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 8,
+    alignSelf: 'center',
+  },
+  logoutButtonText: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  headerLogoutButton: {
+    marginRight: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#dc2626',
+    borderRadius: 8,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerLogoutText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  headerContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+});

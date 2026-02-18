@@ -1,17 +1,18 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StudentScreenWrapper } from '../../../shared/components/StudentScreenWrapper';
 import { useStudentProfile } from '../hooks/useProfile';
 import { useStudentAttendance } from '../hooks/useAttendance';
 import { useStudentFees } from '../hooks/useFees';
 
 export function OverviewScreen() {
-  const { data: profileData, isLoading: profileLoading, refetch: refetchProfile, isRefetching: profileRefetching } = useStudentProfile();
-  const { data: attendanceData, isLoading: attendanceLoading, refetch: refetchAttendance, isRefetching: attendanceRefetching } = useStudentAttendance();
-  const { data: feesData, isLoading: feesLoading, refetch: refetchFees, isRefetching: feesRefetching } = useStudentFees();
+  const { data: profileData, isLoading: profileLoading, error: profileError, refetch: refetchProfile, isRefetching: profileRefetching } = useStudentProfile();
+  const { data: attendanceData, isLoading: attendanceLoading, error: attendanceError, refetch: refetchAttendance, isRefetching: attendanceRefetching } = useStudentAttendance();
+  const { data: feesData, isLoading: feesLoading, error: feesError, refetch: refetchFees, isRefetching: feesRefetching } = useStudentFees();
 
   const isLoading = profileLoading || attendanceLoading || feesLoading;
   const isRefetching = profileRefetching || attendanceRefetching || feesRefetching;
+  const hasError = profileError || attendanceError || feesError;
 
   const profile = profileData?.student;
   const attendanceSummary = attendanceData?.summary;
@@ -24,12 +25,11 @@ export function OverviewScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <StudentScreenWrapper currentRoute="Overview">
       <ScrollView
         style={styles.content}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={handleRefresh} />}
       >
-        <Text style={styles.title}>Overview</Text>
 
         {/* Profile Card */}
         {profile && (
@@ -54,10 +54,12 @@ export function OverviewScreen() {
           <View style={[styles.card, styles.attendanceCard]}>
             <Text style={styles.cardTitle}>Attendance</Text>
             <Text style={styles.attendancePercentage}>
-              {attendanceSummary.attendancePercentage.toFixed(1)}%
+              {typeof attendanceSummary.attendancePercentage === 'number' 
+                ? attendanceSummary.attendancePercentage.toFixed(1) 
+                : '0.0'}%
             </Text>
             <Text style={styles.attendanceDetail}>
-              {attendanceSummary.presentDays} present / {attendanceSummary.totalDays} total
+              {attendanceSummary.presentDays ?? 0} present / {attendanceSummary.totalDays ?? 0} total
             </Text>
           </View>
         )}
@@ -67,36 +69,55 @@ export function OverviewScreen() {
           <View style={[styles.card, styles.feeCard]}>
             <Text style={styles.cardTitle}>Fees</Text>
             <Text style={styles.feeAmount}>
-              ₹{feeSummary.pending_amount.toFixed(2)}
+              ₹{(() => {
+                const pending = feeSummary.totalRemaining ?? feeSummary.pending_amount ?? 0;
+                return typeof pending === 'number' ? pending.toFixed(2) : '0.00';
+              })()}
             </Text>
             <Text style={styles.feeDetail}>
-              ₹{feeSummary.paid_amount.toFixed(2)} / ₹{feeSummary.total_fee.toFixed(2)} paid
+              ₹{(() => {
+                const paid = feeSummary.totalPaid ?? feeSummary.paid_amount ?? 0;
+                return typeof paid === 'number' ? paid.toFixed(2) : '0.00';
+              })()} / ₹{(() => {
+                const total = feeSummary.totalFees ?? feeSummary.total_fee ?? 0;
+                return typeof total === 'number' ? total.toFixed(2) : '0.00';
+              })()} paid
             </Text>
           </View>
         )}
 
+        {/* Loading State */}
         {isLoading && !profile && !attendanceSummary && !feeSummary && (
-          <Text style={styles.loading}>Loading...</Text>
+          <View style={styles.centerContainer}>
+            <Text style={styles.loading}>Loading...</Text>
+          </View>
+        )}
+
+        {/* Error State */}
+        {hasError && !isLoading && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorTitle}>Unable to load data</Text>
+            <Text style={styles.errorText}>
+              {profileError?.message || attendanceError?.message || feesError?.message || 'Please try again'}
+            </Text>
+          </View>
+        )}
+
+        {/* Empty State - No data and no errors */}
+        {!isLoading && !hasError && !profile && !attendanceSummary && !feeSummary && (
+          <View style={styles.centerContainer}>
+            <Text style={styles.emptyText}>No data available</Text>
+          </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </StudentScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
   content: {
     flex: 1,
     padding: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 16,
   },
   card: {
     backgroundColor: '#fff',
@@ -160,5 +181,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#64748b',
     marginTop: 32,
+    fontSize: 16,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 200,
+    padding: 32,
+  },
+  errorContainer: {
+    backgroundColor: '#fef2f2',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#dc2626',
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#991b1b',
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#64748b',
+    fontSize: 16,
   },
 });

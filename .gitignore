@@ -1,14 +1,15 @@
 # Environment Variables - CRITICAL: Never commit these!
 .env
-.env.example
 .env.local
 .env.development
 .env.production
 .env.test
 .env.staging
 .env.*.local
-*.env
 .envrc
+
+# Allow .env.example files (these are templates and should be committed)
+!.env.example
 
 # Dependencies
 node_modules/

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StudentScreenWrapper } from '../../../shared/components/StudentScreenWrapper';
 import { useStudentMarks } from '../hooks/useMarks';
 import { Mark } from '../../../shared/services/student.service';
 
@@ -41,7 +41,7 @@ export function MyMarksScreen() {
 
   if (marks.length === 0) {
     return (
-      <SafeAreaView style={styles.container}>
+      <StudentScreenWrapper currentRoute="MyMarks">
         <Text style={styles.title}>Marks & Grades</Text>
         <View style={styles.emptyContainer}>
           <Text style={styles.empty}>
@@ -53,12 +53,12 @@ export function MyMarksScreen() {
             </Text>
           )}
         </View>
-      </SafeAreaView>
+      </StudentScreenWrapper>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <StudentScreenWrapper currentRoute="MyMarks">
       <Text style={styles.title}>Marks & Grades</Text>
       <FlatList
         data={marks}
@@ -131,16 +131,11 @@ export function MyMarksScreen() {
         }}
         contentContainerStyle={styles.listContent}
       />
-    </SafeAreaView>
+    </StudentScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-    padding: 16,
-  },
   title: {
     fontSize: 24,
     fontWeight: '700',
