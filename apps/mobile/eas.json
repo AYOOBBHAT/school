@@ -15,10 +15,12 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "image": "latest"
       },
       "ios": {
-        "simulator": true
+        "simulator": true,
+        "image": "latest"
       },
       "node": "20.18.0",
       "pnpm": "10.22.0",
@@ -31,7 +33,11 @@
     },
     "production": {
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "image": "latest"
+      },
+      "ios": {
+        "image": "latest"
       },
       "node": "20.18.0",
       "pnpm": "10.22.0",
