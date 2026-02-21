@@ -204,6 +204,7 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
             }}
             className="w-full border border-gray-300 rounded-lg px-4 py-2"
           >
+            <option value="all_time">All Time</option>
             <option value="last_month">Last Month</option>
             <option value="last_2_months">Last 2 Months</option>
             <option value="last_3_months">Last 3 Months</option>

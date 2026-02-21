@@ -11,22 +11,155 @@ import {
 
 /**
  * Principal Service
- * Handles all principal-related API calls
+ * Handles all principal-related API calls.
+ * Students flow matches web: GET /students-admin (classes + unassigned), POST /principal-users/students (create).
  */
 
-// Students
-export async function loadStudents(): Promise<{ students: Student[] }> {
-  return api.get<{ students: Student[] }>('/students');
+// --- Students Admin (same API as web principal/students) ---
+
+export interface StudentProfile {
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  created_at?: string;
 }
 
-export async function createStudent(data: {
+export interface StudentInClass {
+  id: string;
+  roll_number: string | null;
+  status?: string;
+  section_id?: string | null;
+  section_name?: string | null;
+  admission_date?: string | null;
+  class_group_id?: string | null;
+  profile?: StudentProfile | null;
+}
+
+export interface ClassWithStudents {
+  id: string;
+  name: string;
+  description?: string | null;
+  classifications?: Array<{ type: string; value: string; type_id?: string; value_id?: string }>;
+  students: StudentInClass[];
+  student_count: number;
+}
+
+export interface StudentsAdminResponse {
+  classes: ClassWithStudents[];
+  unassigned: StudentInClass[];
+  total_students: number;
+  pagination?: { page: number; limit: number; total: number; total_pages: number };
+}
+
+/** Load students grouped by class + unassigned (same as web loadStudentsAdmin) */
+export async function loadStudentsAdmin(): Promise<StudentsAdminResponse> {
+  return api.get<StudentsAdminResponse>('/students-admin');
+}
+
+/** Load sections for a class (same as web loadClassSections) */
+export async function loadClassSections(classId: string): Promise<{ sections: Array<{ id: string; name: string; class_id?: string }> }> {
+  return api.get<{ sections: Array<{ id: string; name: string; class_id?: string }> }>(`/classes/${classId}/sections`);
+}
+
+/** Default fees for a class (for add/edit student fee config) */
+export interface DefaultFeesResponse {
+  class_fees: Array<{ id: string; amount?: number; fee_cycle?: string; fee_categories?: { name?: string } }>;
+  transport_routes: Array<{ id: string; route_name?: string; bus_number?: string; fee?: { total?: number; fee_cycle?: string } }>;
+  other_fee_categories?: unknown[];
+  optional_fees?: unknown[];
+  custom_fees?: Array<{ id: string; amount?: number; fee_cycle?: string; name?: string; fee_categories?: { name?: string }; class_groups?: { name?: string } }>;
+}
+
+export async function loadDefaultFees(classId: string): Promise<DefaultFeesResponse> {
+  return api.get<DefaultFeesResponse>(`/principal-users/classes/${classId}/default-fees`);
+}
+
+export interface StudentFeeConfigResponse {
+  fee_config: {
+    id: string;
+    student_id: string;
+    class_fee_id?: string;
+    class_fee_discount?: number;
+    transport_enabled?: boolean;
+    transport_route_id?: string | null;
+    transport_fee_discount?: number;
+    other_fees?: unknown;
+    custom_fees?: Array<{ custom_fee_id: string; discount: number; is_exempt: boolean }>;
+    effective_from_date?: string | null;
+  } | null;
+}
+
+export async function loadStudentFeeConfig(studentId: string): Promise<StudentFeeConfigResponse> {
+  return api.get<StudentFeeConfigResponse>(`/students-admin/${studentId}/fee-config`);
+}
+
+export async function updateStudent(studentId: string, data: {
+  class_group_id?: string | null;
+  section_id?: string | null;
+  roll_number?: string | null;
+  fee_config?: {
+    class_fee_id?: string;
+    class_fee_discount?: number;
+    transport_enabled?: boolean;
+    transport_route_id?: string | null;
+    transport_fee_discount?: number;
+    other_fees?: unknown[];
+    custom_fees?: Array<{ custom_fee_id: string; discount: number; is_exempt: boolean }>;
+    effective_from_date?: string;
+  };
+}): Promise<{ message?: string }> {
+  return api.put<{ message?: string }>(`/students-admin/${studentId}`, data);
+}
+
+export async function promoteStudent(studentId: string, data: { target_class_id: string }): Promise<{ message?: string }> {
+  return api.post<{ message?: string }>(`/students-admin/${studentId}/promote`, data);
+}
+
+export async function promoteClass(classId: string, data: { target_class_id: string; clear_sections?: boolean }): Promise<{ message?: string }> {
+  return api.post<{ message?: string }>(`/students-admin/class/${classId}/promote`, data);
+}
+
+export interface UsernameCheckResponse {
+  available: boolean;
+  message?: string;
+}
+
+export async function checkUsername(username: string): Promise<UsernameCheckResponse> {
+  return api.get<UsernameCheckResponse>(`/principal-users/check-username/${encodeURIComponent(username)}`);
+}
+
+/** Create student (same as web: POST /principal-users/students, full payload) */
+export interface CreateStudentPayload {
   email: string;
   password: string;
   full_name: string;
-  roll_number: string;
-  class_group_id: string;
-}): Promise<{ success: boolean; student: Student }> {
-  return api.post<{ success: boolean; student: Student }>('/students-admin', data);
+  username: string;
+  phone?: string | null;
+  roll_number?: string | null;
+  class_group_id?: string | null;
+  section_id?: string | null;
+  admission_date?: string | null;
+  gender?: string | null;
+  date_of_birth?: string | null;
+  home_address?: string | null;
+  guardian_name: string;
+  guardian_phone: string;
+  guardian_email?: string | null;
+  guardian_relationship?: string;
+  fee_config?: {
+    class_fee_id?: string;
+    class_fee_discount?: number;
+    transport_enabled?: boolean;
+    transport_route_id?: string | null;
+    transport_fee_discount?: number;
+    other_fees?: unknown[];
+    custom_fees?: Array<{ custom_fee_id: string; discount: number; is_exempt: boolean }>;
+  };
+}
+
+export async function createStudent(data: CreateStudentPayload): Promise<{ id?: string; message?: string }> {
+  return api.post<{ id?: string; message?: string }>('/principal-users/students', data);
 }
 
 // Classes (load only; used by StudentsScreen filter and prefetch)

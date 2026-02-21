@@ -239,8 +239,8 @@ export async function loadSalaryPaymentHistory(token: string, teacherId: string,
 }
 
 /**
- * Load dashboard statistics for clerk
- * @param token - Authentication token (not used for Supabase queries, but kept for consistency)
+ * Load dashboard statistics for clerk (uses backend API - school-scoped)
+ * @param token - Authentication token for backend API
  * @returns Dashboard statistics
  */
 export async function loadDashboardStats(token: string): Promise<{
@@ -249,56 +249,21 @@ export async function loadDashboardStats(token: string): Promise<{
   totalPending: number;
   recentPayments: Array<{ payment_amount: number; payment_date: string; payment_mode: string }>;
 }> {
-  let recentPayments: any[] = [];
-  let todayPayments: any[] = [];
-  let pendingComponents: any[] = [];
+  const response = await fetch(`${API_URL}/dashboard`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
 
-  try {
-    const { data, error } = await supabase
-      .from('monthly_fee_payments')
-      .select('payment_amount, payment_date, payment_mode')
-      .order('payment_date', { ascending: false })
-      .limit(10);
-    if (!error && data) recentPayments = data;
-  } catch (err) {
-    console.error('Error loading recent payments from Supabase:', err);
+  if (!response.ok) {
+    throw new Error('Failed to load dashboard stats');
   }
 
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    const { data, error } = await supabase
-      .from('monthly_fee_payments')
-      .select('payment_amount')
-      .gte('payment_date', today);
-    if (!error && data) todayPayments = data;
-  } catch (err) {
-    console.error('Error loading today payments from Supabase:', err);
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('monthly_fee_components')
-      .select('pending_amount')
-      .in('status', ['pending', 'partially-paid', 'overdue'])
-      .gt('pending_amount', 0);
-    if (!error && data) pendingComponents = data;
-  } catch (err) {
-    console.error('Error loading pending components from Supabase:', err);
-  }
-
-  const todayTotal = todayPayments.reduce((sum: number, p: any) => 
-    sum + parseFloat(p.payment_amount || 0), 0);
-  const totalPending = pendingComponents.reduce((sum: number, c: any) => 
-    sum + parseFloat(c.pending_amount || 0), 0);
-
-  // Get students count
-  const studentsData = await loadStudents(token).catch(() => ({ students: [] }));
+  const data = await response.json();
 
   return {
-    totalStudents: studentsData.students?.length || 0,
-    todayCollection: todayTotal,
-    totalPending,
-    recentPayments: recentPayments
+    totalStudents: data.total_students ?? 0,
+    todayCollection: data.today_collection ?? 0,
+    totalPending: data.total_pending ?? 0,
+    recentPayments: data.recent_payments ?? []
   };
 }
 

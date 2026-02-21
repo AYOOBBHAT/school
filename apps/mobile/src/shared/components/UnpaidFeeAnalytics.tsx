@@ -124,6 +124,7 @@ export function UnpaidFeeAnalytics({ userRole, showChart = true }: UnpaidFeeAnal
   };
 
   const timeScopeOptions = [
+    { value: 'all_time', label: 'All Time' },
     { value: 'last_month', label: 'Last Month' },
     { value: 'last_2_months', label: 'Last 2 Months' },
     { value: 'last_3_months', label: 'Last 3 Months' },
