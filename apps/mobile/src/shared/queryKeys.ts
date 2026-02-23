@@ -12,6 +12,8 @@ export const queryKeys = {
     classificationValues: (typeId: string) => ['principal', 'classifications', 'values', typeId] as const,
     salary: {
       summary: ['principal', 'salary', 'summary'] as const,
+      structures: ['principal', 'salary', 'structures'] as const,
+      records: ['principal', 'salary', 'records'] as const,
     },
     dashboard: ['principal', 'dashboard'] as const,
   },

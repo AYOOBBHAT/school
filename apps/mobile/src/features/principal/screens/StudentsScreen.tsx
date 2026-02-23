@@ -10,6 +10,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -22,6 +23,8 @@ import {
 import { useClasses } from '../hooks/useClasses';
 import {
   loadClassSections,
+  loadStudentFeeConfig,
+  loadDefaultFees,
   checkUsername,
   type StudentInClass,
   type ClassWithStudents,
@@ -38,7 +41,7 @@ type ModalType = 'add' | 'edit' | 'promote' | 'promoteClass' | null;
 export function StudentsScreen({ navigation }: Props) {
   const [expandedClassIds, setExpandedClassIds] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<ModalType>(null);
-  const [selectedStudent, setSelectedStudent] = useState<StudentInClass & { class_group_id?: string } | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<StudentInClass | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [sections, setSections] = useState<Record<string, Array<{ id: string; name: string }>>>({});
 
@@ -146,6 +149,40 @@ export function StudentsScreen({ navigation }: Props) {
     setModal('add');
   };
 
+  const loadEditDefaultFees = useCallback(async (classId: string): Promise<void> => {
+    if (!classId) {
+      setEditDefaultFees(null);
+      return;
+    }
+    setLoadingEditFees(true);
+    try {
+      const data = await loadDefaultFees(classId);
+      setEditDefaultFees({
+        class_fees: data.class_fees ?? [],
+        transport_routes: data.transport_routes ?? [],
+        custom_fees: data.custom_fees ?? [],
+      });
+      const firstClassFeeId = data.class_fees?.[0]?.id ?? '';
+      setEditFeeConfig((prev) => ({
+        ...prev,
+        class_fee_id: prev.class_fee_id || firstClassFeeId,
+        class_fee_discount: prev.class_fee_discount ?? 0,
+        transport_enabled: prev.transport_enabled ?? false,
+        transport_route_id: prev.transport_route_id ?? '',
+        transport_fee_discount: prev.transport_fee_discount ?? 0,
+        custom_fees: (data.custom_fees ?? []).map((cf: { id: string }) => ({
+          custom_fee_id: cf.id,
+          discount: 0,
+          is_exempt: false,
+        })),
+      }));
+    } catch {
+      setEditDefaultFees(null);
+    } finally {
+      setLoadingEditFees(false);
+    }
+  }, []);
+
   const openEdit = (student: StudentInClass & { class_group_id?: string }) => {
     setSelectedStudent(student);
     setEditForm({
@@ -153,11 +190,77 @@ export function StudentsScreen({ navigation }: Props) {
       section_id: student.section_id ?? '',
       roll_number: student.roll_number ?? '',
     });
+    setEditFeeConfig({
+      class_fee_id: '',
+      class_fee_discount: 0,
+      transport_enabled: false,
+      transport_route_id: '',
+      transport_fee_discount: 0,
+      custom_fees: [],
+      effective_from_date: new Date().toISOString().split('T')[0],
+    });
+    setEditDefaultFees(null);
     setModal('edit');
-    if (student.class_group_id) fetchSections(student.class_group_id);
+    if (student.class_group_id) {
+      fetchSections(student.class_group_id);
+      loadEditDefaultFees(student.class_group_id).then(() => {
+        if (student.id) {
+          loadStudentFeeConfig(student.id)
+            .then((res) => {
+              if (res.fee_config) {
+                const fc = res.fee_config;
+                setEditFeeConfig((prev) => ({
+                  ...prev,
+                  class_fee_id: fc.class_fee_id ?? '',
+                  class_fee_discount: fc.class_fee_discount ?? 0,
+                  transport_enabled: fc.transport_enabled ?? false,
+                  transport_route_id: fc.transport_route_id ?? '',
+                  transport_fee_discount: fc.transport_fee_discount ?? 0,
+                  custom_fees: fc.custom_fees ?? [],
+                  effective_from_date: fc.effective_from_date ?? new Date().toISOString().split('T')[0],
+                }));
+              }
+            })
+            .catch(() => {});
+        }
+      });
+    } else if (student.id) {
+      loadStudentFeeConfig(student.id)
+        .then((res) => {
+          if (res.fee_config) {
+            const fc = res.fee_config;
+            setEditFeeConfig((prev) => ({
+              ...prev,
+              class_fee_id: fc.class_fee_id ?? '',
+              class_fee_discount: fc.class_fee_discount ?? 0,
+              transport_enabled: fc.transport_enabled ?? false,
+              transport_route_id: fc.transport_route_id ?? '',
+              transport_fee_discount: fc.transport_fee_discount ?? 0,
+              custom_fees: fc.custom_fees ?? [],
+              effective_from_date: fc.effective_from_date ?? new Date().toISOString().split('T')[0],
+            }));
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   const [editForm, setEditForm] = useState({ class_group_id: '', section_id: '', roll_number: '' });
+  const [editFeeConfig, setEditFeeConfig] = useState({
+    class_fee_id: '',
+    class_fee_discount: 0,
+    transport_enabled: false,
+    transport_route_id: '',
+    transport_fee_discount: 0,
+    custom_fees: [] as Array<{ custom_fee_id: string; discount: number; is_exempt: boolean }>,
+    effective_from_date: '',
+  });
+  const [editDefaultFees, setEditDefaultFees] = useState<{
+    class_fees: Array<{ id: string; amount?: number; fee_cycle?: string; fee_categories?: { name?: string } }>;
+    transport_routes: Array<{ id: string; route_name?: string; bus_number?: string; fee?: { total?: number } }>;
+    custom_fees: Array<{ id: string; amount?: number; name?: string }>;
+  } | null>(null);
+  const [loadingEditFees, setLoadingEditFees] = useState(false);
   const [promoteForm, setPromoteForm] = useState({ target_class_id: '' });
   const [promoteClassForm, setPromoteClassForm] = useState({ target_class_id: '', clear_sections: false });
 
@@ -215,14 +318,26 @@ export function StudentsScreen({ navigation }: Props) {
 
   const handleUpdateStudent = () => {
     if (!selectedStudent) return;
+    const updateData: {
+      class_group_id: string | null;
+      section_id: string | null;
+      roll_number: string | null;
+      fee_config?: typeof editFeeConfig & { effective_from_date?: string };
+    } = {
+      class_group_id: editForm.class_group_id || null,
+      section_id: editForm.section_id || null,
+      roll_number: editForm.roll_number || null,
+    };
+    if (editForm.class_group_id && editDefaultFees) {
+      updateData.fee_config = {
+        ...editFeeConfig,
+        effective_from_date: editFeeConfig.effective_from_date || '',
+      };
+    }
     updateMutation.mutate(
       {
         studentId: selectedStudent.id,
-        data: {
-          class_group_id: editForm.class_group_id || null,
-          section_id: editForm.section_id || null,
-          roll_number: editForm.roll_number || null,
-        },
+        data: updateData,
       },
       {
         onSuccess: () => {
@@ -466,7 +581,13 @@ export function StudentsScreen({ navigation }: Props) {
             <Text style={styles.modalTitle}>Edit: {selectedStudent?.profile?.full_name ?? 'Student'}</Text>
             <Text style={styles.label}>Class</Text>
             <View style={styles.pickerRow}>
-              <TouchableOpacity style={[styles.chip, !editForm.class_group_id && styles.chipSelected]} onPress={() => setEditForm({ ...editForm, class_group_id: '', section_id: '' })}>
+              <TouchableOpacity
+                style={[styles.chip, !editForm.class_group_id && styles.chipSelected]}
+                onPress={() => {
+                  setEditForm({ ...editForm, class_group_id: '', section_id: '' });
+                  setEditDefaultFees(null);
+                }}
+              >
                 <Text style={!editForm.class_group_id ? styles.chipTextSelected : styles.chipText}>No Class</Text>
               </TouchableOpacity>
               {allClasses.map((c) => (
@@ -476,6 +597,7 @@ export function StudentsScreen({ navigation }: Props) {
                   onPress={() => {
                     setEditForm({ ...editForm, class_group_id: c.id, section_id: '' });
                     fetchSections(c.id);
+                    loadEditDefaultFees(c.id);
                   }}
                 >
                   <Text style={editForm.class_group_id === c.id ? styles.chipTextSelected : styles.chipText}>{c.name}</Text>
@@ -500,6 +622,69 @@ export function StudentsScreen({ navigation }: Props) {
             ) : null}
             <Text style={styles.label}>Roll Number</Text>
             <TextInput style={styles.input} placeholder="Roll Number" value={editForm.roll_number} onChangeText={(t) => setEditForm({ ...editForm, roll_number: t })} />
+
+            {/* Fee Configuration (same as web when class is selected) */}
+            {editForm.class_group_id && (
+              <View style={styles.feeSection}>
+                <Text style={styles.feeSectionTitle}>Fee Configuration</Text>
+                <Text style={styles.label}>Apply from date</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="YYYY-MM-DD"
+                  value={editFeeConfig.effective_from_date}
+                  onChangeText={(t) => setEditFeeConfig((prev) => ({ ...prev, effective_from_date: t }))}
+                />
+                {loadingEditFees ? (
+                  <View style={styles.loadingFeesRow}>
+                    <ActivityIndicator size="small" color="#2563eb" />
+                    <Text style={styles.loadingFeesText}>Loading fee options...</Text>
+                  </View>
+                ) : editDefaultFees && editDefaultFees.class_fees?.length > 0 ? (
+                  <>
+                    <Text style={styles.label}>Class fee discount (₹)</Text>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      value={editFeeConfig.class_fee_discount ? String(editFeeConfig.class_fee_discount) : ''}
+                      onChangeText={(t) => setEditFeeConfig((prev) => ({ ...prev, class_fee_discount: parseFloat(t) || 0 }))}
+                    />
+                    <View style={styles.transportRow}>
+                      <Text style={styles.label}>Transport</Text>
+                      <Switch
+                        value={editFeeConfig.transport_enabled}
+                        onValueChange={(v) => setEditFeeConfig((prev) => ({ ...prev, transport_enabled: v, transport_route_id: v ? prev.transport_route_id : '' }))}
+                      />
+                    </View>
+                    {editFeeConfig.transport_enabled && editDefaultFees.transport_routes?.length > 0 && (
+                      <>
+                        <Text style={styles.label}>Route</Text>
+                        <View style={styles.pickerRow}>
+                          {editDefaultFees.transport_routes.map((r) => (
+                            <TouchableOpacity
+                              key={r.id}
+                              style={[styles.chip, editFeeConfig.transport_route_id === r.id && styles.chipSelected]}
+                              onPress={() => setEditFeeConfig((prev) => ({ ...prev, transport_route_id: r.id }))}
+                            >
+                              <Text style={editFeeConfig.transport_route_id === r.id ? styles.chipTextSelected : styles.chipText}>{r.route_name ?? r.bus_number ?? r.id}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <Text style={styles.label}>Transport discount (₹)</Text>
+                        <TextInput
+                          style={styles.input}
+                          keyboardType="decimal-pad"
+                          placeholder="0"
+                          value={editFeeConfig.transport_fee_discount ? String(editFeeConfig.transport_fee_discount) : ''}
+                          onChangeText={(t) => setEditFeeConfig((prev) => ({ ...prev, transport_fee_discount: parseFloat(t) || 0 }))}
+                        />
+                      </>
+                    )}
+                  </>
+                ) : null}
+              </View>
+            )}
+
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.cancelButton} onPress={() => setModal(null)}>
                 <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -647,4 +832,9 @@ const styles = StyleSheet.create({
   submitButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, backgroundColor: '#2563eb', minWidth: 120, alignItems: 'center' },
   submitDisabled: { opacity: 0.6 },
   submitButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  feeSection: { borderTopWidth: 1, borderTopColor: '#e2e8f0', marginTop: 16, paddingTop: 16 },
+  feeSectionTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 12 },
+  loadingFeesRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
+  loadingFeesText: { fontSize: 14, color: '#64748b' },
+  transportRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 8 },
 });

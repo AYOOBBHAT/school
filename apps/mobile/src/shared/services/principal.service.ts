@@ -57,6 +57,9 @@ export async function loadStudentsAdmin(): Promise<StudentsAdminResponse> {
   return api.get<StudentsAdminResponse>('/students-admin');
 }
 
+/** Alias for prefetch / principal students query */
+export const loadStudents = loadStudentsAdmin;
+
 /** Load sections for a class (same as web loadClassSections) */
 export async function loadClassSections(classId: string): Promise<{ sections: Array<{ id: string; name: string; class_id?: string }> }> {
   return api.get<{ sections: Array<{ id: string; name: string; class_id?: string }> }>(`/classes/${classId}/sections`);
@@ -224,9 +227,57 @@ export async function deleteClassificationValue(valueId: string): Promise<void> 
   await api.delete(`/classifications/values/${valueId}`);
 }
 
-// Salary
+// Salary (same as web principal/salary)
+export interface SalaryStructureItem {
+  id: string;
+  teacher_id: string;
+  base_salary: number;
+  hra: number;
+  other_allowances: number;
+  fixed_deductions: number;
+  salary_cycle: string;
+  attendance_based_deduction: boolean;
+  effective_from: string;
+  effective_to?: string | null;
+  teacher?: { id: string; full_name?: string; email?: string };
+}
+
 export async function loadSalarySummary(): Promise<{ summary: SalarySummary }> {
   return api.get<{ summary: SalarySummary }>('/salary/summary');
+}
+
+export async function loadSalaryStructures(): Promise<{ structures: SalaryStructureItem[] }> {
+  return api.get<{ structures: SalaryStructureItem[] }>('/salary/structures');
+}
+
+export async function loadSalaryRecords(): Promise<{
+  records: Array<{
+    id: string;
+    teacher_id: string;
+    year: number;
+    month: number;
+    gross_salary: number;
+    total_deductions: number;
+    net_salary: number;
+    status: string;
+    payment_date?: string | null;
+    teacher?: { id: string; full_name?: string; email?: string };
+  }>;
+}> {
+  return api.get<{ records: any[] }>('/salary/records').then((r) => ({ records: r.records ?? [] }));
+}
+
+export async function createSalaryStructure(data: {
+  teacher_id: string;
+  base_salary: number;
+  hra?: number;
+  other_allowances?: number;
+  fixed_deductions?: number;
+  salary_cycle?: 'monthly' | 'weekly' | 'biweekly';
+  attendance_based_deduction?: boolean;
+  effective_from_date: string;
+}): Promise<{ message?: string }> {
+  return api.post<{ message?: string }>('/salary/structure', data);
 }
 
 // Dashboard

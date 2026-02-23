@@ -53,7 +53,7 @@ export async function loadStudentsForAttendance(
       const sectionsMap: Record<string, string> = {};
       if (cls.sections) {
         for (const sec of cls.sections) {
-          sectionsMap[sec.id] = sec.name;
+          sectionsMap[sec.id] = sec.name ?? '';
         }
       }
       for (const s of cls.students || []) {

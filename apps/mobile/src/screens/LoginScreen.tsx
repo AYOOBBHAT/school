@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../shared/components/Button';
 import { Input } from '../shared/components/Input';
 import { authService } from '../shared/services/auth';
-import { api } from '../shared/services/api';
 import { useAuth } from '../navigation/AuthContext';
 import { queryClient } from '../../App';
 import { queryKeys } from '../shared/queryKeys';
@@ -81,15 +80,6 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
         userRole: response.user?.role,
         userId: response.user?.id,
       });
-      
-      // Ensure token is set in API service before navigating (should already be set by saveAuth, but verify)
-      if (response.token) {
-        await api.setToken(response.token);
-        console.log('[LoginScreen] Token verified and set in API service before navigation');
-      } else {
-        console.error('[LoginScreen] WARNING: No token in login response!');
-        throw new Error('Login response missing token');
-      }
       
       if (!response.user) {
         console.error('[LoginScreen] WARNING: No user in login response!');

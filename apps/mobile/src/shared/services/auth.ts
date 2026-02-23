@@ -1,23 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api } from './api';
 import * as authServiceFunctions from './auth.service';
-import { User, AuthResponse } from '../types';
+import { supabase } from '../lib/supabase';
+import type { User, AuthResponse } from '../types';
 
-const TOKEN_KEY = '@school_saas:token';
 const USER_KEY = '@school_saas:user';
 
 export class AuthService {
   private currentUser: User | null = null;
 
   async login(email: string, password: string): Promise<AuthResponse> {
-    try {
-      const response = await authServiceFunctions.login(email, password);
-      await this.saveAuth(response);
-      return response;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Login failed';
-      throw new Error(message);
-    }
+    const response = await authServiceFunctions.login(email, password);
+    this.currentUser = response.user;
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
+    return response;
   }
 
   async loginUsername(data: {
@@ -26,14 +21,10 @@ export class AuthService {
     join_code?: string;
     registration_number?: string;
   }): Promise<AuthResponse> {
-    try {
-      const response = await authServiceFunctions.loginUsername(data);
-      await this.saveAuth(response);
-      return response;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Login failed';
-      throw new Error(message);
-    }
+    const response = await authServiceFunctions.loginUsername(data);
+    this.currentUser = response.user;
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
+    return response;
   }
 
   async signupPrincipal(data: {
@@ -45,14 +36,10 @@ export class AuthService {
     contact_phone?: string;
     contact_email?: string;
   }): Promise<AuthResponse> {
-    try {
-      const response = await authServiceFunctions.signupPrincipal(data);
-      await this.saveAuth(response);
-      return response;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Signup failed';
-      throw new Error(message);
-    }
+    const response = await authServiceFunctions.signupPrincipal(data);
+    this.currentUser = response.user;
+    if (response.token) await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
+    return response;
   }
 
   async signupJoin(data: {
@@ -64,36 +51,24 @@ export class AuthService {
     roll_number?: string;
     child_student_id?: string;
   }): Promise<AuthResponse> {
-    try {
-      const response = await authServiceFunctions.signupJoin(data);
-      await this.saveAuth(response);
-      return response;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Signup failed';
-      throw new Error(message);
-    }
+    const response = await authServiceFunctions.signupJoin(data);
+    this.currentUser = response.user;
+    if (response.token) await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
+    return response;
   }
 
   async logout(): Promise<void> {
-    await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
-    await api.setToken(null);
+    await supabase.auth.signOut();
+    await AsyncStorage.removeItem(USER_KEY);
     this.currentUser = null;
   }
 
-  /**
-   * Clear all stored authentication data
-   * Useful for development/testing or forcing re-login
-   */
   async clearStoredAuth(): Promise<void> {
     await this.logout();
-    console.log('[AuthService] All stored auth data cleared');
   }
 
   async getCurrentUser(): Promise<User | null> {
-    if (this.currentUser) {
-      return this.currentUser;
-    }
-
+    if (this.currentUser) return this.currentUser;
     try {
       const userJson = await AsyncStorage.getItem(USER_KEY);
       if (userJson) {
@@ -103,73 +78,31 @@ export class AuthService {
     } catch (error) {
       console.error('Error loading user:', error);
     }
-
     return null;
   }
 
   async loadStoredAuth(): Promise<boolean> {
     try {
-      const token = await AsyncStorage.getItem(TOKEN_KEY);
-      const userJson = await AsyncStorage.getItem(USER_KEY);
-
-      console.log('[AuthService] Loading stored auth:', {
-        hasToken: !!token,
-        tokenLength: token?.length || 0,
-        hasUserJson: !!userJson
-      });
-
-      // Validate that token exists and is not empty
-      if (token && token.trim() && userJson) {
-        await api.setToken(token);
-        this.currentUser = JSON.parse(userJson);
-        console.log('[AuthService] Stored auth loaded successfully. Token set in API service.');
-        return true;
-      } else {
-        // Clear any invalid/empty tokens
-        if (token && !token.trim()) {
-          await AsyncStorage.removeItem(TOKEN_KEY);
-        }
-        await api.setToken(null);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        await AsyncStorage.removeItem(USER_KEY);
         this.currentUser = null;
-        console.log('[AuthService] No valid stored auth found.');
+        return false;
       }
-    } catch (error) {
-      console.error('[AuthService] Error loading stored auth:', error);
-      // Clear corrupted data
-      await api.setToken(null);
+      const userJson = await AsyncStorage.getItem(USER_KEY);
+      if (userJson) {
+        this.currentUser = JSON.parse(userJson);
+        return true;
+      }
       this.currentUser = null;
+      return true;
+    } catch (error) {
+      console.error('Error loading stored auth:', error);
+      this.currentUser = null;
+      return false;
     }
-
-    return false;
-  }
-
-  private async saveAuth(response: AuthResponse): Promise<void> {
-    console.log('[AuthService] Saving auth data:', {
-      hasToken: !!response.token,
-      tokenLength: response.token?.length || 0,
-      hasUser: !!response.user
-    });
-    
-    if (!response.token) {
-      console.error('[AuthService] Cannot save auth - no token in response!');
-      throw new Error('Login response missing token');
-    }
-    
-    // Set token in API service FIRST before saving to storage
-    // This ensures token is available immediately, even if storage write is delayed
-    await api.setToken(response.token);
-    this.currentUser = response.user;
-    
-    // Then save to AsyncStorage
-    await AsyncStorage.setItem(TOKEN_KEY, response.token);
-    await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
-    
-    // Verify token was saved
-    const savedToken = await AsyncStorage.getItem(TOKEN_KEY);
-    console.log('[AuthService] Token saved. Verification:', {
-      saved: !!savedToken,
-      matches: savedToken === response.token
-    });
   }
 
   isAuthenticated(): boolean {
@@ -178,4 +111,3 @@ export class AuthService {
 }
 
 export const authService = new AuthService();
-

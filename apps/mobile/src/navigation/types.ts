@@ -24,7 +24,6 @@ export type PrincipalStackParamList = {
   Classifications: undefined;
   UnpaidFeeAnalytics: undefined;
   Salary: undefined;
-  Fees: undefined;
 };
 
 // Teacher Stack (matches web: My Classes, Attendance, Marks Entry, My Salary, Student Fee Status)

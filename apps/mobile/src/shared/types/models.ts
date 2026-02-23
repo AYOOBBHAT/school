@@ -4,7 +4,8 @@
  * Matches backend schema (snake_case where applicable)
  */
 
-export type UserRole = 'principal' | 'clerk' | 'teacher' | 'student' | 'parent';
+import type { UserRole } from './user';
+export type { User, UserRole } from './user';
 
 export interface UserProfile {
   id: string;
@@ -13,15 +14,6 @@ export interface UserProfile {
   role?: UserRole | null;
   created_at: string;
   updated_at?: string | null;
-}
-
-export interface User {
-  id: string;
-  email: string;
-  role: UserRole;
-  full_name: string;
-  schoolId: string;
-  schoolName?: string | null;
 }
 
 export interface Student {

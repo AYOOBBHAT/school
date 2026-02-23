@@ -104,12 +104,6 @@ export function DashboardScreen({ navigation }: DashboardScreenProps) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.actionButton}
-                onPress={() => (navigation as NavWithNested).navigate('Principal', { screen: 'Fees' })}
-              >
-                <Text style={styles.actionText}>Fee Management</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
                 onPress={() => (navigation as NavWithNested).navigate('Principal', { screen: 'Classifications' })}
               >
                 <Text style={styles.actionText}>Classifications</Text>

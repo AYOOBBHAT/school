@@ -2,74 +2,54 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+function extractBearerToken(req) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+        return null;
+    }
+    const token = authHeader.slice(7).trim();
+    return token || null;
+}
 export async function authMiddleware(req, res, next) {
     if (!supabaseUrl || !supabaseAnonKey) {
         return res.status(500).json({ error: 'Supabase credentials not configured' });
     }
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = extractBearerToken(req);
+    if (!token) {
         return res.status(401).json({ error: 'Missing bearer token' });
     }
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader } }
-    });
-    req.supabase = supabase;
-    try {
-        // Verify the token and get user
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError || !user) {
-            return res.status(401).json({ error: 'Invalid token' });
-        }
-        // Check if user is admin (admin users have role in user_metadata, not in profiles)
-        const userRole = user.user_metadata?.role;
-        if (userRole === 'admin') {
-            req.user = {
-                id: user.id,
-                role: 'admin',
-                schoolId: null
-            };
-            return next();
-        }
-        // Get user profile to get role and school_id
-        // Use service role key to bypass RLS for profile lookup
-        if (!supabaseServiceKey) {
-            return res.status(500).json({ error: 'Server configuration error' });
-        }
-        const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
-        const { data: profile, error: profileError } = await adminSupabase
-            .from('profiles')
-            .select('id, role, school_id')
-            .eq('id', user.id)
-            .maybeSingle();
-        if (profileError) {
-            console.error('[authMiddleware] Error fetching profile:', profileError);
-            return res.status(403).json({ error: 'Profile not found' });
-        }
-        if (!profile) {
-            console.error('[authMiddleware] Profile not found for user:', user.id);
-            return res.status(403).json({ error: 'Profile not found' });
-        }
-        if (!profile.role) {
-            console.error('[authMiddleware] Profile missing role:', profile);
-            return res.status(403).json({ error: 'Invalid profile data' });
-        }
-        // Log school_id for debugging
-        if (!profile.school_id) {
-            console.warn('[authMiddleware] Profile has no school_id:', { userId: user.id, role: profile.role });
-        }
-        else {
-            console.log('[authMiddleware] User authenticated:', { userId: user.id, role: profile.role, schoolId: profile.school_id });
-        }
-        req.user = {
-            id: user.id,
-            role: profile.role,
-            schoolId: profile.school_id
-        };
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const user = data.user;
+    if (user.user_metadata?.role === 'admin') {
+        req.user = { id: user.id, role: 'admin', schoolId: null };
         return next();
     }
-    catch (error) {
-        return res.status(401).json({ error: 'Authentication failed' });
+    if (!supabaseServiceKey) {
+        return res.status(500).json({ error: 'Server configuration error' });
     }
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: profile, error: profileError } = await adminSupabase
+        .from('profiles')
+        .select('id, role, school_id')
+        .eq('id', user.id)
+        .maybeSingle();
+    if (profileError) {
+        return res.status(403).json({ error: 'Profile not found' });
+    }
+    if (!profile?.role) {
+        return res.status(403).json({ error: 'Profile not found' });
+    }
+    req.user = {
+        id: user.id,
+        role: profile.role,
+        schoolId: profile.school_id ?? null
+    };
+    req.supabase = supabase;
+    return next();
 }
 export function requireRoles(roles) {
     return (req, res, next) => {
@@ -80,9 +60,7 @@ export function requireRoles(roles) {
         return next();
     };
 }
-// Middleware to check if school has paid subscription
 export async function checkPaymentStatus(req, res, next) {
-    // Admin users bypass payment check
     if (req.user?.role === 'admin') {
         return next();
     }
@@ -109,7 +87,7 @@ export async function checkPaymentStatus(req, res, next) {
         }
         return next();
     }
-    catch (error) {
+    catch {
         return res.status(500).json({ error: 'Failed to check payment status' });
     }
 }

@@ -163,7 +163,7 @@ router.post('/structure', requireRoles(['principal']), async (req, res) => {
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // Get Salary Structure for a Teacher
@@ -200,13 +200,13 @@ router.get('/structure/:teacherId', requireRoles(['principal', 'clerk', 'teacher
             .maybeSingle();
         if (error && error.code !== 'PGRST116') { // PGRST116 = not found
             console.error('[salary] Error fetching structure:', error);
-            return res.status(400).json({ error: error.message });
+            return res.status(500).json({ message: error.message });
         }
         return res.json({ structure: structure || null });
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // Get All Salary Structures (Principal/Clerk only)
@@ -234,13 +234,13 @@ router.get('/structures', requireRoles(['principal', 'clerk']), async (req, res)
             .order('created_at', { ascending: false });
         if (error) {
             console.error('[salary] Error fetching structures:', error);
-            return res.status(400).json({ error: error.message });
+            return res.status(500).json({ message: error.message });
         }
         return res.json({ structures: structures || [] });
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // Calculate attendance deduction for a month
@@ -359,7 +359,7 @@ router.post('/generate', requireRoles(['principal', 'clerk']), async (req, res) 
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // Get Salary Records
@@ -419,7 +419,7 @@ router.get('/records', requireRoles(['principal', 'clerk', 'teacher']), async (r
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // Approve Salary Record (Principal only)
@@ -469,7 +469,7 @@ router.put('/records/:recordId/approve', requireRoles(['principal']), async (req
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // Mark Salary as Paid (Clerk only, and only for approved salaries)
@@ -531,7 +531,7 @@ router.put('/records/:recordId/mark-paid', requireRoles(['clerk']), async (req, 
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // Get Salary Reports/Analytics
@@ -556,7 +556,7 @@ router.get('/reports', requireRoles(['principal', 'clerk']), async (req, res) =>
         const { data: records, error, count } = await query;
         if (error) {
             console.error('[salary] Error fetching reports:', error);
-            return res.status(400).json({ error: error.message });
+            return res.status(500).json({ message: error.message });
         }
         // Calculate analytics
         const totalPaid = (records || [])
@@ -589,7 +589,7 @@ router.get('/reports', requireRoles(['principal', 'clerk']), async (req, res) =>
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // ============================================================================
@@ -628,7 +628,7 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
             .maybeSingle();
         if (structureError) {
             console.error('[salary] Error fetching salary structure:', structureError);
-            return res.status(400).json({ error: 'Failed to fetch salary structure' });
+            return res.status(500).json({ message: structureError.message });
         }
         if (!salaryStructure) {
             return res.status(400).json({ error: 'Salary structure not found for this teacher' });
@@ -646,7 +646,7 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
             .eq('salary_year', value.salary_year);
         if (paymentsError) {
             console.error('[salary] Error fetching existing payments:', paymentsError);
-            return res.status(400).json({ error: 'Failed to fetch existing payments' });
+            return res.status(500).json({ message: paymentsError.message });
         }
         // Calculate total payment for this month (existing + new)
         const existingTotal = (existingPayments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
@@ -734,7 +734,7 @@ router.post('/payments', requireRoles(['clerk']), async (req, res) => {
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // Get Payment History (Principal, Clerk, Teacher - teachers see only their own)
@@ -777,13 +777,13 @@ router.get('/payments', requireRoles(['principal', 'clerk', 'teacher']), async (
             .order('created_at', { ascending: false });
         if (error) {
             console.error('[salary] Error fetching payments:', error);
-            return res.status(400).json({ error: error.message });
+            return res.status(500).json({ message: error.message });
         }
         return res.json({ payments: payments || [] });
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // Get Salary Summary (Principal, Clerk, Teacher - teachers see only their own)
@@ -820,7 +820,8 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
                 .eq('school_id', user.schoolId)
                 .eq('role', 'teacher');
             if (teachersError) {
-                return res.status(400).json({ error: teachersError.message });
+                console.error('[salary/summary] Error fetching teachers:', teachersError);
+                return res.status(500).json({ message: teachersError.message });
             }
             teacherIds = (teachers || []).map((t) => t.id);
         }
@@ -910,7 +911,7 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
     }
     catch (err) {
         console.error('[salary] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // ============================================
@@ -918,11 +919,30 @@ router.get('/summary', requireRoles(['principal', 'clerk', 'teacher']), async (r
 // ============================================
 // Shows all unpaid salary months for teachers, including months without salary records
 // Accessible to Principal and Clerk
-// IMPORTANT: All queries in this endpoint MUST use adminSupabase and filter by user.schoolId
+// IMPORTANT: All queries in this endpoint MUST use req.supabase (user-context client) for RLS
 router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => {
-    const { user } = req;
-    if (!user || !user.schoolId)
+    const { supabase, user } = req;
+    if (!supabase || !user || !user.schoolId) {
         return res.status(500).json({ error: 'Server misconfigured' });
+    }
+    // Safe fallback response
+    const emptyResponse = {
+        summary: {
+            total_teachers: 0,
+            total_unpaid_amount: 0,
+            total_unpaid_months: 0,
+            time_scope: req.query.time_scope || 'last_12_months',
+            start_date: new Date().toISOString().split('T')[0],
+            end_date: new Date().toISOString().split('T')[0]
+        },
+        teachers: [],
+        pagination: {
+            page: 1,
+            limit: 50,
+            total: 0,
+            total_pages: 0
+        }
+    };
     try {
         // Use Redis cache for unpaid salaries (when no teacher filter)
         const { teacher_id, time_scope } = req.query;
@@ -930,27 +950,33 @@ router.get('/unpaid', requireRoles(['principal', 'clerk']), async (req, res) => 
         // Only cache when no teacher filter (full list)
         if (!teacher_id) {
             const cached = await cacheFetch(cacheKey, async () => {
-                return await fetchUnpaidSalaries(user, req.query);
+                return await fetchUnpaidSalaries(supabase, user, req.query);
             });
             return res.json(cached);
         }
         // For filtered queries, fetch directly (no cache)
-        const result = await fetchUnpaidSalaries(user, req.query);
+        const result = await fetchUnpaidSalaries(supabase, user, req.query);
         return res.json(result);
     }
     catch (err) {
         console.error('[salary/unpaid] Error:', err);
-        return res.status(500).json({ error: err.message || 'Failed to get unpaid teacher salaries' });
+        return res.status(500).json({ message: err.message || 'Failed to fetch unpaid salaries' });
     }
 });
 /**
  * Fetch unpaid salaries data
+ * Uses user-context supabase client (req.supabase) to respect RLS policies
+ * CRITICAL: Explicitly filters by school_id for defense-in-depth security
  */
-async function fetchUnpaidSalaries(user, queryParams) {
+async function fetchUnpaidSalaries(supabase, user, queryParams) {
     try {
         const { teacher_id, time_scope } = queryParams;
         const unpaidPageNum = parseInt(queryParams.page) || 1;
         const unpaidLimitNum = Math.min(parseInt(queryParams.limit) || 50, 100);
+        // Validate inputs
+        if (!user.schoolId) {
+            throw new Error('User school_id is required');
+        }
         // Validate time scope
         const validTimeScopes = ['last_month', 'last_2_months', 'last_3_months', 'last_6_months', 'last_12_months', 'current_academic_year'];
         const timeScope = time_scope || 'last_12_months';
@@ -959,6 +985,7 @@ async function fetchUnpaidSalaries(user, queryParams) {
         }
         // Calculate date range based on time scope
         const today = new Date();
+        today.setHours(0, 0, 0, 0);
         let startDate;
         let endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         switch (timeScope) {
@@ -988,16 +1015,21 @@ async function fetchUnpaidSalaries(user, queryParams) {
             default:
                 startDate = new Date(today.getFullYear(), today.getMonth() - 12, 1);
         }
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+        console.log(`[salary/unpaid] Fetching for school: ${user.schoolId}, time_scope: ${timeScope}, date_range: ${startDateStr} to ${endDateStr}`);
         // Build query for unpaid salary months
-        // Use adminSupabase and filter by school_id explicitly
-        // Get all unpaid months (no pagination on months query - we'll paginate teachers list)
-        let unpaidMonthsQuery = adminSupabase
+        // CRITICAL: Explicitly filter by school_id for security (defense-in-depth)
+        // RLS should also filter, but explicit filter ensures no data leakage
+        // Note: View columns are: teacher_id, school_id, teacher_name, teacher_email, month, year, period_start, period_label, net_salary, paid_amount, pending_amount, payment_status, payment_date, is_unpaid, days_since_period_start
+        // Note: credit_applied and effective_paid_amount don't exist in current view version
+        let unpaidMonthsQuery = supabase
             .from('teacher_unpaid_salary_months')
-            .select('teacher_id, year, month, period_start, period_end, salary_due, salary_paid, unpaid_amount, is_unpaid, teacher_name, teacher_email, period_label, payment_status, net_salary, paid_amount, credit_applied, effective_paid_amount, days_since_period_start, payment_date', { count: 'exact' })
-            .eq('school_id', user.schoolId)
+            .select('teacher_id, school_id, year, month, period_start, pending_amount, is_unpaid, teacher_name, teacher_email, period_label, payment_status, net_salary, paid_amount, days_since_period_start, payment_date', { count: 'exact' })
+            .eq('school_id', user.schoolId) // CRITICAL: Explicit school_id filter for security
             .eq('is_unpaid', true)
-            .gte('period_start', startDate.toISOString().split('T')[0])
-            .lte('period_start', endDate.toISOString().split('T')[0])
+            .gte('period_start', startDateStr)
+            .lte('period_start', endDateStr)
             .order('teacher_id', { ascending: true })
             .order('year', { ascending: false })
             .order('month', { ascending: false });
@@ -1010,12 +1042,13 @@ async function fetchUnpaidSalaries(user, queryParams) {
             console.error('[salary/unpaid] Error fetching unpaid months:', unpaidMonthsError);
             throw new Error(unpaidMonthsError.message);
         }
+        console.log(`[salary/unpaid] Found ${unpaidMonths?.length || 0} unpaid months (count: ${count || 0})`);
         // Get summary of unpaid teachers (only needed fields)
-        // Use adminSupabase and filter by school_id explicitly
-        let summaryQuery = adminSupabase
+        // CRITICAL: Explicitly filter by school_id for security
+        let summaryQuery = supabase
             .from('unpaid_teachers_summary')
             .select('teacher_id, teacher_name, total_unpaid_amount, unpaid_months_count')
-            .eq('school_id', user.schoolId)
+            .eq('school_id', user.schoolId) // CRITICAL: Explicit school_id filter for security
             .order('total_unpaid_amount', { ascending: false });
         if (teacher_id) {
             summaryQuery = summaryQuery.eq('teacher_id', teacher_id);
@@ -1025,9 +1058,23 @@ async function fetchUnpaidSalaries(user, queryParams) {
             console.error('[salary/unpaid] Error fetching summary:', summaryError);
             throw new Error(summaryError.message);
         }
+        console.log(`[salary/unpaid] Found ${unpaidTeachersSummary?.length || 0} teachers in summary`);
+        // Security validation: Ensure all data belongs to user's school (defense-in-depth)
+        if (unpaidMonths && unpaidMonths.length > 0) {
+            const invalidMonths = unpaidMonths.filter((m) => m.school_id !== user.schoolId);
+            if (invalidMonths.length > 0) {
+                console.error(`[salary/unpaid] SECURITY ALERT: Found ${invalidMonths.length} months from different school!`);
+                throw new Error('Data security validation failed');
+            }
+        }
         // Group unpaid months by teacher
         const teacherMonthsMap = new Map();
         (unpaidMonths || []).forEach((month) => {
+            // Additional security check
+            if (month.school_id !== user.schoolId) {
+                console.error(`[salary/unpaid] SECURITY ALERT: Month from different school: ${month.school_id} vs ${user.schoolId}`);
+                return; // Skip this month
+            }
             if (!teacherMonthsMap.has(month.teacher_id)) {
                 teacherMonthsMap.set(month.teacher_id, []);
             }
@@ -1042,7 +1089,7 @@ async function fetchUnpaidSalaries(user, queryParams) {
                     return b.year - a.year;
                 return b.month - a.month;
             });
-            const totalUnpaid = months.reduce((sum, m) => sum + parseFloat(m.unpaid_amount || 0), 0);
+            const totalUnpaid = months.reduce((sum, m) => sum + parseFloat(m.pending_amount || 0), 0);
             const oldestMonth = sortedMonths.length > 0
                 ? sortedMonths[sortedMonths.length - 1]
                 : null;
@@ -1078,9 +1125,7 @@ async function fetchUnpaidSalaries(user, queryParams) {
                     payment_status: m.payment_status,
                     net_salary: parseFloat(m.net_salary || 0),
                     paid_amount: parseFloat(m.paid_amount || 0),
-                    credit_applied: parseFloat(m.credit_applied || 0),
-                    effective_paid_amount: parseFloat(m.effective_paid_amount || 0),
-                    unpaid_amount: parseFloat(m.unpaid_amount || 0),
+                    unpaid_amount: parseFloat(m.pending_amount || 0),
                     days_since_period_start: m.days_since_period_start,
                     payment_date: m.payment_date
                 }))
@@ -1090,19 +1135,19 @@ async function fetchUnpaidSalaries(user, queryParams) {
         const totalTeachers = teachersList.length;
         const totalUnpaidAmount = teachersList.reduce((sum, t) => sum + t.total_unpaid_amount, 0);
         const totalUnpaidMonths = teachersList.reduce((sum, t) => sum + t.unpaid_months_count, 0);
-        // Apply pagination to teachers list (no double pagination - return directly)
+        // Apply pagination to teachers list
         const page = unpaidPageNum;
         const limit = unpaidLimitNum;
         const offset = (page - 1) * limit;
         const paginatedTeachers = teachersList.slice(offset, offset + limit);
-        return {
+        const result = {
             summary: {
                 total_teachers: totalTeachers,
                 total_unpaid_amount: totalUnpaidAmount,
                 total_unpaid_months: totalUnpaidMonths,
                 time_scope: timeScope,
-                start_date: startDate.toISOString().split('T')[0],
-                end_date: endDate.toISOString().split('T')[0]
+                start_date: startDateStr,
+                end_date: endDateStr
             },
             teachers: paginatedTeachers,
             pagination: {
@@ -1112,6 +1157,8 @@ async function fetchUnpaidSalaries(user, queryParams) {
                 total_pages: Math.ceil(teachersList.length / limit)
             }
         };
+        console.log(`[salary/unpaid] Returning ${paginatedTeachers.length} teachers (page ${page}/${Math.ceil(teachersList.length / limit)}), total: ${totalTeachers}, total_unpaid: ₹${totalUnpaidAmount.toFixed(2)}`);
+        return result;
     }
     catch (err) {
         console.error('[salary/unpaid] Error in fetchUnpaidSalaries:', err);
@@ -1149,7 +1196,7 @@ router.get('/credits/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
         });
         if (creditError) {
             console.error('[salary/credits] Error fetching credit balance:', creditError);
-            return res.status(400).json({ error: creditError.message });
+            return res.status(500).json({ message: creditError.message });
         }
         // Get credit details
         const { data: credits, error: creditsError } = await adminSupabase
@@ -1169,6 +1216,7 @@ router.get('/credits/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
             .order('created_at', { ascending: false });
         if (creditsError) {
             console.error('[salary/credits] Error fetching credit details:', creditsError);
+            return res.status(500).json({ message: creditsError.message });
         }
         return res.json({
             teacher_id: teacherId,
@@ -1178,7 +1226,7 @@ router.get('/credits/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     }
     catch (err) {
         console.error('[salary/credits] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 // ============================================
@@ -1205,7 +1253,7 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
             .maybeSingle();
         if (teacherError) {
             console.error('[salary/history] Error fetching teacher:', teacherError);
-            return res.status(400).json({ error: teacherError.message });
+            return res.status(500).json({ message: teacherError.message });
         }
         if (!teacher) {
             return res.status(404).json({ error: 'Teacher not found' });
@@ -1254,6 +1302,7 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
         const { count, error: countError } = await countQuery;
         if (countError) {
             console.error('[salary/history] Error counting payments:', countError);
+            return res.status(500).json({ message: countError.message });
         }
         // Apply pagination
         const historyPageNum = parseInt(page, 10);
@@ -1265,7 +1314,7 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
             .range(offset, offset + historyLimitNum - 1);
         if (paymentsError) {
             console.error('[salary/history] Error fetching payment history:', paymentsError);
-            return res.status(400).json({ error: paymentsError.message });
+            return res.status(500).json({ message: paymentsError.message });
         }
         // Get payment summary using the database function
         // Note: RPC functions may need service role if they're SECURITY DEFINER
@@ -1320,7 +1369,100 @@ router.get('/history/:teacherId', requireRoles(['principal', 'clerk', 'teacher']
     }
     catch (err) {
         console.error('[salary/history] Error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        return res.status(500).json({ message: err.message || 'Internal server error' });
+    }
+});
+// ============================================
+// Get Salary Records (Simple endpoint)
+// ============================================
+router.get('/', requireRoles(['principal', 'clerk', 'teacher']), async (req, res) => {
+    const { user } = req;
+    if (!user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    try {
+        let query = adminSupabase
+            .from('teacher_salary_records')
+            .select(`
+        *,
+        teacher:profiles!teacher_salary_records_teacher_id_fkey(
+          id,
+          full_name,
+          email,
+          role
+        )
+      `)
+            .eq('school_id', user.schoolId);
+        // Teachers can only see their own records
+        if (user.role === 'teacher') {
+            query = query.eq('teacher_id', user.id);
+        }
+        const { data: records, error } = await query
+            .order('year', { ascending: false })
+            .order('month', { ascending: false });
+        if (error) {
+            console.error('[salary] Error fetching records:', error);
+            return res.status(500).json({ message: error.message });
+        }
+        return res.json({ records: records || [] });
+    }
+    catch (err) {
+        console.error('[salary] Error:', err);
+        return res.status(500).json({ message: err.message || 'Internal server error' });
+    }
+});
+// ============================================
+// Get Salary Records by Role
+// ============================================
+router.get('/:role', requireRoles(['principal', 'clerk']), async (req, res) => {
+    const { user } = req;
+    if (!user)
+        return res.status(500).json({ error: 'Server misconfigured' });
+    const { role } = req.params;
+    // Validate role parameter
+    const validRoles = ['teacher', 'clerk', 'principal'];
+    if (!validRoles.includes(role)) {
+        return res.status(400).json({ error: 'Invalid role. Must be one of: teacher, clerk, principal' });
+    }
+    try {
+        // First, get all teachers with the specified role in this school
+        const { data: teachers, error: teachersError } = await adminSupabase
+            .from('profiles')
+            .select('id')
+            .eq('school_id', user.schoolId)
+            .eq('role', role);
+        if (teachersError) {
+            console.error('[salary] Error fetching teachers by role:', teachersError);
+            return res.status(500).json({ message: teachersError.message });
+        }
+        if (!teachers || teachers.length === 0) {
+            return res.json({ records: [] });
+        }
+        const teacherIds = teachers.map(t => t.id);
+        // Get salary records for these teachers
+        const { data: records, error } = await adminSupabase
+            .from('teacher_salary_records')
+            .select(`
+        *,
+        teacher:profiles!teacher_salary_records_teacher_id_fkey(
+          id,
+          full_name,
+          email,
+          role
+        )
+      `)
+            .eq('school_id', user.schoolId)
+            .in('teacher_id', teacherIds)
+            .order('year', { ascending: false })
+            .order('month', { ascending: false });
+        if (error) {
+            console.error('[salary] Error fetching records by role:', error);
+            return res.status(500).json({ message: error.message });
+        }
+        return res.json({ records: records || [] });
+    }
+    catch (err) {
+        console.error('[salary] Error:', err);
+        return res.status(500).json({ message: err.message || 'Internal server error' });
     }
 });
 export default router;

@@ -543,7 +543,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
     try {
         const { class_group_id, time_scope, page = 1, limit = 20 } = req.query;
         // Validate time scope
-        const validTimeScopes = ['last_month', 'last_2_months', 'last_3_months', 'last_6_months', 'current_academic_year', 'custom'];
+        const validTimeScopes = ['all_time', 'last_month', 'last_2_months', 'last_3_months', 'last_6_months', 'current_academic_year', 'custom'];
         const timeScope = time_scope || 'last_month';
         if (!validTimeScopes.includes(timeScope)) {
             return res.status(400).json({ error: 'Invalid time scope' });
@@ -553,6 +553,11 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
         let startDate;
         let endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         switch (timeScope) {
+            case 'all_time':
+                // No date filter - includes all unpaid fees regardless of period
+                startDate = null;
+                endDate = null;
+                break;
             case 'last_month':
                 startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
                 break;

@@ -84,7 +84,7 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher', 'student']), asyn
             // Clerk dashboard MUST be strictly school-scoped (multi-tenant safe)
             // Never trust frontend filters; enforce school_id scoping here.
             const today = new Date().toISOString().split('T')[0];
-            const [studentsCountRes, todayPaymentsRes, pendingComponentsRes] = await Promise.all([
+            const [studentsCountRes, todayPaymentsRes, pendingComponentsRes, recentPaymentsRes] = await Promise.all([
                 // Total Students (count only)
                 adminSupabase
                     .from('students')
@@ -96,12 +96,19 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher', 'student']), asyn
                     .select('payment_amount')
                     .eq('school_id', user.schoolId)
                     .eq('payment_date', today),
-                // Total Pending (sum in Node; only pending components)
+                // Total Pending (sum in Node; only components with pending_amount > 0)
                 adminSupabase
                     .from('monthly_fee_components')
                     .select('pending_amount')
                     .eq('school_id', user.schoolId)
-                    .gt('pending_amount', 0)
+                    .gt('pending_amount', 0),
+                // Recent Payments (school-scoped, last 10)
+                adminSupabase
+                    .from('monthly_fee_payments')
+                    .select('payment_amount, payment_date, payment_mode')
+                    .eq('school_id', user.schoolId)
+                    .order('payment_date', { ascending: false })
+                    .limit(10)
             ]);
             if (studentsCountRes.error) {
                 return res.status(500).json({ error: studentsCountRes.error.message || 'Failed to get student count' });
@@ -132,6 +139,7 @@ router.get('/', requireRoles(['principal', 'clerk', 'teacher', 'student']), asyn
             stats.total_students = studentsCountRes.count || 0;
             stats.today_collection = todayCollection;
             stats.total_pending = totalPending;
+            stats.recent_payments = recentPaymentsRes.error ? [] : (recentPaymentsRes.data || []);
         }
         return res.json(stats);
     }

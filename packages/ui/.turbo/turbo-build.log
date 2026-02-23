@@ -1,0 +1,17 @@
+
+> @school/ui@0.1.0 build C:\Users\ayoob bhat\Desktop\school\packages\ui
+> tsc -p tsconfig.json
+
+src/index.tsx(1,19): error TS7016: Could not find a declaration file for module 'react'. 'C:/Users/ayoob bhat/Desktop/school/node_modules/.pnpm/react@18.3.1/node_modules/react/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/react` if it exists or add a new declaration (.d.ts) file containing `declare module 'react';`
+src/index.tsx(7,5): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/index.tsx(7,5): error TS7016: Could not find a declaration file for module 'react/jsx-runtime'. 'C:/Users/ayoob bhat/Desktop/school/node_modules/.pnpm/react@18.3.1/node_modules/react/jsx-runtime.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/react` if it exists or add a new declaration (.d.ts) file containing `declare module 'react/jsx-runtime';`
+src/index.tsx(9,5): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/index.tsx(15,5): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/index.tsx(16,7): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/index.tsx(16,58): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/index.tsx(17,7): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/index.tsx(17,22): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/index.tsx(18,5): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+ ELIFECYCLE  Command failed with exit code 2.

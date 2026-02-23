@@ -36,7 +36,6 @@ const SalaryScreen = lazy(() =>
     default: module.SalaryScreen,
   }))
 );
-const FeesScreen = lazy(() => import('../../features/principal/screens/FeesScreen'));
 const PrincipalDashboardScreen = lazy(() =>
   import('../../features/principal/screens/PrincipalDashboardScreen').then(module => ({
     default: module.PrincipalDashboardScreen,
@@ -152,13 +151,8 @@ export default function PrincipalStack() {
           />
           <Stack.Screen
             name="Salary"
-            component={SalaryScreen}
+            component={SalaryScreen as React.ComponentType<object>}
             options={{ title: 'Salary Management' }}
-          />
-          <Stack.Screen
-            name="Fees"
-            component={FeesScreen as React.ComponentType<any>}
-            options={{ title: 'Fee Management' }}
           />
         </Stack.Navigator>
       </Suspense>

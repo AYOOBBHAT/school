@@ -208,10 +208,6 @@ export function PrincipalDashboardScreen({ navigation }: PrincipalDashboardScree
             <Text style={styles.actionIcon}>💰</Text>
             <Text style={styles.actionText}>Salary Management</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Fees')}>
-            <Text style={styles.actionIcon}>💵</Text>
-            <Text style={styles.actionText}>Fee Management</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>

@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { User } from '../shared/types';
 import { authService } from '../shared/services/auth';
+import { supabase } from '../shared/lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -16,23 +17,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadUser();
+  const loadUser = useCallback(async () => {
+    const loaded = await authService.loadStoredAuth();
+    if (loaded) {
+      const currentUser = await authService.getCurrentUser();
+      setUser(currentUser);
+    } else {
+      setUser(null);
+    }
   }, []);
 
-  const loadUser = async () => {
-    try {
-      const loaded = await authService.loadStoredAuth();
-      if (loaded) {
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event) => {
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         const currentUser = await authService.getCurrentUser();
         setUser(currentUser);
       }
-    } catch (error) {
-      console.error('Error loading user:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleSetUser = (newUser: User | null) => {
     setUser(newUser);
@@ -49,7 +60,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser: handleSetUser, loading, logout: handleLogout, clearStoredAuth: handleClearStoredAuth }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        setUser: handleSetUser,
+        loading,
+        logout: handleLogout,
+        clearStoredAuth: handleClearStoredAuth,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -62,4 +81,3 @@ export function useAuth() {
   }
   return context;
 }
-
