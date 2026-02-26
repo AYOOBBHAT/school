@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../shared/types';
 import { authService } from '../shared/services/auth';
 import { supabase } from '../shared/lib/supabase';
@@ -17,19 +17,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadUser = useCallback(async () => {
-    const loaded = await authService.loadStoredAuth();
-    if (loaded) {
-      const currentUser = await authService.getCurrentUser();
-      setUser(currentUser);
-    } else {
-      setUser(null);
-    }
-  }, []);
-
   useEffect(() => {
-    loadUser();
-  }, [loadUser]);
+    const initializeAuth = async () => {
+      try {
+        await authService.loadStoredAuth();
+        const currentUser = await authService.getCurrentUser();
+        setUser(currentUser ?? null);
+      } catch (error) {
+        console.error('Auth initialization failed:', error);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+  }, []);
 
   useEffect(() => {
     const {
