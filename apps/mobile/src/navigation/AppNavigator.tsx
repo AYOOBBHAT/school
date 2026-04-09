@@ -2,9 +2,11 @@ import React, { Suspense, lazy } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
+import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
 import { useAuth } from './AuthContext';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { LoadingSpinner } from '../shared/components/LoadingSpinner';
+import type { RootStackParamList } from './types';
 
 // Lazy load role stacks for better performance
 const PrincipalStack = lazy(() => import('./stacks/PrincipalStack'));
@@ -12,7 +14,8 @@ const TeacherStack = lazy(() => import('./stacks/TeacherStack'));
 const ClerkStack = lazy(() => import('./stacks/ClerkStack'));
 const StudentStack = lazy(() => import('./stacks/StudentStack'));
 
-const Stack = createNativeStackNavigator();
+const AuthStack = createNativeStackNavigator<RootStackParamList>();
+const AppStack = createNativeStackNavigator();
 
 export function AppNavigator() {
   const { user, loading } = useAuth();
@@ -28,10 +31,11 @@ export function AppNavigator() {
 
   if (!user) {
     return (
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Signup" component={SignupScreen} />
-      </Stack.Navigator>
+      <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+        <AuthStack.Screen name="Login" component={LoginScreen} />
+        <AuthStack.Screen name="Signup" component={SignupScreen} />
+        <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      </AuthStack.Navigator>
     );
   }
 
@@ -68,7 +72,7 @@ export function AppNavigator() {
   };
 
   return (
-    <Stack.Navigator
+    <AppStack.Navigator
       screenOptions={{
         headerShown: false,
         headerStyle: { backgroundColor: '#fff' },
@@ -76,10 +80,10 @@ export function AppNavigator() {
         headerTitleStyle: { fontWeight: '700' },
       }}
     >
-      <Stack.Screen name="RoleStack" options={{ headerShown: false }}>
+      <AppStack.Screen name="RoleStack" options={{ headerShown: false }}>
         {() => renderRoleStack()}
-      </Stack.Screen>
-    </Stack.Navigator>
+      </AppStack.Screen>
+    </AppStack.Navigator>
   );
 }
 

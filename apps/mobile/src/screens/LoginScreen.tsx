@@ -275,7 +275,6 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
                   </TouchableOpacity>
                 </View>
                 <Input
-                  label={useRegistrationNumber ? 'School Registration Number' : 'School Join Code'}
                   placeholder={
                     useRegistrationNumber
                       ? 'Enter school registration number'
@@ -320,6 +319,15 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
               Sign up
             </Text>
           </View>
+
+          <TouchableOpacity
+            style={styles.forgotWrap}
+            onPress={() => navigation.navigate('ForgotPassword')}
+            accessibilityRole="button"
+            accessibilityLabel="Forgot password"
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
 
           {/* Dev: Clear Stored Auth Button */}
           {__DEV__ && (
@@ -462,6 +470,16 @@ const styles = StyleSheet.create({
   clearAuthText: {
     fontSize: 12,
     color: '#dc2626',
+    fontWeight: '600',
+  },
+  forgotWrap: {
+    marginTop: 16,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  forgotText: {
+    fontSize: 14,
+    color: '#2563eb',
     fontWeight: '600',
   },
 });

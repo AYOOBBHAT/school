@@ -5,6 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { StudentTabBar } from '../../shared/components/StudentTabBar';
 import { useAuth } from '../AuthContext';
+import { ResetPasswordScreen } from '../../screens/common/ResetPasswordScreen';
+import type { StudentStackParamList } from '../types';
 
 // Lazy load all student screens for better performance
 const OverviewScreen = lazy(() =>
@@ -28,7 +30,7 @@ const MyFeesScreen = lazy(() =>
   }))
 );
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<StudentStackParamList>();
 
 // Role guard component
 function StudentRoleGuard({ children }: { children: React.ReactNode }) {
@@ -154,6 +156,18 @@ export default function StudentStack() {
             headerTitle: () => (
               <View style={styles.headerContainer}>
                 <Text style={styles.headerTitle}>Student Dashboard</Text>
+              </View>
+            ),
+          }}
+        />
+        <Stack.Screen
+          name="ResetPassword"
+          component={ResetPasswordScreen}
+          options={{
+            title: 'Change password',
+            headerTitle: () => (
+              <View style={styles.headerContainer}>
+                <Text style={styles.headerTitle}>Change password</Text>
               </View>
             ),
           }}

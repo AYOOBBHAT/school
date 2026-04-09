@@ -41,13 +41,23 @@ export function MyClassesScreen({ navigation }: Props) {
             <TouchableOpacity
               key={screen}
               style={styles.menuItem}
-              onPress={() => (navigation as any).navigate(screen)}
+              onPress={() => (navigation as { navigate: (name: string) => void }).navigate(screen)}
               activeOpacity={0.7}
             >
               <Text style={styles.menuIcon}>{icon}</Text>
               <Text style={styles.menuItemText}>{label}</Text>
             </TouchableOpacity>
           ))}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => navigation.navigate('ResetPassword')}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Change password"
+          >
+            <Text style={styles.menuIcon}>🔐</Text>
+            <Text style={styles.menuItemText}>Change password</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.header}>

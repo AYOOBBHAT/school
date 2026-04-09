@@ -4,6 +4,8 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { useAuth } from '../AuthContext';
+import type { PrincipalStackParamList } from '../types';
+import { ResetPasswordScreen } from '../../screens/common/ResetPasswordScreen';
 
 // Lazy load all principal screens for better performance
 const StudentsScreen = lazy(() =>
@@ -42,7 +44,7 @@ const PrincipalDashboardScreen = lazy(() =>
   }))
 );
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<PrincipalStackParamList>();
 
 // Role guard component for Principal
 function PrincipalRoleGuard({ children }: { children: React.ReactNode }) {
@@ -153,6 +155,11 @@ export default function PrincipalStack() {
             name="Salary"
             component={SalaryScreen as React.ComponentType<object>}
             options={{ title: 'Salary Management' }}
+          />
+          <Stack.Screen
+            name="ResetPassword"
+            component={ResetPasswordScreen}
+            options={{ title: 'Change password' }}
           />
         </Stack.Navigator>
       </Suspense>

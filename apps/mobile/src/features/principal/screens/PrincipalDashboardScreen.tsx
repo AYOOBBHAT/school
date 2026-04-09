@@ -208,6 +208,15 @@ export function PrincipalDashboardScreen({ navigation }: PrincipalDashboardScree
             <Text style={styles.actionIcon}>💰</Text>
             <Text style={styles.actionText}>Salary Management</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('ResetPassword')}
+            accessibilityRole="button"
+            accessibilityLabel="Change password"
+          >
+            <Text style={styles.actionIcon}>🔐</Text>
+            <Text style={styles.actionText}>Change password</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>

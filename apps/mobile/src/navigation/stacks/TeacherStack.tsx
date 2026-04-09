@@ -4,6 +4,8 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { useAuth } from '../AuthContext';
+import type { TeacherStackParamList } from '../types';
+import { ResetPasswordScreen } from '../../screens/common/ResetPasswordScreen';
 
 // Lazy load all teacher screens for better performance
 const MyClassesScreen = lazy(() =>
@@ -32,7 +34,7 @@ const StudentFeeStatusScreen = lazy(() =>
   }))
 );
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<TeacherStackParamList>();
 
 // Role guard component for Teacher
 function TeacherRoleGuard({ children }: { children: React.ReactNode }) {
@@ -115,6 +117,7 @@ export default function TeacherStack() {
           <Stack.Screen name="EnterMarks" component={EnterMarksScreen as React.ComponentType<any>} options={{ title: 'Enter Marks' }} />
           <Stack.Screen name="MySalary" component={MySalaryScreen as React.ComponentType<any>} options={{ title: 'My Salary' }} />
           <Stack.Screen name="StudentFeeStatus" component={StudentFeeStatusScreen as React.ComponentType<any>} options={{ title: 'Student Fee Status' }} />
+          <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} options={{ title: 'Change password' }} />
         </Stack.Navigator>
       </Suspense>
     </TeacherRoleGuard>

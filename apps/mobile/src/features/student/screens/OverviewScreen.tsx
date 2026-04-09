@@ -1,11 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StudentScreenWrapper } from '../../../shared/components/StudentScreenWrapper';
 import { useStudentProfile } from '../hooks/useProfile';
 import { useStudentAttendance } from '../hooks/useAttendance';
 import { useStudentFees } from '../hooks/useFees';
+import type { StudentStackParamList } from '../../../navigation/types';
 
 export function OverviewScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<StudentStackParamList>>();
   const { data: profileData, isLoading: profileLoading, error: profileError, refetch: refetchProfile, isRefetching: profileRefetching } = useStudentProfile();
   const { data: attendanceData, isLoading: attendanceLoading, error: attendanceError, refetch: refetchAttendance, isRefetching: attendanceRefetching } = useStudentAttendance();
   const { data: feesData, isLoading: feesLoading, error: feesError, refetch: refetchFees, isRefetching: feesRefetching } = useStudentFees();
@@ -46,6 +50,14 @@ export function OverviewScreen() {
             {profile.sections && (
               <Text style={styles.profileDetail}>Section: {profile.sections.name}</Text>
             )}
+            <TouchableOpacity
+              style={styles.changePasswordBtn}
+              onPress={() => navigation.navigate('ResetPassword')}
+              accessibilityRole="button"
+              accessibilityLabel="Change password"
+            >
+              <Text style={styles.changePasswordText}>Change password</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -156,6 +168,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748b',
     marginTop: 2,
+  },
+  changePasswordBtn: {
+    marginTop: 14,
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+  },
+  changePasswordText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#2563eb',
   },
   attendancePercentage: {
     fontSize: 32,

@@ -9,6 +9,7 @@ import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-n
 export type RootStackParamList = {
   Login: undefined;
   Signup: undefined;
+  ForgotPassword: undefined;
   Principal: undefined;
   Teacher: undefined;
   Clerk: undefined;
@@ -24,6 +25,7 @@ export type PrincipalStackParamList = {
   Classifications: undefined;
   UnpaidFeeAnalytics: undefined;
   Salary: undefined;
+  ResetPassword: undefined;
 };
 
 // Teacher Stack (matches web: My Classes, Attendance, Marks Entry, My Salary, Student Fee Status)
@@ -43,13 +45,16 @@ export type TeacherStackParamList = {
   };
   MySalary: undefined;
   StudentFeeStatus: undefined;
+  ResetPassword: undefined;
 };
 
 // Clerk Stack
 export type ClerkStackParamList = {
+  Dashboard: undefined;
   FeeCollection: undefined;
   SalaryPayment: undefined;
   MarksResults: undefined;
+  ResetPassword: undefined;
 };
 
 // Student Stack
@@ -58,6 +63,7 @@ export type StudentStackParamList = {
   MyAttendance: undefined;
   MyMarks: undefined;
   MyFees: undefined;
+  ResetPassword: undefined;
 };
 
 // Screen Props Types

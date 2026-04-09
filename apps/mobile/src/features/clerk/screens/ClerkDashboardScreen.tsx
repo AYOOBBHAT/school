@@ -131,6 +131,18 @@ export function ClerkDashboardScreen({ navigation }: ClerkDashboardScreenProps) 
               <Text style={styles.actionSubtitle}>View marks and exam results</Text>
             </View>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('ResetPassword')}
+            accessibilityRole="button"
+            accessibilityLabel="Change password"
+          >
+            <Text style={styles.actionIcon}>🔐</Text>
+            <View style={styles.actionContent}>
+              <Text style={styles.actionTitle}>Change password</Text>
+              <Text style={styles.actionSubtitle}>Update your account password</Text>
+            </View>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>

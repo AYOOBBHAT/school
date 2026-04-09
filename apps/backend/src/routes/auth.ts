@@ -1,8 +1,12 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import Joi from 'joi';
 import { createClient } from '@supabase/supabase-js';
+import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
 import { generateJoinCode } from '../utils/joinCode.js';
+import { sendEmail } from '../utils/email.js';
+import { redis, OTP_REDIS_TTL_SECONDS } from '../utils/redis.js';
 
 const router = Router();
 
@@ -547,17 +551,9 @@ router.post('/login-username', async (req, res) => {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
-    // Get the auth user by email
-    const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
-    
-    if (listError) {
-      return res.status(400).json({ error: listError.message });
-    }
-
-    const authUser = users.find(u => u.email === profile.email);
-    if (!authUser) {
-      return res.status(404).json({ error: 'User account not found' });
-    }
+    // IMPORTANT:
+    // `profiles.id` is a FK to `auth.users.id` (see migrations/schema.sql).
+    // Do NOT call `listUsers()` (slow and unbounded); treat `profile.id` as the auth user id.
 
     // Try to sign in with email and password
     const anonSupabase = createClient<any>(supabaseUrl, supabaseAnonKey);
@@ -694,31 +690,142 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// In-memory OTP storage (in production, use Redis or database)
-interface OTPData {
-  username?: string; // For student flow
-  schoolId?: string; // For student flow
+// ============================================
+// OTP password reset (Upstash Redis, hashed, rate-limited)
+// ============================================
+// - One OTP per profile: key otp:{profileId}, JSON value, bcrypt hash only, TTL 600s.
+// - Request rate limits: otp:rate:{profileId}, optional otp:ip:{ip}.
+// - Responses remain generic to prevent account enumeration.
+
+const OTP_MAX_REQUESTS_PER_WINDOW = 3;
+const OTP_REQUEST_WINDOW_SECONDS = 600;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_BCRYPT_ROUNDS = 12;
+
+type OtpStoredPayload = {
+  otp_hash: string;
+  type: 'student' | 'email';
   email: string;
-  profileId: string;
-  expiresAt: number;
-  type: 'student' | 'email'; // Flow type
+  schoolId?: string;
+  username?: string;
+  attempts: number;
+};
+
+function otpRedisKey(profileId: string) {
+  return `otp:${profileId}`;
 }
 
-const otpStore = new Map<string, OTPData>();
+function otpRateRedisKey(profileId: string) {
+  return `otp:rate:${profileId}`;
+}
 
-// Clean up expired OTPs every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [otp, data] of otpStore.entries()) {
-    if (data.expiresAt < now) {
-      otpStore.delete(otp);
-    }
-  }
-}, 5 * 60 * 1000);
+function otpIpRedisKey(ip: string) {
+  return `otp:ip:${ip}`;
+}
 
-// Generate 6-digit OTP
 function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
+}
+
+function clientOtpIp(req: Request): string | undefined {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.length > 0) {
+    return xff.split(',')[0].trim();
+  }
+  if (Array.isArray(xff) && xff[0]) {
+    return String(xff[0]).split(',')[0].trim();
+  }
+  const ip = req.ip;
+  return typeof ip === 'string' && ip.length > 0 ? ip : undefined;
+}
+
+async function enforceOtpRequestRateLimit(profileId: string): Promise<boolean> {
+  const key = otpRateRedisKey(profileId);
+  const n = await redis.incr(key);
+  if (n === 1) {
+    await redis.expire(key, OTP_REQUEST_WINDOW_SECONDS);
+  }
+  return n <= OTP_MAX_REQUESTS_PER_WINDOW;
+}
+
+async function enforceOtpIpRateLimit(req: Request): Promise<boolean> {
+  const ip = clientOtpIp(req);
+  if (!ip) return true;
+  const key = otpIpRedisKey(ip);
+  const n = await redis.incr(key);
+  if (n === 1) {
+    await redis.expire(key, OTP_REQUEST_WINDOW_SECONDS);
+  }
+  return n <= OTP_MAX_REQUESTS_PER_WINDOW;
+}
+
+async function storePasswordResetOtp(params: {
+  profileId: string;
+  type: 'student' | 'email';
+  email: string;
+  schoolId?: string;
+  username?: string;
+}): Promise<{ otp: string }> {
+  const otp = generateOTP();
+  const otp_hash = await bcrypt.hash(otp, OTP_BCRYPT_ROUNDS);
+  const value: OtpStoredPayload = {
+    otp_hash,
+    type: params.type,
+    email: params.email,
+    schoolId: params.schoolId,
+    username: params.username,
+    attempts: 0,
+  };
+  await redis.set(otpRedisKey(params.profileId), JSON.stringify(value), { ex: OTP_REDIS_TTL_SECONDS });
+  return { otp };
+}
+
+async function incrementOtpAttemptsOrInvalidate(profileId: string): Promise<void> {
+  const key = otpRedisKey(profileId);
+  const raw = await redis.get<string>(key);
+  if (raw == null) return;
+
+  let parsed: OtpStoredPayload;
+  try {
+    parsed = JSON.parse(raw) as OtpStoredPayload;
+  } catch {
+    await redis.del(key);
+    return;
+  }
+
+  const nextAttempts = (parsed.attempts || 0) + 1;
+  if (nextAttempts >= OTP_MAX_ATTEMPTS) {
+    await redis.del(key);
+    return;
+  }
+
+  parsed.attempts = nextAttempts;
+  const ttl = await redis.ttl(key);
+  // Upstash ttl() can return -1 (no expiry) or -2 (missing). Do not reuse invalid TTL.
+  if (ttl <= 0) {
+    await redis.del(key);
+    return;
+  }
+  await redis.set(key, JSON.stringify(parsed), { ex: ttl });
+}
+
+function otpMatchesRequestContext(
+  payload: OtpStoredPayload,
+  ctx:
+    | { flow: 'student'; username: string; schoolId: string }
+    | { flow: 'email'; email: string }
+): boolean {
+  if (ctx.flow === 'student') {
+    return (
+      payload.type === 'student' &&
+      (payload.username || '') === ctx.username.trim() &&
+      payload.schoolId === ctx.schoolId
+    );
+  }
+  return (
+    payload.type === 'email' &&
+    (payload.email || '').toLowerCase() === ctx.email.trim().toLowerCase()
+  );
 }
 
 // Forgot password - Request OTP
@@ -758,11 +865,13 @@ router.post('/forgot-password-request', async (req, res) => {
       });
     }
 
+    const normalizedUsername = String(username).trim();
+
     // Find profile by username and school_id
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id, email, role, full_name')
-      .eq('username', username.trim())
+      .eq('username', normalizedUsername)
       .eq('school_id', school.id)
       .eq('role', 'student')
       .single();
@@ -774,18 +883,27 @@ router.post('/forgot-password-request', async (req, res) => {
       });
     }
 
-    // Generate OTP
-    const otp = generateOTP();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+    // Rate limit OTP requests (Redis). Generic response on limit / IP limit.
+    const allowed = await enforceOtpRequestRateLimit(profile.id);
+    if (!allowed) {
+      return res.json({
+        message: 'If a student account exists with this username, an OTP has been sent to the registered email address.'
+      });
+    }
+    const ipAllowed = await enforceOtpIpRateLimit(req);
+    if (!ipAllowed) {
+      return res.json({
+        message: 'If a student account exists with this username, an OTP has been sent to the registered email address.'
+      });
+    }
 
-    // Store OTP
-    otpStore.set(otp, {
-      username: username.trim(),
-      schoolId: school.id,
-      email: profile.email,
+    const otpKey = otpRedisKey(profile.id);
+    const { otp } = await storePasswordResetOtp({
       profileId: profile.id,
-      expiresAt,
-      type: 'student'
+      type: 'student',
+      email: profile.email,
+      schoolId: school.id,
+      username: normalizedUsername,
     });
 
     // Send OTP via email using Supabase's email service
@@ -807,27 +925,20 @@ Best regards,
 ${school.name}
     `;
 
-    // Use Supabase's email sending (requires email templates to be set up)
-    // For development, you might want to log the OTP instead
-    // eslint-disable-next-line no-console
-    console.log(`[OTP for ${profile.email}]: ${otp}`);
-
-    // Try to send email via Supabase
+    // Send OTP via Resend (preferred). If email fails, remove the OTP so we don't leave a usable code behind.
     try {
-      // You can use Supabase's email functionality here
-      // For now, we'll just return success (OTP is logged for development)
-      // In production, integrate with an email service like SendGrid, AWS SES, etc.
-    } catch (emailError) {
+      await sendEmail({ to: profile.email, subject: emailSubject, text: emailBody });
+    } catch (e) {
+      await redis.del(otpKey);
+    }
+    if (process.env.NODE_ENV !== 'production') {
       // eslint-disable-next-line no-console
-      console.error('[forgot-password-request] Error sending email:', emailError);
+      console.log(`[OTP sent to ${profile.email}]: ${otp}`);
     }
 
     // Always return the same message for security
     return res.json({ 
-      message: 'If a student account exists with this username, an OTP has been sent to the registered email address.',
-      // In development, you might want to return the OTP for testing
-      // Remove this in production!
-      ...(process.env.NODE_ENV === 'development' && { otp })
+      message: 'If a student account exists with this username, an OTP has been sent to the registered email address.'
     });
   } catch (err: any) {
     // eslint-disable-next-line no-console
@@ -852,11 +963,13 @@ router.post('/forgot-password-request-email', async (req, res) => {
     const supabase = adminSupabase;
 
   try {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
     // Find profile by email (principals and teachers have unique emails)
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id, email, role, full_name, school_id')
-      .eq('email', email.trim().toLowerCase())
+      .eq('email', normalizedEmail)
       .in('role', ['principal', 'teacher', 'clerk'])
       .single();
 
@@ -874,16 +987,20 @@ router.post('/forgot-password-request-email', async (req, res) => {
       .eq('id', profile.school_id)
       .single();
 
-    // Generate OTP
-    const otp = generateOTP();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+    const allowed = await enforceOtpRequestRateLimit(profile.id);
+    if (!allowed) {
+      return res.json({ message: 'If an account exists with this email, an OTP has been sent.' });
+    }
+    const ipAllowed = await enforceOtpIpRateLimit(req);
+    if (!ipAllowed) {
+      return res.json({ message: 'If an account exists with this email, an OTP has been sent.' });
+    }
 
-    // Store OTP
-    otpStore.set(otp, {
-      email: profile.email,
+    const otpKey = otpRedisKey(profile.id);
+    const { otp } = await storePasswordResetOtp({
       profileId: profile.id,
-      expiresAt,
-      type: 'email'
+      type: 'email',
+      email: profile.email,
     });
 
     // Send OTP via email
@@ -903,15 +1020,19 @@ Best regards,
 School Management System
     `;
 
-    // eslint-disable-next-line no-console
-    console.log(`[OTP for ${profile.email}]: ${otp}`);
+    try {
+      await sendEmail({ to: profile.email, subject: emailSubject, text: emailBody });
+    } catch (e) {
+      await redis.del(otpKey);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.log(`[OTP sent to ${profile.email}]: ${otp}`);
+    }
 
     // Always return the same message for security
     return res.json({ 
-      message: 'If an account exists with this email, an OTP has been sent.',
-      // In development, you might want to return the OTP for testing
-      // Remove this in production!
-      ...(process.env.NODE_ENV === 'development' && { otp })
+      message: 'If an account exists with this email, an OTP has been sent.'
     });
   } catch (err: any) {
     // eslint-disable-next-line no-console
@@ -940,30 +1061,19 @@ router.post('/forgot-password-verify', async (req, res) => {
     const supabase = adminSupabase;
 
   try {
-    // Verify OTP
-    const otpData = otpStore.get(otp);
-    
-    if (!otpData) {
-      return res.status(400).json({ error: 'Invalid or expired OTP' });
-    }
+    let profileId: string | null = null;
+    let resolvedSchoolId: string | undefined;
 
-    if (otpData.expiresAt < Date.now()) {
-      otpStore.delete(otp);
-      return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
-    }
+    const normalizedUsername = typeof username === 'string' ? username.trim() : '';
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
 
     // Handle student flow (username-based)
-    if (otpData.type === 'student') {
+    if (username) {
       if (!username || (!join_code && !registration_number)) {
         return res.status(400).json({ error: 'Username and school code are required for student password reset' });
       }
 
-      // Verify username matches
-      if (otpData.username !== username.trim()) {
-        return res.status(400).json({ error: 'Invalid OTP for this username' });
-      }
-
-      // Verify school
+      // Verify school, then resolve the student profile
       let schoolQuery = supabase
         .from('schools')
         .select('id');
@@ -976,24 +1086,93 @@ router.post('/forgot-password-verify', async (req, res) => {
 
       const { data: school, error: schoolError } = await schoolQuery.single();
 
-      if (schoolError || !school || school.id !== otpData.schoolId) {
+      if (schoolError || !school) {
         return res.status(400).json({ error: 'Invalid school code or registration number' });
       }
-    } 
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .eq('username', normalizedUsername)
+        .eq('school_id', school.id)
+        .eq('role', 'student')
+        .single();
+
+      if (profileError || !profile) {
+        // Keep errors generic to avoid enumeration.
+        return res.status(400).json({ error: 'Invalid or expired OTP' });
+      }
+
+      profileId = profile.id;
+      resolvedSchoolId = school.id;
+    }
     // Handle email flow (principals/teachers)
-    else if (otpData.type === 'email') {
+    else {
       if (!email) {
         return res.status(400).json({ error: 'Email is required for email-based password reset' });
       }
 
-      // Verify email matches
-      if (otpData.email.toLowerCase() !== email.trim().toLowerCase()) {
-        return res.status(400).json({ error: 'Invalid OTP for this email' });
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .eq('email', normalizedEmail)
+        .in('role', ['principal', 'teacher', 'clerk'])
+        .single();
+
+      if (profileError || !profile) {
+        return res.status(400).json({ error: 'Invalid or expired OTP' });
       }
+
+      profileId = profile.id;
     }
 
+    if (!profileId) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    const otpKey = otpRedisKey(profileId);
+    const raw = await redis.get<string>(otpKey);
+    if (raw == null) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    let payload: OtpStoredPayload;
+    try {
+      payload = JSON.parse(raw) as OtpStoredPayload;
+    } catch {
+      await redis.del(otpKey);
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    if ((payload.attempts || 0) >= OTP_MAX_ATTEMPTS) {
+      await redis.del(otpKey);
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    if (username) {
+      if (resolvedSchoolId == null) {
+        return res.status(400).json({ error: 'Invalid or expired OTP' });
+      }
+      if (!otpMatchesRequestContext(payload, { flow: 'student', username: normalizedUsername, schoolId: resolvedSchoolId })) {
+        return res.status(400).json({ error: 'Invalid or expired OTP' });
+      }
+    } else if (!email) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    } else if (!otpMatchesRequestContext(payload, { flow: 'email', email: normalizedEmail })) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    const otpOk = await bcrypt.compare(String(otp), payload.otp_hash);
+    if (!otpOk) {
+      await incrementOtpAttemptsOrInvalidate(profileId);
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    // Prevent parallel verify from reusing the same OTP: delete immediately after a successful compare.
+    await redis.del(otpKey);
+
     // Update password using admin API
-    const { data: updatedUser, error: updateError } = await supabase.auth.admin.updateUserById(otpData.profileId, {
+    const { data: updatedUser, error: updateError } = await supabase.auth.admin.updateUserById(profileId, {
       password: new_password
     });
 
@@ -1005,10 +1184,7 @@ router.post('/forgot-password-verify', async (req, res) => {
     await supabase
       .from('profiles')
       .update({ password_reset_required: false })
-      .eq('id', otpData.profileId);
-
-    // Delete used OTP
-    otpStore.delete(otp);
+      .eq('id', profileId);
 
     return res.json({
       message: 'Password reset successfully. You can now login with your new password.'
@@ -1016,7 +1192,7 @@ router.post('/forgot-password-verify', async (req, res) => {
   } catch (err: any) {
     // eslint-disable-next-line no-console
     console.error('[forgot-password-verify] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1034,20 +1210,20 @@ router.post('/confirm-email', async (req, res) => {
     const supabase = adminSupabase;
 
   try {
-    // Find user by email
-    const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
-    
-    if (listError) {
-      return res.status(400).json({ error: listError.message });
-    }
+    // Avoid `listUsers()` (slow + unbounded). Use `profiles` as the source of truth:
+    // `profiles.id` == `auth.users.id` and `profiles.email` is stored for lookup.
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, email')
+      .eq('email', email.trim().toLowerCase())
+      .single();
 
-    const user = users.find(u => u.email === email);
-    if (!user) {
+    if (profileError || !profile) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     // Confirm the user's email
-    const { data, error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
+    const { data, error: updateError } = await supabase.auth.admin.updateUserById(profile.id, {
       email_confirm: true
     });
 
