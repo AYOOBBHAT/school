@@ -1,4 +1,4 @@
-import { redis, CACHE_TTL } from './upstash.js';
+import { redis, CACHE_TTL } from './redis.js';
 /**
  * Cache-aside pattern: Check cache first, fetch if miss, store result
  * @param key - Cache key (must include schoolId for multi-tenant safety)
