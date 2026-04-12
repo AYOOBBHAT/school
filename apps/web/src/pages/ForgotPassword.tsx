@@ -221,12 +221,14 @@ export default function ForgotPassword() {
 
     if (newPassword.length < 8) {
       setError('Password must be at least 8 characters long');
+      setSuccess('');
       setVerifyingOtp(false);
       return;
     }
 
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match');
+      setSuccess('');
       setVerifyingOtp(false);
       return;
     }
@@ -234,6 +236,7 @@ export default function ForgotPassword() {
     const otpDigits = otp.replace(/\D/g, '').slice(0, 6);
     if (otpDigits.length !== 6) {
       setError('Please enter the full 6-digit code');
+      setSuccess('');
       setVerifyingOtp(false);
       return;
     }
@@ -284,6 +287,7 @@ export default function ForgotPassword() {
       }, 2000);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to reset password';
+      setSuccess('');
       setError(message);
       setVerifyingOtp(false);
     }
