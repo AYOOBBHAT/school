@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { api } from './api';
 import { supabase } from '../lib/supabase';
+import { devError } from '../utils/devLog';
 import type { AuthResponse, User } from '../types';
 
 export interface LoginResponse {
@@ -26,16 +27,16 @@ export interface SignupJoinResponse {
 async function setSessionAndReturn(session: Session, appUser: User): Promise<AuthResponse> {
   const { error } = await supabase.auth.setSession(session);
   if (error) {
-    console.error('[Auth Service] setSession error:', error);
-    throw new Error(error.message);
+    devError('[Auth Service] setSession error:', error);
+    throw new Error('Something went wrong');
   }
   return { user: appUser, token: session.access_token };
 }
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
   const response = await api.post<LoginResponse>('/auth/login', { email, password });
-  if (!response.session) throw new Error('Login response missing session');
-  if (!response.profile) throw new Error('Login response missing profile');
+  if (!response.session) throw new Error('Something went wrong');
+  if (!response.profile) throw new Error('Something went wrong');
   return setSessionAndReturn(response.session, response.profile);
 }
 
@@ -49,7 +50,7 @@ export async function signupPrincipal(data: {
   contact_email?: string;
 }): Promise<AuthResponse> {
   const response = await api.post<SignupPrincipalResponse>('/auth/signup-principal', data);
-  if (!response.profile) throw new Error('Signup response missing profile');
+  if (!response.profile) throw new Error('Something went wrong');
   if (response.session) return setSessionAndReturn(response.session, response.profile);
   return { user: response.profile, token: '' };
 }
@@ -61,8 +62,8 @@ export async function loginUsername(data: {
   registration_number?: string;
 }): Promise<AuthResponse> {
   const response = await api.post<LoginResponse>('/auth/login-username', data);
-  if (!response.session) throw new Error('Login response missing session');
-  if (!response.profile) throw new Error('Login response missing profile');
+  if (!response.session) throw new Error('Something went wrong');
+  if (!response.profile) throw new Error('Something went wrong');
   return setSessionAndReturn(response.session, response.profile);
 }
 
@@ -77,7 +78,7 @@ export async function signupJoin(data: {
 }): Promise<AuthResponse> {
   const response = await api.post<SignupJoinResponse>('/auth/signup-join', data);
   const appUser = response.profile ?? response.user;
-  if (!appUser) throw new Error('Signup response missing user');
+  if (!appUser) throw new Error('Something went wrong');
   if (response.session) return setSessionAndReturn(response.session, appUser as User);
   return { user: appUser as User, token: '' };
 }

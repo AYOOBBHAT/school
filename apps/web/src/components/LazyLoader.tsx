@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../utils/devLog';
 import { Suspense, ReactNode, Component, ErrorInfo } from 'react';
 
 interface LazyLoaderProps {
@@ -21,7 +22,7 @@ class LazyErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('LazyLoader error:', error, errorInfo);
+    devError('LazyLoader error:', error, errorInfo);
   }
 
   render() {
@@ -30,9 +31,7 @@ class LazyErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center p-6">
             <div className="text-red-600 text-xl mb-4">⚠️ Failed to load component</div>
-            <p className="text-gray-600 mb-4">
-              {this.state.error?.message || 'An error occurred while loading this section.'}
-            </p>
+            <p className="text-gray-600 mb-4">An error occurred while loading this section.</p>
             <button
               onClick={() => {
                 this.setState({ hasError: false, error: null });

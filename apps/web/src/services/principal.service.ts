@@ -25,8 +25,8 @@ export async function loadStaff(token: string): Promise<StaffResponse> {
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Failed to load staff' }));
-    throw new Error(errorData.error || `Failed to load staff: ${response.status}`);
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load staff');
   }
 
   return await response.json();
@@ -126,7 +126,7 @@ export async function markTeacherAttendance(
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to mark attendance');
+    throw new Error('Failed to mark attendance');
   }
 }
 
@@ -161,7 +161,7 @@ export async function updateTeacher(token: string, teacherId: string, data: any)
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to update teacher');
+    throw new Error('Failed to update teacher');
   }
 
   return await response.json();
@@ -203,7 +203,7 @@ export async function createTeacherAssignment(token: string, data: any): Promise
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to create assignment');
+    throw new Error('Failed to create assignment');
   }
 
   return await response.json();
@@ -221,7 +221,7 @@ export async function createAttendanceAssignment(token: string, data: any): Prom
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to create attendance assignment');
+    throw new Error('Failed to create attendance assignment');
   }
 
   return await response.json();
@@ -235,7 +235,7 @@ export async function deleteAssignment(token: string, assignmentId: string): Pro
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to delete assignment');
+    throw new Error('Failed to delete assignment');
   }
 }
 
@@ -274,7 +274,7 @@ export async function saveDailyAttendance(token: string, data: {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to save attendance');
+    throw new Error('Failed to save attendance');
   }
 }
 
@@ -290,7 +290,7 @@ export async function createStaff(token: string, data: any): Promise<CreateRespo
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to add staff member');
+    throw new Error('Failed to add staff member');
   }
 
   return await response.json();
@@ -304,7 +304,7 @@ export async function deleteAttendanceAssignment(token: string, assignmentId: st
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to delete attendance assignment');
+    throw new Error('Failed to delete attendance assignment');
   }
 }
 
@@ -327,8 +327,8 @@ export async function loadClasses(token: string): Promise<ClassResponse> {
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Failed to load classes' }));
-    throw new Error(errorData.error || `Failed to load classes: ${response.status}`);
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load classes');
   }
 
   return await response.json();
@@ -354,7 +354,7 @@ export async function createClass(token: string, data: {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to create class');
+    throw new Error('Failed to create class');
   }
 
   return await response.json();
@@ -384,7 +384,7 @@ export async function addSubjectToClass(token: string, classId: string, subjectI
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to add subject');
+    throw new Error('Failed to add subject');
   }
 
   return await response.json();
@@ -398,7 +398,7 @@ export async function deleteClassSubject(token: string, classId: string, classSu
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to remove subject');
+    throw new Error('Failed to remove subject');
   }
 }
 
@@ -422,7 +422,7 @@ export async function updateClass(token: string, classId: string, data: {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to update class');
+    throw new Error('Failed to update class');
   }
 
   return await response.json();
@@ -435,8 +435,8 @@ export async function loadAllSubjectsForManagement(token: string): Promise<Subje
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Failed to load subjects' }));
-    throw new Error(errorData.error || `Failed to load subjects: ${response.status}`);
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load subjects');
   }
 
   return await response.json();
@@ -460,7 +460,7 @@ export async function createSubject(token: string, data: {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to create subject');
+    throw new Error('Failed to create subject');
   }
 
   return await response.json();
@@ -474,7 +474,7 @@ export async function deleteSubject(token: string, subjectId: string): Promise<v
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to delete subject');
+    throw new Error('Failed to delete subject');
   }
 }
 
@@ -498,8 +498,8 @@ export async function loadStudentsAdmin(token: string, params?: URLSearchParams)
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Failed to load students' }));
-    throw new Error(errorData.error || `Failed to load students: ${response.status}`);
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load students');
   }
 
   return await response.json();
@@ -565,7 +565,7 @@ export async function updateStudent(token: string, studentId: string, data: any)
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to update student');
+    throw new Error('Failed to update student');
   }
 
   return await response.json();
@@ -585,7 +585,7 @@ export async function promoteStudent(token: string, studentId: string, data: {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to promote student');
+    throw new Error('Failed to promote student');
   }
 
   return await response.json();
@@ -606,7 +606,7 @@ export async function promoteClass(token: string, classId: string, data: {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to promote class');
+    throw new Error('Failed to promote class');
   }
 
   return await response.json();
@@ -624,7 +624,7 @@ export async function createStudent(token: string, data: any): Promise<CreateRes
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to add student');
+    throw new Error('Failed to add student');
   }
 
   return await response.json();
@@ -637,8 +637,8 @@ export async function loadClassificationTypes(token: string): Promise<Classifica
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Failed to load classification types' }));
-    throw new Error(errorData.error || `Failed to load classification types: ${response.status}`);
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load classification types');
   }
 
   return await response.json();
@@ -668,7 +668,7 @@ export async function createClassificationType(token: string, data: any): Promis
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to create classification type');
+    throw new Error('Failed to create classification type');
   }
 
   return await response.json();
@@ -686,7 +686,7 @@ export async function createClassificationValue(token: string, data: any): Promi
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to create classification value');
+    throw new Error('Failed to create classification value');
   }
 
   return await response.json();
@@ -704,7 +704,7 @@ export async function updateClassificationType(token: string, typeId: string, da
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to update classification type');
+    throw new Error('Failed to update classification type');
   }
 
   return await response.json();
@@ -757,7 +757,7 @@ export async function createExam(token: string, data: any): Promise<CreateRespon
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to create exam');
+    throw new Error('Failed to create exam');
   }
 
   return await response.json();
@@ -829,7 +829,7 @@ export async function createClassFee(token: string, data: any): Promise<CreateRe
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to save class fee');
+    throw new Error('Failed to save class fee');
   }
 
   return await response.json();
@@ -862,7 +862,7 @@ export async function createCustomFee(token: string, data: any): Promise<CreateR
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to save custom fee');
+    throw new Error('Failed to save custom fee');
   }
 
   return await response.json();
@@ -876,7 +876,7 @@ export async function deleteCustomFee(token: string, feeId: string): Promise<voi
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to delete custom fee');
+    throw new Error('Failed to delete custom fee');
   }
 }
 
@@ -904,7 +904,7 @@ export async function createTransportRoute(token: string, data: any): Promise<Cr
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to save route');
+    throw new Error('Failed to save route');
   }
 
   return await response.json();
@@ -934,7 +934,7 @@ export async function createTransportFee(token: string, data: any): Promise<Crea
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to save transport fee');
+    throw new Error('Failed to save transport fee');
   }
 
   return await response.json();
@@ -981,7 +981,7 @@ export async function hikeClassFee(token: string, feeId: string, data: {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to hike fee');
+    throw new Error('Failed to hike fee');
   }
 
   return await response.json();
@@ -1003,7 +1003,7 @@ export async function hikeTransportFee(token: string, feeId: string, data: {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to hike fee');
+    throw new Error('Failed to hike fee');
   }
 
   return await response.json();
@@ -1021,7 +1021,7 @@ export async function updateCustomFee(token: string, feeId: string, data: any): 
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to update fee');
+    throw new Error('Failed to update fee');
   }
 
   return await response.json();
@@ -1076,7 +1076,7 @@ export async function createSalaryStructure(token: string, data: any): Promise<C
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to save structure');
+    throw new Error('Failed to save structure');
   }
 
   return await response.json();

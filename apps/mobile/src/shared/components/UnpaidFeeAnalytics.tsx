@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
 import * as clerkService from '../services/clerk.service';
 import * as principalService from '../services/principal.service';
+import { devError } from '../utils/devLog';
 import { ClassGroup } from '../types';
 
 interface UnpaidFeeAnalyticsProps {
@@ -90,7 +91,7 @@ export function UnpaidFeeAnalytics({ userRole, showChart = true }: UnpaidFeeAnal
         setSelectedClass(result.classes[0].id);
       }
     } catch (error) {
-      console.error('Error loading classes:', error);
+      devError('Error loading classes:', error);
     }
   };
 
@@ -105,7 +106,7 @@ export function UnpaidFeeAnalytics({ userRole, showChart = true }: UnpaidFeeAnal
       });
       setData(result);
     } catch (error: unknown) {
-      console.error('Error loading analytics:', error);
+      devError('Error loading analytics:', error);
     } finally {
       setLoading(false);
     }

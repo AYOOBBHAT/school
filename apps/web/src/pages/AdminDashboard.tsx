@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../utils/devLog';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
@@ -85,7 +86,7 @@ export default function AdminDashboard() {
         });
 
         if (!response.ok) {
-          console.error('[AdminDashboard] Failed to fetch profile');
+          devError('[AdminDashboard] Failed to fetch profile');
           navigate('/login');
           return;
         }
@@ -95,7 +96,7 @@ export default function AdminDashboard() {
 
         // Check if user is admin
         if (profile?.role !== 'admin') {
-          console.warn('[AdminDashboard] User is not an admin, role:', profile?.role);
+          devWarn('[AdminDashboard] User is not an admin, role:', profile?.role);
           // Redirect based on role
           const redirectMap: Record<string, string> = {
             principal: '/principal/dashboard',
@@ -112,7 +113,7 @@ export default function AdminDashboard() {
         setCheckingRole(false);
         loadSchools();
       } catch (err) {
-        console.error('Error verifying role:', err);
+        devError('Error verifying role:', err);
         navigate('/login');
       }
     };
@@ -137,15 +138,15 @@ export default function AdminDashboard() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to load schools');
+        await response.json().catch(() => ({}));
+        throw new Error('Failed to load schools');
       }
 
       const data = await response.json();
       setSchools(data.schools || []);
-    } catch (err: any) {
-      console.error('Error loading schools:', err);
-      setError(err.message || 'Failed to load schools');
+    } catch (err: unknown) {
+      devError('Error loading schools:', err);
+      setError('Failed to load schools');
     } finally {
       setLoading(false);
     }
@@ -167,16 +168,16 @@ export default function AdminDashboard() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update payment status');
+        await response.json().catch(() => ({}));
+        throw new Error('Failed to update payment status');
       }
 
       // Reload schools
       await loadSchools();
       alert('Payment status updated successfully');
-    } catch (err: any) {
-      console.error('Error updating payment status:', err);
-      alert(err.message || 'Failed to update payment status');
+    } catch (err: unknown) {
+      devError('Error updating payment status:', err);
+      alert('Failed to update payment status');
     }
   };
 

@@ -7,6 +7,8 @@ import { adminSupabase } from '../utils/supabaseAdmin.js';
 import { generateJoinCode } from '../utils/joinCode.js';
 import { sendEmail } from '../utils/email.js';
 import { redis, OTP_REDIS_TTL_SECONDS } from '../utils/redis.js';
+import logger from '../utils/logger.js';
+import { SAFE_INTERNAL_ERROR } from '../utils/safeApiError.js';
 
 const router = Router();
 
@@ -49,11 +51,8 @@ router.post('/signup-principal', async (req, res) => {
 
   // Check if service role key is still placeholder
   if (supabaseServiceKey === 'your_service_role_key_here' || supabaseServiceKey.includes('your_service_role_key')) {
-    // eslint-disable-next-line no-console
-    console.error('[signup-principal] Service role key is still set to placeholder value');
-    return res.status(500).json({ 
-      error: 'Invalid API key: Please replace the placeholder SUPABASE_SERVICE_ROLE_KEY in your .env file with your actual Supabase service role key from the dashboard (Settings > API > service_role key).' 
-    });
+    logger.error('[signup-principal] Service role key is still set to placeholder value');
+    return res.status(500).json({ error: 'Server configuration error' });
   }
 
     const supabase = adminSupabase;
@@ -70,11 +69,8 @@ router.post('/signup-principal', async (req, res) => {
     if (authError || !authData.user) {
       // Provide more helpful error message for invalid API key
       if (authError?.message?.toLowerCase().includes('invalid') && authError?.message?.toLowerCase().includes('api key')) {
-        // eslint-disable-next-line no-console
-        console.error('[signup-principal] Supabase API key error:', authError.message);
-        return res.status(400).json({ 
-          error: 'Invalid API key. Please check your SUPABASE_SERVICE_ROLE_KEY in the .env file. Get it from Supabase Dashboard > Settings > API > service_role key.' 
-        });
+        logger.error('[signup-principal] Supabase API key rejected');
+        return res.status(400).json({ error: 'Server configuration error' });
       }
       return res.status(400).json({ error: authError?.message || 'Failed to create user' });
     }
@@ -115,7 +111,7 @@ router.post('/signup-principal', async (req, res) => {
     if (schoolError || !school) {
       // Rollback: delete user
       await supabase.auth.admin.deleteUser(authData.user.id);
-      return res.status(400).json({ error: schoolError?.message || 'Failed to create school' });
+      return res.status(400).json({ error: 'Failed to create school' });
     }
 
     // Update user metadata with school_id, phone, and full_name
@@ -141,7 +137,7 @@ router.post('/signup-principal', async (req, res) => {
 
     if (profileError) {
       await supabase.auth.admin.deleteUser(authData.user.id);
-      return res.status(400).json({ error: profileError.message });
+      return res.status(400).json({ error: 'Failed to create profile' });
     }
 
     // Sign in the user to get a session token
@@ -152,8 +148,7 @@ router.post('/signup-principal', async (req, res) => {
     });
 
     if (signInError || !signInData.session) {
-      // eslint-disable-next-line no-console
-      console.error('[signup-principal] Error signing in user after signup:', signInError);
+      logger.warn('[signup-principal] Sign-in after signup did not return a session');
       return res.status(201).json({
         user: { id: authData.user.id, email: value.email },
         school: { id: school.id, name: school.name, join_code: joinCode },
@@ -178,10 +173,9 @@ router.post('/signup-principal', async (req, res) => {
       school: { id: school.id, name: school.name, join_code: joinCode },
       redirect: '/principal/dashboard'
     });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[signup-principal] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+  } catch {
+    logger.error('[signup-principal] Unexpected error');
+    return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 });
 
@@ -195,11 +189,8 @@ router.post('/signup-join', async (req, res) => {
 
   // Check if service role key is still placeholder
   if (supabaseServiceKey === 'your_service_role_key_here' || supabaseServiceKey.includes('your_service_role_key')) {
-    // eslint-disable-next-line no-console
-    console.error('[signup-join] Service role key is still set to placeholder value');
-    return res.status(500).json({ 
-      error: 'Invalid API key: Please replace the placeholder SUPABASE_SERVICE_ROLE_KEY in your .env file with your actual Supabase service role key from the dashboard (Settings > API > service_role key).' 
-    });
+    logger.error('[signup-join] Service role key is still set to placeholder value');
+    return res.status(500).json({ error: 'Server configuration error' });
   }
 
     const supabase = adminSupabase;
@@ -227,11 +218,8 @@ router.post('/signup-join', async (req, res) => {
     if (authError || !authData.user) {
       // Provide more helpful error message for invalid API key
       if (authError?.message?.toLowerCase().includes('invalid') && authError?.message?.toLowerCase().includes('api key')) {
-        // eslint-disable-next-line no-console
-        console.error('[signup-join] Supabase API key error:', authError.message);
-        return res.status(400).json({ 
-          error: 'Invalid API key. Please check your SUPABASE_SERVICE_ROLE_KEY in the .env file. Get it from Supabase Dashboard > Settings > API > service_role key.' 
-        });
+        logger.error('[signup-join] Supabase API key rejected');
+        return res.status(400).json({ error: 'Server configuration error' });
       }
       return res.status(400).json({ error: authError?.message || 'Failed to create user' });
     }
@@ -246,22 +234,13 @@ router.post('/signup-join', async (req, res) => {
       approval_status: 'approved'
     };
 
-    console.log('[signup-join] Creating profile with data:', {
-      id: profileData.id,
-      role: profileData.role,
-      school_id: profileData.school_id,
-      email: profileData.email
-    });
-
-    const { error: profileError, data: profileDataResult } = await supabase.from('profiles').insert(profileData).select();
+    const { error: profileError } = await supabase.from('profiles').insert(profileData).select();
 
     if (profileError) {
-      console.error('[signup-join] Error creating profile:', profileError);
+      logger.warn('[signup-join] Profile insert failed');
       await supabase.auth.admin.deleteUser(authData.user.id);
-      return res.status(400).json({ error: profileError.message });
+      return res.status(400).json({ error: 'Failed to create profile' });
     }
-
-    console.log('[signup-join] Profile created successfully:', profileDataResult);
 
     // For students: create student record with active status
     if (value.role === 'student') {
@@ -278,9 +257,7 @@ router.post('/signup-join', async (req, res) => {
       const { error: studentError } = await supabase.from('students').insert(studentData);
       
       if (studentError) {
-        // Log error but don't fail the signup
-        // eslint-disable-next-line no-console
-        console.error('[signup-join] Error creating student record:', studentError);
+        logger.warn('[signup-join] Student record insert failed');
       }
     }
 
@@ -305,10 +282,9 @@ router.post('/signup-join', async (req, res) => {
       message: 'Account created successfully.',
       redirect: redirectMap[value.role] || '/login'
     });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[signup-join] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+  } catch {
+    logger.error('[signup-join] Unexpected error');
+    return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 });
 
@@ -340,17 +316,13 @@ router.get('/profile', async (req, res) => {
       .single();
 
     if (profileError) {
-      // eslint-disable-next-line no-console
-      console.error('[auth/profile] Error fetching profile:', profileError);
-      return res.status(400).json({ error: profileError.message });
+      logger.warn('[auth/profile] Profile fetch failed');
+      return res.status(400).json({ error: 'Failed to load profile' });
     }
 
     if (!profile) {
       return res.status(404).json({ error: 'Profile not found' });
     }
-
-    // eslint-disable-next-line no-console
-    console.log('[auth/profile] Profile fetched:', { id: profile.id, role: profile.role, approval_status: profile.approval_status });
 
     // Set no-cache headers to prevent caching issues
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -358,10 +330,9 @@ router.get('/profile', async (req, res) => {
     res.setHeader('Expires', '0');
 
     return res.json({ profile });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[auth/profile] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+  } catch {
+    logger.error('[auth/profile] Unexpected error');
+    return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 });
 
@@ -379,14 +350,13 @@ router.get('/schools', async (req, res) => {
       .order('name', { ascending: true });
 
     if (schoolsError) {
-      return res.status(400).json({ error: schoolsError.message });
+      return res.status(400).json({ error: 'Failed to load schools' });
     }
 
     return res.json({ schools: schools || [] });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[auth/schools] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+  } catch {
+    logger.error('[auth/schools] Unexpected error');
+    return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 });
 
@@ -399,7 +369,7 @@ router.post('/login', async (req, res) => {
   }
 
   if (!supabaseAnonKey) {
-    return res.status(500).json({ error: 'Missing SUPABASE_ANON_KEY' });
+    return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 
   try {
@@ -422,8 +392,7 @@ router.post('/login', async (req, res) => {
       .single();
 
     if (profileError || !profile) {
-      // eslint-disable-next-line no-console
-      console.error('[login] Error fetching profile:', profileError);
+      logger.warn('[login] Profile missing for authenticated user');
       return res.status(400).json({ error: 'User profile not found' });
     }
 
@@ -458,8 +427,7 @@ router.post('/login', async (req, res) => {
       });
 
       if (refreshError || !refreshedAuthData.session) {
-        // eslint-disable-next-line no-console
-        console.warn('[login] Failed to refresh session with new claims, using original token:', refreshError);
+        logger.warn('[login] Session refresh with updated claims failed; using prior session');
         // Fall back to original token - user will need to log in again for claims to update
       } else {
         // Use the refreshed session with updated claims
@@ -469,9 +437,8 @@ router.post('/login', async (req, res) => {
     }
 
     if (!authData.session) {
-      // eslint-disable-next-line no-console
-      console.error('[login] No session!');
-      return res.status(500).json({ error: 'Failed to generate authentication session' });
+      logger.error('[login] No session after sign-in');
+      return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
     }
 
     const session = authData.session;
@@ -485,22 +452,14 @@ router.post('/login', async (req, res) => {
       schoolName: schoolName ?? null
     };
 
-    // eslint-disable-next-line no-console
-    console.log('[login] Login successful:', {
-      userId: session.user.id,
-      email: session.user.email,
-      hasSession: !!session
-    });
-
     return res.json({
       session,
       user: session.user,
       profile: profilePayload
     });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[login] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+  } catch {
+    logger.error('[login] Unexpected error');
+    return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 });
 
@@ -602,7 +561,7 @@ router.post('/login-username', async (req, res) => {
 
     const session = authData.session;
     if (!session) {
-      return res.status(500).json({ error: 'Failed to generate authentication session' });
+      return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
     }
 
     const profilePayload = {
@@ -614,22 +573,15 @@ router.post('/login-username', async (req, res) => {
       schoolName: schoolName ?? null
     };
 
-    // eslint-disable-next-line no-console
-    console.log('[login-username] Login successful:', {
-      userId: session.user.id,
-      hasSession: !!session
-    });
-
     return res.json({
       session,
       user: session.user,
       profile: profilePayload,
       password_reset_required: profile.password_reset_required || false
     });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[login-username] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+  } catch {
+    logger.error('[login-username] Unexpected error');
+    return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 });
 
@@ -664,7 +616,7 @@ router.post('/reset-password', async (req, res) => {
     });
 
     if (updateError) {
-      return res.status(400).json({ error: updateError.message });
+      return res.status(400).json({ error: 'Failed to update password' });
     }
 
     // Update profile to clear password_reset_required flag
@@ -674,19 +626,16 @@ router.post('/reset-password', async (req, res) => {
       .eq('id', user.id);
 
     if (profileError) {
-      // eslint-disable-next-line no-console
-      console.error('[reset-password] Error updating profile:', profileError);
-      // Don't fail the request if profile update fails
+      logger.warn('[reset-password] Profile flag update failed');
     }
 
     return res.json({
       message: 'Password reset successfully',
       user: { id: updatedUser.user.id }
     });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[reset-password] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+  } catch {
+    logger.error('[reset-password] Unexpected error');
+    return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 });
 
@@ -954,18 +903,13 @@ ${school.name}
     } catch (e) {
       await redis.del(otpKey);
     }
-    if (process.env.NODE_ENV !== 'production') {
-      // eslint-disable-next-line no-console
-      console.log(`[OTP sent to ${profile.email}]: ${otp}`);
-    }
 
     // Always return the same message for security
     return res.json({ 
       message: 'If a student account exists with this username, an OTP has been sent to the registered email address.'
     });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[forgot-password-request] Error:', err);
+  } catch {
+    logger.error('[forgot-password-request] Unexpected error');
     // Return generic message for security
     return res.json({ 
       message: 'If a student account exists with this username, an OTP has been sent to the registered email address.' 
@@ -1053,18 +997,13 @@ School Management System
     } catch (e) {
       await redis.del(otpKey);
     }
-    if (process.env.NODE_ENV !== 'production') {
-      // eslint-disable-next-line no-console
-      console.log(`[OTP sent to ${profile.email}]: ${otp}`);
-    }
 
     // Always return the same message for security
     return res.json({ 
       message: 'If an account exists with this email, an OTP has been sent.'
     });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[forgot-password-request-email] Error:', err);
+  } catch {
+    logger.error('[forgot-password-request-email] Unexpected error');
     // Return generic message for security
     return res.json({ 
       message: 'If an account exists with this email, an OTP has been sent.' 
@@ -1159,11 +1098,7 @@ router.post('/forgot-password-verify', async (req, res) => {
     }
 
     const otpKey = otpRedisKey(profileId);
-    // eslint-disable-next-line no-console
-    console.log('VERIFY OTP KEY:', otpKey);
     const raw = await redis.get(otpKey);
-    // eslint-disable-next-line no-console
-    console.log('REDIS VALUE:', raw);
     const payload = parseOtpRedisValue(raw);
     if (payload == null) {
       if (raw != null) await redis.del(otpKey);
@@ -1203,7 +1138,7 @@ router.post('/forgot-password-verify', async (req, res) => {
     });
 
     if (updateError) {
-      return res.status(400).json({ error: updateError.message || 'Failed to reset password' });
+      return res.status(400).json({ error: 'Failed to reset password' });
     }
 
     // Clear password_reset_required flag
@@ -1215,10 +1150,9 @@ router.post('/forgot-password-verify', async (req, res) => {
     return res.json({
       message: 'Password reset successfully. You can now login with your new password.'
     });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[forgot-password-verify] Error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+  } catch {
+    logger.error('[forgot-password-verify] Unexpected error');
+    return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 });
 
@@ -1254,17 +1188,16 @@ router.post('/confirm-email', async (req, res) => {
     });
 
     if (updateError) {
-      return res.status(400).json({ error: updateError.message });
+      return res.status(400).json({ error: 'Failed to confirm email' });
     }
 
     return res.json({
       message: 'Email confirmed successfully',
       user: { id: data.user.id, email: data.user.email }
     });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[confirm-email] Error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+  } catch {
+    logger.error('[confirm-email] Unexpected error');
+    return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 });
 

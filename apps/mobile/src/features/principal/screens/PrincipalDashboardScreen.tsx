@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -13,27 +13,18 @@ interface PrincipalDashboardScreenProps {
 }
 
 export function PrincipalDashboardScreen({ navigation }: PrincipalDashboardScreenProps) {
-  const { data: schoolInfo, isLoading: loadingSchool, refetch: refetchSchool, isRefetching: refetchingSchool, error: schoolError } = useQuery({
+  const {
+    data: schoolInfo,
+    isLoading: loadingSchool,
+    refetch: refetchSchool,
+    isRefetching: refetchingSchool,
+    isError: schoolInfoError,
+  } = useQuery({
     queryKey: ['principal', 'schoolInfo'],
     queryFn: loadSchoolInfo,
     staleTime: 10 * 60 * 1000, // 10 minutes
     retry: 1,
   });
-
-  // Debug logging
-  useEffect(() => {
-    if (schoolInfo) {
-      console.log('[PrincipalDashboard] School info loaded:', {
-        name: schoolInfo.name,
-        hasJoinCode: !!schoolInfo.join_code,
-        joinCode: schoolInfo.join_code,
-        hasRegistration: !!schoolInfo.registration_number,
-      });
-    }
-    if (schoolError) {
-      console.error('[PrincipalDashboard] School info error:', schoolError);
-    }
-  }, [schoolInfo, schoolError]);
 
   const { data: stats, isLoading: loadingStats, refetch: refetchStats, isRefetching: refetchingStats } = useQuery({
     queryKey: queryKeys.principal.dashboard,
@@ -90,11 +81,8 @@ export function PrincipalDashboardScreen({ navigation }: PrincipalDashboardScree
         {!schoolInfo && !isLoading && (
           <View style={styles.errorCard}>
             <Text style={styles.errorText}>
-              {schoolError ? 'Error loading school information' : 'Unable to load school information'}
+              {schoolInfoError ? 'Error loading school information' : 'Unable to load school information'}
             </Text>
-            {__DEV__ && schoolError && (
-              <Text style={styles.debugText}>{String(schoolError)}</Text>
-            )}
           </View>
         )}
 
@@ -305,13 +293,6 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     textAlign: 'center',
     fontWeight: '600',
-  },
-  debugText: {
-    fontSize: 12,
-    color: '#991b1b',
-    textAlign: 'center',
-    marginTop: 8,
-    fontFamily: 'monospace',
   },
   sectionTitle: {
     fontSize: 24,

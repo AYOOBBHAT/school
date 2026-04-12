@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { supabase } from '../../../utils/supabase';
 import {
@@ -46,8 +47,8 @@ export default function ClassificationsManagement() {
         loadValuesForType(type.id);
       }
     } catch (error: any) {
-      console.error('Error loading types:', error);
-      setError(error.message || 'Failed to load classification types. Please try again.');
+      devError('Error loading types:', error);
+      setError('Failed to load classification types. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -61,7 +62,7 @@ export default function ClassificationsManagement() {
       const data = await loadClassificationValues(token, typeId);
       setValuesMap(prev => ({ ...prev, [typeId]: data.values || [] }));
     } catch (error) {
-      console.error('Error loading values:', error);
+      devError('Error loading values:', error);
     }
   };
 
@@ -77,7 +78,7 @@ export default function ClassificationsManagement() {
       setShowTypeModal(false);
       loadTypes();
     } catch (error: any) {
-      alert(error.message || 'Failed to create classification type');
+      alert('Failed to create classification type');
     }
   };
 
@@ -99,7 +100,7 @@ export default function ClassificationsManagement() {
       setSelectedTypeId(null);
       loadValuesForType(selectedTypeId);
     } catch (error: any) {
-      alert(error.message || 'Failed to create classification value');
+      alert('Failed to create classification value');
     }
   };
 
@@ -113,7 +114,7 @@ export default function ClassificationsManagement() {
       await deleteClassificationType(token, typeId);
       loadTypes();
     } catch (error: any) {
-      alert(error.message || 'Failed to delete classification type');
+      alert('Failed to delete classification type');
     }
   };
 
@@ -127,7 +128,7 @@ export default function ClassificationsManagement() {
       await deleteClassificationValue(token, valueId);
       loadValuesForType(typeId);
     } catch (error: any) {
-      alert(error.message || 'Failed to delete classification value');
+      alert('Failed to delete classification value');
     }
   };
 

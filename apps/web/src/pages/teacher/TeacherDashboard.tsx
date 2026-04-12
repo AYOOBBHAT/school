@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../utils/devLog';
 import { lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { supabase } from '../../utils/supabase';
@@ -14,7 +15,7 @@ const lazyWithRetry = (componentImport: () => Promise<any>, retries = 3) => {
         return await componentImport();
       } catch (error) {
         if (i === retries - 1) {
-          console.error('Failed to load component after retries:', error);
+          devError('Failed to load component after retries:', error);
           throw error;
         }
         // Wait before retrying (exponential backoff)

@@ -64,7 +64,6 @@ function StudentRoleGuard({ children }: { children: React.ReactNode }) {
           <TouchableOpacity
             style={styles.logoutButton}
             onPress={async () => {
-              console.log('[StudentStack] Logout button pressed');
               await logout();
             }}
             activeOpacity={0.7}
@@ -84,11 +83,9 @@ export default function StudentStack() {
 
   // Logout button component for header - defined inside to access context
   const LogoutButton = () => {
-    console.log('[StudentStack] LogoutButton component rendering');
     return (
       <TouchableOpacity
         onPress={async () => {
-          console.log('[StudentStack] Logout button pressed from header');
           await logout();
         }}
         style={styles.headerLogoutButton}

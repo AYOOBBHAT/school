@@ -36,15 +36,21 @@ function clearStoredResendUntil() {
   }
 }
 
-/** Map backend-ish text to safe copy without echoing raw errors. */
+/** Map backend-ish text to safe copy — never show raw API errors. */
 function mapVerifyErrorToMessage(backendError: string | undefined): string {
   const msg = (backendError || '').toLowerCase();
-  if (!msg) return 'Could not reset password. Please try again.';
-  if (msg.includes('expired')) return 'That code has expired. Please request a new code.';
-  if (msg.includes('invalid')) return 'That code is not valid. Please check and try again, or request a new code.';
+  if (!msg) return 'Something went wrong';
+  if (msg.includes('expired')) return 'Invalid or expired code';
+  if (msg.includes('invalid')) return 'Invalid or expired code';
   if (msg.includes('rate') || msg.includes('limit') || msg.includes('throttle') || msg.includes('too many') || msg.includes('429'))
-    return 'Too many attempts. Please wait a few minutes and try again.';
-  return 'Could not reset password. Please try again.';
+    return 'Too many attempts, try again later';
+  if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed to fetch'))
+    return 'Something went wrong';
+  return 'Something went wrong';
+}
+
+function safeRequestOtpError(): string {
+  return 'Something went wrong';
 }
 
 export default function ForgotPassword() {
@@ -184,7 +190,7 @@ export default function ForgotPassword() {
       await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error('Could not send a code right now. Please try again.');
+        throw new Error(safeRequestOtpError());
       }
 
       // Always the same copy — do not use backend wording that might imply account existence.
@@ -192,8 +198,12 @@ export default function ForgotPassword() {
       setStep(2);
       startResendCooldown();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to request OTP';
-      setError(message);
+      const m = err instanceof Error ? err.message : '';
+      if (m === 'Username and school code are required' || m === 'Email is required') {
+        setError(m);
+      } else {
+        setError(safeRequestOtpError());
+      }
     } finally {
       otpRequestInFlightRef.current = false;
       setRequestingOtp(false);
@@ -269,7 +279,8 @@ export default function ForgotPassword() {
       const result = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(mapVerifyErrorToMessage(typeof result?.error === 'string' ? result.error : undefined));
+        const safe = mapVerifyErrorToMessage(typeof result?.error === 'string' ? result.error : undefined);
+        throw new Error(safe);
       }
 
       passwordResetCompleteRef.current = true;
@@ -286,7 +297,8 @@ export default function ForgotPassword() {
         navigate('/login');
       }, 2000);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to reset password';
+      const message =
+        err instanceof Error ? mapVerifyErrorToMessage(err.message) : 'Something went wrong';
       setSuccess('');
       setError(message);
       setVerifyingOtp(false);

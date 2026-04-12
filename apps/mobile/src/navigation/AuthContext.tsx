@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User } from '../shared/types';
 import { authService } from '../shared/services/auth';
 import { supabase } from '../shared/lib/supabase';
+import { devError } from '../shared/utils/devLog';
 
 interface AuthContextType {
   user: User | null;
@@ -24,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const currentUser = await authService.getCurrentUser();
         setUser(currentUser ?? null);
       } catch (error) {
-        console.error('Auth initialization failed:', error);
+        devError('Auth initialization failed:', error);
         setUser(null);
       } finally {
         setLoading(false);

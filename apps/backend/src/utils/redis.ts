@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import logger from './logger.js';
 
 /**
  * Upstash Redis REST client.
@@ -10,10 +11,8 @@ const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
 const url =
   rawUrl && !/^https?:\/\//i.test(rawUrl) ? `https://${rawUrl}` : rawUrl;
 
-// Debug: confirm injected URL and scheme (remove after Railway env verified)
-console.log('REDIS URL:', url ?? '(undefined)');
 if (!url) {
-  console.log('ENV KEYS:', Object.keys(process.env));
+  logger.error('Redis is not configured: UPSTASH_REDIS_REST_URL is missing or empty');
 }
 
 export const redis = new Redis({

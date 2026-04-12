@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../utils/supabase';
 import { Assignment, Student } from '../types';
@@ -42,7 +43,7 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
         });
         setExceptions(exceptionsMap);
       } catch (error) {
-        console.error('Error loading attendance records:', error);
+        devError('Error loading attendance records:', error);
       }
     };
     loadRecords();
@@ -59,7 +60,7 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
       const attendanceAssignments = await loadAttendanceAssignmentsService(token, userId);
       setAssignments(attendanceAssignments ?? []);
     } catch (error) {
-      console.error('Error loading assignments:', error);
+      devError('Error loading assignments:', error);
     } finally {
       setLoading(false);
     }
@@ -84,7 +85,7 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
       });
       setExceptions(exceptionsMap);
     } catch (error) {
-      console.error('Error loading students:', error);
+      devError('Error loading students:', error);
     }
   };
 
@@ -135,7 +136,7 @@ export default function AttendanceView({ profile }: AttendanceViewProps) {
       await saveAttendanceService(token, payload);
       alert('Attendance saved successfully!');
     } catch (error: any) {
-      alert(error.message || 'Failed to save attendance');
+      alert('Failed to save attendance');
     }
   };
 

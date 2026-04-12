@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import ForgotPassword from './pages/ForgotPassword';
 import AdminDashboard from './pages/AdminDashboard';
+import { devError } from './utils/devLog';
 
 // Lazy load dashboard components for code splitting with retry logic
 const lazyWithRetry = (componentImport: () => Promise<any>, retries = 3) => {
@@ -16,7 +17,7 @@ const lazyWithRetry = (componentImport: () => Promise<any>, retries = 3) => {
         return await componentImport();
       } catch (error) {
         if (i === retries - 1) {
-          console.error('Failed to load component after retries:', error);
+          devError('Failed to load component after retries');
           throw error;
         }
         // Wait before retrying (exponential backoff)

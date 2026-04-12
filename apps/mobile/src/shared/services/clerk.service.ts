@@ -1,4 +1,5 @@
 import { api } from './api';
+import { devWarn } from '../utils/devLog';
 import { 
   Student, 
   ClassGroup,
@@ -295,7 +296,7 @@ export async function loadRecentPayments(limit: number = 10): Promise<Array<{
     // For now, return empty array - can be enhanced later
     return [];
   } catch (error) {
-    console.warn('[Clerk Service] Could not load recent payments:', error);
+    devWarn('[Clerk Service] Could not load recent payments:', error);
     return [];
   }
 }

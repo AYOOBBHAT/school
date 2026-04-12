@@ -32,6 +32,6 @@ export async function getProfile(token: string): Promise<ProfileResponse> {
       return await response.json();
     }
   } else {
-    throw new Error(`Failed to get profile: ${response.status}`);
+    throw new Error('Failed to get profile');
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, ScrollView } from 'react-native';
 import * as clerkService from '../services/clerk.service';
+import { devError } from '../utils/devLog';
 
 interface UnpaidSalariesProps {
   userRole: 'principal' | 'clerk';
@@ -82,7 +83,7 @@ export function UnpaidSalaries({ userRole }: UnpaidSalariesProps) {
       const result = await clerkService.loadUnpaidSalaries(timeScope, currentPage, pageSize);
       setData(result);
     } catch (error: unknown) {
-      console.error('Error loading unpaid salaries:', error);
+      devError('Error loading unpaid salaries:', error);
     } finally {
       setLoading(false);
     }

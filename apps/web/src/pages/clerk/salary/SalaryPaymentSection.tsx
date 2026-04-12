@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useEffect, useState, FormEvent, Fragment } from 'react';
 import { supabase } from '../../../utils/supabase';
 import {
@@ -36,7 +37,7 @@ export default function SalaryPaymentSection() {
       setLoading(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) {
-        console.error('No authentication token found');
+        devError('No authentication token found');
         setLoading(false);
         return;
       }
@@ -51,11 +52,11 @@ export default function SalaryPaymentSection() {
         const summariesWithPending = (summaryData.summaries || []).filter((s: any) => s.pending_salary > 0);
         setTeacherSummaries(summariesWithPending);
       } catch (error) {
-        console.error('Error loading salary summaries:', error);
+        devError('Error loading salary summaries:', error);
         setTeacherSummaries([]);
       }
     } catch (error) {
-      console.error('Error loading salary data:', error);
+      devError('Error loading salary data:', error);
       setUnpaidTeachers([]);
       setTeacherSummaries([]);
     } finally {
@@ -140,7 +141,7 @@ export default function SalaryPaymentSection() {
       });
       loadUnpaidSalaries();
     } catch (error: any) {
-      alert(error.message || 'Failed to record payment');
+      alert('Failed to record payment');
     }
   };
 

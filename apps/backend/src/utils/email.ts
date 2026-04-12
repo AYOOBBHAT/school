@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import logger from './logger.js';
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const resendFromEmail = process.env.RESEND_FROM_EMAIL;
@@ -12,8 +13,7 @@ const resendFromEmail = process.env.RESEND_FROM_EMAIL;
  */
 export async function sendEmail(opts: { to: string; subject: string; text: string }) {
   if (!resendApiKey || !resendFromEmail) {
-    // eslint-disable-next-line no-console
-    console.warn('[email] Missing RESEND_API_KEY or RESEND_FROM_EMAIL; email not sent');
+    logger.warn('[email] Resend is not configured; email not sent');
     return { ok: false as const, error: 'Email not configured' };
   }
 
@@ -26,10 +26,9 @@ export async function sendEmail(opts: { to: string; subject: string; text: strin
       text: opts.text
     });
     return { ok: true as const };
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('[email] Failed to send email:', err);
-    return { ok: false as const, error: err?.message || 'Failed to send email' };
+  } catch {
+    logger.error('[email] Send failed');
+    return { ok: false as const, error: 'Failed to send email' };
   }
 }
 

@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useCallback } from 'react';
 import { supabase } from '../../../utils/supabase';
 import { fetchStudentFees } from '../../../services/student.service';
@@ -38,12 +39,12 @@ export function useStudentFees() {
       setLoading(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) {
-        console.error('[useStudentFees] No token available');
+        devError('[useStudentFees] No token available');
         return;
       }
 
       const data = await fetchStudentFees(token);
-      console.log('[useStudentFees] Fees loaded:', {
+      devLog('[useStudentFees] Fees loaded:', {
         summary: data.summary,
         bills: data.bills?.length || 0,
         payments: data.payments?.length || 0
@@ -52,7 +53,7 @@ export function useStudentFees() {
       setBills(data.bills || []);
       setPayments(data.payments || []);
     } catch (error) {
-      console.error('[useStudentFees] Error loading fees:', error);
+      devError('[useStudentFees] Error loading fees:', error);
       setSummary(null);
       setBills([]);
       setPayments([]);

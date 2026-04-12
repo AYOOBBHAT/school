@@ -1,4 +1,5 @@
 import { API_URL } from '../utils/api';
+import { devError, devLog } from '../utils/devLog';
 import { ROUTES } from '../utils/apiRoutes';
 import { supabase } from '../utils/supabase';
 import { 
@@ -54,32 +55,20 @@ export async function loadStudentsForFeeCollection(
   
   const url = `${API_URL}${ROUTES.studentsAdmin}?${params.toString()}`;
 
-  console.log('[clerk.service] Loading students from:', url);
+  devLog('[clerk.service] Loading students for fee collection');
 
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
-    const errorMessage = errorData?.error || `Failed to load students (${response.status})`;
-    console.error('[clerk.service] Failed to load students:', {
-      url,
-      status: response.status,
-      statusText: response.statusText,
-      error: errorMessage,
-      classGroupId
-    });
-    throw new Error(errorMessage);
+    await response.json().catch(() => ({}));
+    devError('[clerk.service] loadStudentsForFeeCollection failed');
+    throw new Error('Failed to load students');
   }
 
   const data = await response.json();
-  console.log('[clerk.service] Successfully loaded students:', {
-    classesCount: data.classes?.length || 0,
-    unassignedCount: data.unassigned?.length || 0,
-    total_students: data.total_students,
-    classGroupId
-  });
+  devLog('[clerk.service] Students payload loaded');
   
   return data;
 }
@@ -117,7 +106,7 @@ export async function loadStudentFeeStructure(token: string, studentId: string):
     if (errorData.error && errorData.error.includes('No fee configured')) {
       return { message: 'No fee configured for this student', fee_structure: null, monthly_ledger: [] };
     }
-    throw new Error(errorData.error || 'Failed to load fee structure');
+    throw new Error('Failed to load fee structure');
   }
 
   return await response.json();
@@ -166,8 +155,8 @@ export async function collectFee(token: string, paymentData: any): Promise<Colle
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to collect fee');
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to collect fee');
   }
 
   return await response.json();
@@ -231,8 +220,8 @@ export async function loadSalaryPaymentHistory(token: string, teacherId: string,
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to load payment history');
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load payment history');
   }
 
   return await response.json();
@@ -310,8 +299,8 @@ export async function loadSalarySummary(token: string): Promise<{
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Failed to load salary summaries' }));
-    throw new Error(errorData.error || 'Failed to load salary summaries');
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load salary summaries');
   }
 
   return await response.json();
@@ -334,8 +323,8 @@ export async function recordSalaryPayment(token: string, paymentData: any): Prom
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to record payment');
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to record payment');
   }
 
   return await response.json();

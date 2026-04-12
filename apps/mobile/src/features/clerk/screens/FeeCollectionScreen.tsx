@@ -134,7 +134,7 @@ export function FeeCollectionScreen({ navigation }: Props) {
           refetchStudents();
         },
         onError: (error: unknown) => {
-          const message = error instanceof Error ? error.message : 'Failed to collect payment';
+          const message = 'Failed to collect payment';
           Alert.alert('Error', message);
         },
       }

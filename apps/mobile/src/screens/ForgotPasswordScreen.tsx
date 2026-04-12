@@ -24,6 +24,8 @@ import {
   cooldownSecondsRemaining,
   postForgotPasswordRequest,
   postForgotPasswordVerify,
+  mapVerifyErrorToMessage,
+  safeRequestOtpError,
 } from '../shared/utils/passwordRecovery';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
@@ -145,8 +147,12 @@ export function ForgotPasswordScreen({ navigation }: Props) {
       const until = await readResendUntilMs();
       if (until > Date.now()) setResendUntilMs(until);
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Failed to request code';
-      setError(message);
+      const m = e instanceof Error ? e.message : '';
+      if (m === 'Username and school code are required' || m === 'Email is required') {
+        setError(m);
+      } else {
+        setError(safeRequestOtpError());
+      }
     } finally {
       otpRequestInFlightRef.current = false;
       setRequestingOtp(false);
@@ -203,7 +209,8 @@ export function ForgotPasswordScreen({ navigation }: Props) {
         navigation.navigate('Login');
       }, 2000);
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Failed to reset password';
+      const message =
+        e instanceof Error ? mapVerifyErrorToMessage(e.message) : 'Something went wrong';
       setError(message);
     } finally {
       if (!passwordResetCompleteRef.current) {

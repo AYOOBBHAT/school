@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { supabase } from '../../../utils/supabase';
 import {
@@ -43,7 +44,7 @@ export default function ClassesManagement() {
       const data = await loadAllSubjectsForManagement(token);
       setAllSubjects(data.subjects || []);
     } catch (error) {
-      console.error('Error loading subjects:', error);
+      devError('Error loading subjects:', error);
     }
   };
 
@@ -57,7 +58,7 @@ export default function ClassesManagement() {
         setSelectedClass(updatedClass);
         setClasses(data.classes || []);
       } catch (error) {
-        console.error('Error loading classes:', error);
+        devError('Error loading classes:', error);
         setSelectedClass(classItem);
       }
     } else {
@@ -91,7 +92,7 @@ export default function ClassesManagement() {
         setSelectedClass(updatedClass);
       }
     } catch (error: any) {
-      alert(error.message || 'Failed to add subject');
+      alert('Failed to add subject');
     }
   };
 
@@ -121,7 +122,7 @@ export default function ClassesManagement() {
         }
       }
     } catch (error: any) {
-      alert(error.message || 'Failed to remove subject');
+      alert('Failed to remove subject');
     }
   };
 
@@ -139,11 +140,11 @@ export default function ClassesManagement() {
           const valuesData = await loadClassificationValues(token, type.id);
           setClassificationValues(prev => ({ ...prev, [type.id]: valuesData.values || [] }));
         } catch (error) {
-          console.error(`Error loading values for type ${type.id}:`, error);
+          devError(`Error loading values for type ${type.id}:`, error);
         }
       }
     } catch (error) {
-      console.error('Error loading classification types:', error);
+      devError('Error loading classification types:', error);
     }
   };
 
@@ -161,8 +162,8 @@ export default function ClassesManagement() {
       const data = await loadClassesService(token);
       setClasses(data.classes || []);
     } catch (error: any) {
-      console.error('Error loading classes:', error);
-      setError(error.message || 'Failed to load classes. Please try again.');
+      devError('Error loading classes:', error);
+      setError('Failed to load classes. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -188,7 +189,7 @@ export default function ClassesManagement() {
       setShowModal(false);
       loadClasses();
     } catch (error: any) {
-      alert(error.message || 'Failed to create class');
+      alert('Failed to create class');
     }
   };
 
@@ -224,7 +225,7 @@ export default function ClassesManagement() {
       setEditingClass(null);
       loadClasses();
     } catch (error: any) {
-      alert(error.message || 'Failed to update class');
+      alert('Failed to update class');
     }
   };
 

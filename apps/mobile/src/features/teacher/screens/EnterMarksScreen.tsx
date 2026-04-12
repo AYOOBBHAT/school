@@ -114,9 +114,8 @@ export function EnterMarksScreen({ navigation, route }: Props) {
         Alert.alert('Success', 'Marks saved successfully!');
         setMarks({});
       },
-      onError: (error: unknown) => {
-        const message = error instanceof Error ? error.message : 'Failed to submit marks';
-        Alert.alert('Error', message);
+      onError: () => {
+        Alert.alert('Error', 'Failed to submit marks');
       },
     });
   };

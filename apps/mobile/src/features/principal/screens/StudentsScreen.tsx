@@ -117,7 +117,7 @@ export function StudentsScreen({ navigation }: Props) {
         setUsernameStatus({
           checking: false,
           available: res.available,
-          message: res.message || (res.available ? 'Available' : 'Username taken'),
+          message: res.available ? 'Available' : 'Username taken',
         });
       } catch {
         setUsernameStatus({ checking: false, available: false, message: 'Check failed' });
@@ -310,7 +310,7 @@ export function StudentsScreen({ navigation }: Props) {
           setModal(null);
         },
         onError: (e: unknown) => {
-          Alert.alert('Error', e instanceof Error ? e.message : 'Failed to add student');
+          Alert.alert('Error', 'Failed to add student');
         },
       }
     );
@@ -345,7 +345,7 @@ export function StudentsScreen({ navigation }: Props) {
           setModal(null);
         },
         onError: (e: unknown) => {
-          Alert.alert('Error', e instanceof Error ? e.message : 'Update failed');
+          Alert.alert('Error', 'Update failed');
         },
       }
     );
@@ -364,7 +364,7 @@ export function StudentsScreen({ navigation }: Props) {
           setModal(null);
         },
         onError: (e: unknown) => {
-          Alert.alert('Error', e instanceof Error ? e.message : 'Promote failed');
+          Alert.alert('Error', 'Promote failed');
         },
       }
     );
@@ -391,7 +391,7 @@ export function StudentsScreen({ navigation }: Props) {
                   setModal(null);
                 },
                 onError: (e: unknown) => {
-                  Alert.alert('Error', e instanceof Error ? e.message : 'Promote failed');
+                  Alert.alert('Error', 'Promote failed');
                 },
               }
             ),

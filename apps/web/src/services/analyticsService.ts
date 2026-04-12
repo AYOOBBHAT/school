@@ -38,8 +38,8 @@ export const fetchUnpaidAnalytics = async ({
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to load analytics' }));
-    throw new Error(error.error || 'Failed to load analytics');
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load analytics');
   }
 
   const data = await response.json();

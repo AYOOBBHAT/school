@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../utils/supabase';
 import { DashboardStats } from '../types';
@@ -22,11 +23,11 @@ export function DashboardOverview() {
       try {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError) {
-          console.error('Error getting user:', userError);
+          devError('Error getting user:', userError);
           return;
         }
         if (!user) {
-          console.log('No user found');
+          devLog('No user found');
           return;
         }
 
@@ -38,12 +39,12 @@ export function DashboardOverview() {
           .single();
 
         if (profileError) {
-          console.error('Error loading profile:', profileError);
+          devError('Error loading profile:', profileError);
           return;
         }
 
         if (!profile || !('school_id' in profile) || !(profile as any).school_id) {
-          console.log('No profile or school_id found');
+          devLog('No profile or school_id found');
           return;
         }
 
@@ -60,14 +61,14 @@ export function DashboardOverview() {
               .maybeSingle(); // Use maybeSingle() instead of single() to handle no results gracefully
 
             if (!schoolError && school) {
-              console.log('School data loaded from Supabase fallback:', school);
+              devLog('School data loaded from Supabase fallback:', school);
               setSchoolInfo(school);
             } else if (schoolError) {
-              console.error('Error loading school from Supabase:', schoolError);
+              devError('Error loading school from Supabase:', schoolError);
               // Don't throw, just log - school info is optional
             }
           } catch (supabaseError) {
-            console.error('Error in Supabase query:', supabaseError);
+            devError('Error in Supabase query:', supabaseError);
             // Don't throw - school info is optional
           }
         };
@@ -80,10 +81,10 @@ export function DashboardOverview() {
 
           try {
             const schoolData = await loadSchoolInfo(token);
-            console.log('School data loaded from API:', schoolData);
+            devLog('School data loaded from API:', schoolData);
             setSchoolInfo(schoolData);
           } catch (apiError: any) {
-            console.error('Error loading school from API:', apiError);
+            devError('Error loading school from API:', apiError);
             await loadSchoolInfoFromSupabase();
           }
         };
@@ -134,7 +135,7 @@ export function DashboardOverview() {
               staffByGender: staffGenders,
             });
           } catch (fallbackError) {
-            console.error('Error loading fallback stats:', fallbackError);
+            devError('Error loading fallback stats:', fallbackError);
           }
         };
 
@@ -154,7 +155,7 @@ export function DashboardOverview() {
               staffByGender: hydrateBreakdown(payload?.staffByGender),
             });
           } catch (statsError) {
-            console.error('Error loading dashboard stats:', statsError);
+            devError('Error loading dashboard stats:', statsError);
             await loadStatsFallback();
           }
         };
@@ -162,7 +163,7 @@ export function DashboardOverview() {
         await loadSchoolInfoData();
         await loadStats();
       } catch (error) {
-        console.error('Error loading dashboard:', error);
+        devError('Error loading dashboard:', error);
       } finally {
         setLoading(false);
       }

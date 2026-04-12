@@ -2,6 +2,7 @@ import { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api';
+import { devError, devLog } from '../utils/devLog';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -100,7 +101,7 @@ export default function Login() {
         .single();
 
       if (directProfileError) {
-        console.error('[Login] Direct profile fetch error:', directProfileError);
+        devError('[Login] Direct profile fetch failed');
         profileError = directProfileError;
       } else {
         profile = profileData;
@@ -108,7 +109,7 @@ export default function Login() {
 
       // If direct query failed, try backend API (bypasses RLS)
       if (profileError || !profile) {
-        console.log('[Login] Trying backend API to fetch profile...');
+        devLog('[Login] Trying backend API for profile');
         try {
           const token = data.session?.access_token;
           if (token) {
@@ -123,7 +124,7 @@ export default function Login() {
             if (response.ok) {
               const profileResponse = await response.json();
               profile = profileResponse.profile;
-              console.log('[Login] Profile fetched from backend API:', profile);
+              devLog('[Login] Profile loaded via backend API');
             } else {
               // If student, try student profile endpoint
               if (data.user.user_metadata?.role === 'student') {
@@ -134,17 +135,16 @@ export default function Login() {
                 });
                 
                 if (studentResponse.ok) {
-                  const studentData = await studentResponse.json();
-                  // If we got student data, they're approved and have a student record
-                  console.log('[Login] Student profile found via API, redirecting to dashboard');
+                  await studentResponse.json();
+                  devLog('[Login] Student profile via API, redirecting');
                   navigate('/student/home');
                   return;
                 }
               }
             }
           }
-        } catch (apiError) {
-          console.error('[Login] Error fetching profile from API:', apiError);
+        } catch {
+          devError('[Login] Profile API fetch failed');
         }
       }
 
@@ -152,13 +152,7 @@ export default function Login() {
         throw new Error('Failed to load user profile. Please contact support or try logging in again.');
       }
 
-      console.log('[Login] User profile loaded:', { 
-        id: profile.id, 
-        role: profile.role, 
-        approval_status: profile.approval_status,
-        school_id: profile.school_id,
-        password_reset_required: profile.password_reset_required
-      });
+      devLog('[Login] Profile ready for redirect');
 
       // Check if password reset is required
       if (profile.password_reset_required) {
@@ -185,8 +179,8 @@ export default function Login() {
 
       const redirectPath = redirectMap[profile.role] || '/';
       navigate(redirectPath);
-    } catch (err: any) {
-      setError(err.message || 'Login failed');
+    } catch {
+      setError('Login failed');
     } finally {
       setLoading(false);
     }

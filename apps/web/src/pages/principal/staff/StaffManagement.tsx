@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useRef, useCallback, FormEvent, MouseEvent } from 'react';
 import { supabase } from '../../../utils/supabase';
 import {
@@ -127,7 +128,7 @@ export default function StaffManagement() {
       const data = await loadAllClassesService(token);
       setAllClasses(data.classes || []);
     } catch (error) {
-      console.error('Error loading classes:', error);
+      devError('Error loading classes:', error);
     }
   };
 
@@ -139,7 +140,7 @@ export default function StaffManagement() {
       const data = await loadAllSubjectsService(token);
       setAllSubjects(data.subjects || []);
     } catch (error) {
-      console.error('Error loading subjects:', error);
+      devError('Error loading subjects:', error);
     }
   };
 
@@ -151,7 +152,7 @@ export default function StaffManagement() {
       const data = await loadAllAssignmentsService(token);
       setAllAssignments(data.assignments || []);
     } catch (error) {
-      console.error('Error loading assignments:', error);
+      devError('Error loading assignments:', error);
     }
   };
 
@@ -163,7 +164,7 @@ export default function StaffManagement() {
       const data = await loadAttendanceAssignmentsService(token);
       setAttendanceAssignments(data.assignments || []);
     } catch (error) {
-      console.error('Error loading attendance assignments:', error);
+      devError('Error loading attendance assignments:', error);
     }
   };
 
@@ -186,7 +187,7 @@ export default function StaffManagement() {
           const data = await loadSectionsService(token, classId);
           setSections(prevSections => ({ ...prevSections, [classId]: data.sections || [] }));
         } catch (error) {
-          console.error('Error loading sections:', error);
+          devError('Error loading sections:', error);
         }
       })();
       
@@ -221,8 +222,8 @@ export default function StaffManagement() {
 
       setStaff(normalizedStaff);
     } catch (error: any) {
-      console.error('Error loading staff:', error);
-      setError(error.message || 'Failed to load staff. Please try again.');
+      devError('Error loading staff:', error);
+      setError('Failed to load staff. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -260,7 +261,7 @@ export default function StaffManagement() {
       setAttendanceSummary(data.summary || null);
       setAttendanceModalOpen(true);
     } catch (error) {
-      console.error('Error loading attendance:', error);
+      devError('Error loading attendance:', error);
     }
   };
 
@@ -281,7 +282,7 @@ export default function StaffManagement() {
       // Reload attendance
       handleViewAttendance(selectedTeacher);
     } catch (error: any) {
-      alert(error.message || 'Failed to mark attendance');
+      alert('Failed to mark attendance');
     }
   };
 
@@ -295,7 +296,7 @@ export default function StaffManagement() {
       setPerformanceData(data);
       setPerformanceModalOpen(true);
     } catch (error) {
-      console.error('Error loading performance:', error);
+      devError('Error loading performance:', error);
     }
   };
 
@@ -323,7 +324,7 @@ export default function StaffManagement() {
       setEditModalOpen(false);
       loadStaff();
     } catch (error: any) {
-      alert(error.message || 'Failed to update teacher');
+      alert('Failed to update teacher');
     }
   };
 
@@ -343,7 +344,7 @@ export default function StaffManagement() {
       alert(`Teacher ${teacher.approval_status === 'approved' ? 'deactivated' : 'activated'} successfully!`);
       loadStaff();
     } catch (error: any) {
-      alert(error.message || 'Failed to update teacher');
+      alert('Failed to update teacher');
     }
   };
 
@@ -369,7 +370,7 @@ export default function StaffManagement() {
 
       setViewAssignmentsModalOpen(true);
     } catch (error) {
-      console.error('Error loading assignments:', error);
+      devError('Error loading assignments:', error);
     }
   };
 
@@ -389,7 +390,7 @@ export default function StaffManagement() {
       setAssignModalOpen(false);
       loadAllAssignments();
     } catch (error: any) {
-      alert(error.message || 'Failed to create assignment');
+      alert('Failed to create assignment');
     }
   };
 
@@ -413,7 +414,7 @@ export default function StaffManagement() {
       setAttendanceAssignmentModalOpen(false);
       loadAttendanceAssignments();
     } catch (error: any) {
-      alert(error.message || 'Failed to create attendance assignment');
+      alert('Failed to create attendance assignment');
     }
   };
 
@@ -434,7 +435,7 @@ export default function StaffManagement() {
         handleViewAssignments(selectedTeacher!);
       }
     } catch (error: any) {
-      alert(error.message || 'Failed to delete assignment');
+      alert('Failed to delete assignment');
     }
   };
 
@@ -501,7 +502,7 @@ export default function StaffManagement() {
       }
     } catch (error) {
       if (isMountedRef.current) {
-        console.error('Error loading daily attendance:', error);
+        devError('Error loading daily attendance:', error);
       }
     }
   }, []); // Empty deps - function uses isMountedRef (stable) and receives all data as parameters
@@ -558,7 +559,7 @@ export default function StaffManagement() {
       alert('Attendance saved successfully!');
       loadDailyAttendance(selectedTeacher.id, attendanceMonth, attendanceYear);
     } catch (error: any) {
-      alert(error.message || 'Failed to save attendance');
+      alert('Failed to save attendance');
     } finally {
       setSavingAttendance(false);
     }
@@ -630,7 +631,7 @@ export default function StaffManagement() {
       setAddStaffForm({ email: '', password: '', full_name: '', role: 'teacher', phone: '', gender: '', salary_start_date: '' });
       loadStaff();
     } catch (error: any) {
-      alert(error.message || 'Failed to add staff member');
+      alert('Failed to add staff member');
     }
   };
 
@@ -1805,7 +1806,7 @@ export default function StaffManagement() {
                                   handleViewAssignments(selectedTeacher);
                                 }
                               } catch (error: any) {
-                                alert(error.message || 'Failed to remove assignment');
+                                alert('Failed to remove assignment');
                               }
                             }}
                             className="text-red-600 hover:text-red-900"

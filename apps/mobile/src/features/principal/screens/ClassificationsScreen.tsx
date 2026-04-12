@@ -81,7 +81,7 @@ export function ClassificationsScreen({ navigation }: ClassificationsScreenProps
           setShowTypeModal(false);
           setTypeFormName('');
         },
-        onError: (e) => Alert.alert('Error', e.message),
+        onError: () => Alert.alert('Error', 'Something went wrong'),
       }
     );
   };
@@ -100,7 +100,7 @@ export function ClassificationsScreen({ navigation }: ClassificationsScreenProps
           setSelectedTypeId(null);
           setValueFormValue('');
         },
-        onError: (e) => Alert.alert('Error', e.message),
+        onError: () => Alert.alert('Error', 'Something went wrong'),
       }
     );
   };
@@ -116,7 +116,7 @@ export function ClassificationsScreen({ navigation }: ClassificationsScreenProps
           style: 'destructive',
           onPress: () =>
             deleteTypeMutation.mutate(type.id, {
-              onError: (e) => Alert.alert('Error', e.message),
+              onError: () => Alert.alert('Error', 'Something went wrong'),
             }),
         },
       ]
@@ -132,7 +132,7 @@ export function ClassificationsScreen({ navigation }: ClassificationsScreenProps
         onPress: () =>
           deleteValueMutation.mutate(
             { valueId, typeId },
-            { onError: (e) => Alert.alert('Error', e.message) }
+            { onError: () => Alert.alert('Error', 'Something went wrong') }
           ),
       },
     ]);
@@ -147,7 +147,7 @@ export function ClassificationsScreen({ navigation }: ClassificationsScreenProps
       <SafeAreaView style={styles.container}>
         <View style={styles.errorBox}>
           <Text style={styles.errorTitle}>Error Loading Classifications</Text>
-          <Text style={styles.errorText}>{error.message}</Text>
+          <Text style={styles.errorText}>Something went wrong</Text>
           <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>

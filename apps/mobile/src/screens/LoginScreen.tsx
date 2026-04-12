@@ -11,6 +11,7 @@ import { loadDashboard, loadStudents, loadClasses } from '../shared/services/pri
 import { loadTeacherAssignments, loadTeacherAttendanceAssignments, loadTeacherSalary } from '../shared/services/teacher.service';
 import { loadStudents as loadClerkStudents, loadClasses as loadClerkClasses, loadUnpaidSalaries } from '../shared/services/clerk.service';
 import { loadAttendance, loadMarks, loadFees } from '../shared/services/student.service';
+import { devWarn } from '../shared/utils/devLog';
 
 import { NavigationProp } from '../shared/types';
 
@@ -43,11 +44,9 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
 
     setLoading(true);
     try {
-      console.log('[LoginScreen] Starting login process...');
       let response;
-      
+
       if (loginMode === 'username') {
-        console.log('[LoginScreen] Attempting username login for:', username);
         const loginData: {
           username: string;
           password: string;
@@ -57,54 +56,30 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
           username,
           password,
         };
-        
+
         if (useRegistrationNumber) {
           loginData.registration_number = schoolCode;
         } else {
           loginData.join_code = schoolCode;
         }
-        
-        console.log('[LoginScreen] Calling authService.loginUsername...');
+
         response = await authService.loginUsername(loginData);
-        console.log('[LoginScreen] Username login successful, user:', response.user?.email);
       } else {
-        console.log('[LoginScreen] Attempting email login for:', email);
-        console.log('[LoginScreen] Calling authService.login...');
         response = await authService.login(email, password);
-        console.log('[LoginScreen] Email login successful, user:', response.user?.email);
       }
-      
-      console.log('[LoginScreen] Login response received:', {
-        hasUser: !!response.user,
-        hasToken: !!response.token,
-        userRole: response.user?.role,
-        userId: response.user?.id,
-      });
-      
+
       if (!response.user) {
-        console.error('[LoginScreen] WARNING: No user in login response!');
-        throw new Error('Login response missing user data');
+        throw new Error('Something went wrong');
       }
-      
+
       const user = response.user;
-      console.log('[LoginScreen] Setting user in context:', { id: user.id, role: user.role, email: user.email });
-      
-      // Prefetch role-specific data immediately after login for instant screen loads
-      // Do not await - let it run in background while navigation happens
+
       prefetchRoleData(user.role, user.id);
-      
-      console.log('[LoginScreen] Calling setUser...');
+
       setUser(user);
-      console.log('[LoginScreen] setUser called successfully');
-    } catch (error: unknown) {
-      console.error('[LoginScreen] Login error:', error);
-      const message = error instanceof Error ? error.message : 'Login failed';
-      const stack = error instanceof Error ? error.stack : undefined;
-      console.error('[LoginScreen] Error message:', message);
-      if (stack) console.error('[LoginScreen] Error stack:', stack);
-      Alert.alert('Login Failed', message);
+    } catch {
+      Alert.alert('Login Failed', 'Something went wrong');
     } finally {
-      console.log('[LoginScreen] Setting loading to false');
       setLoading(false);
     }
   };
@@ -174,8 +149,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
         });
       }
     } catch (error) {
-      // Silently fail prefetching - don't block login
-      console.warn('[LoginScreen] Prefetch error (non-blocking):', error);
+      devWarn('[LoginScreen] Prefetch error (non-blocking):', error);
     }
   };
 

@@ -15,7 +15,7 @@ export default function errorHandler(err, req, res, next) {
     const isProduction = process.env.NODE_ENV === 'production';
     if (!res.headersSent) {
         res.status(500).json({
-            error: 'Internal server error',
+            error: 'Something went wrong',
             ...(isProduction ? {} : { message: err instanceof Error ? err.message : 'Unknown error' }),
         });
     }

@@ -28,7 +28,7 @@ export default function errorHandler(
 
   if (!res.headersSent) {
     res.status(500).json({
-      error: 'Internal server error',
+      error: 'Something went wrong',
       ...(isProduction ? {} : { message: err instanceof Error ? err.message : 'Unknown error' }),
     });
   }

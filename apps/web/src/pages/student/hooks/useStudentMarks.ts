@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useCallback } from 'react';
 import { supabase } from '../../../utils/supabase';
 import { fetchStudentMarks } from '../../../services/student.service';
@@ -16,7 +17,7 @@ export function useStudentMarks() {
       const data = await fetchStudentMarks(token);
       setMarks(data.marks || []);
     } catch (error) {
-      console.error('Error loading marks:', error);
+      devError('Error loading marks:', error);
     } finally {
       setLoading(false);
     }

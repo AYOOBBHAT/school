@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { supabase } from '../../../utils/supabase';
 import {
@@ -36,7 +37,7 @@ export default function ExamsManagement() {
       const data = await loadClassesService(token);
       setClasses(data.classes || []);
     } catch (error) {
-      console.error('Error loading classes:', error);
+      devError('Error loading classes:', error);
     }
   };
 
@@ -48,7 +49,7 @@ export default function ExamsManagement() {
       const data = await loadAllSubjectsForManagement(token);
       setSubjects(data.subjects || []);
     } catch (error) {
-      console.error('Error loading subjects:', error);
+      devError('Error loading subjects:', error);
     }
   };
 
@@ -63,7 +64,7 @@ export default function ExamsManagement() {
       const data = await loadExamsForManagement(token);
       setExams(data.exams || []);
     } catch (error) {
-      console.error('Error loading exams:', error);
+      devError('Error loading exams:', error);
     } finally {
       setLoading(false);
     }
@@ -122,7 +123,7 @@ export default function ExamsManagement() {
       loadExams();
       alert('Exam created successfully!');
     } catch (error: any) {
-      alert(error.message || 'Failed to create exam');
+      alert('Failed to create exam');
     }
   };
 

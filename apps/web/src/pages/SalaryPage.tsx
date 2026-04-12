@@ -53,8 +53,8 @@ export default function SalaryPage({ role }: SalaryPageProps) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to fetch salary data' }));
-        throw new Error(errorData.error || 'Failed to fetch salary data');
+        await response.json().catch(() => ({}));
+        throw new Error('Failed to fetch salary data');
       }
 
       return response.json();
@@ -80,7 +80,7 @@ export default function SalaryPage({ role }: SalaryPageProps) {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-lg shadow-md p-6 max-w-md w-full">
           <div className="text-red-600 text-xl font-semibold mb-2">Error</div>
-          <div className="text-gray-700 mb-4">{error instanceof Error ? error.message : 'Failed to load salary data'}</div>
+          <div className="text-gray-700 mb-4">Failed to load salary data</div>
           <button
             onClick={() => refetch()}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"

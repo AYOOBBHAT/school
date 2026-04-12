@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../utils/devLog';
 import  { useEffect, useState, lazy } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../../utils/supabase';
@@ -47,7 +48,7 @@ export default function ClerkDashboard() {
       const stats = await loadDashboardStats(token);
       setDashboardStats(stats);
     } catch (error) {
-      console.error('Error loading dashboard stats:', error);
+      devError('Error loading dashboard stats:', error);
       // Set default stats on error
       setDashboardStats({
         totalStudents: 0,

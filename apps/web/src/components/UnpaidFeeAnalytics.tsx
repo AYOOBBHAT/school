@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../utils/devLog';
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../utils/supabase';
@@ -73,7 +74,7 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
           setSelectedClass(result.classes[0].id);
         }
       } catch (error) {
-        console.error('Error loading classes:', error);
+        devError('Error loading classes:', error);
       }
     };
     loadClasses();
@@ -233,7 +234,7 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
       ) : error ? (
         <div className="text-center py-12">
           <div className="text-red-600 font-semibold mb-2">Error loading analytics</div>
-          <div className="text-sm text-gray-500">{error instanceof Error ? error.message : 'Unknown error'}</div>
+          <div className="text-sm text-gray-500">Something went wrong</div>
         </div>
       ) : data ? (
         <>

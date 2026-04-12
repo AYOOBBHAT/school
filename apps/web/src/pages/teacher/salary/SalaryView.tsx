@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../utils/supabase';
 import TeacherPaymentHistory from '../../../components/TeacherPaymentHistory';
@@ -29,7 +30,7 @@ export default function SalaryView({ profile }: SalaryViewProps) {
       setSalaryStructure(structure);
       setSalaryRecords(records);
     } catch (error) {
-      console.error('Error loading salary data:', error);
+      devError('Error loading salary data:', error);
     } finally {
       setLoadingSalary(false);
     }

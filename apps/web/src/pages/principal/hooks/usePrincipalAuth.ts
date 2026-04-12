@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../utils/supabase';
 import { getProfile } from '../../../services/auth.service';
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 
 export function usePrincipalAuth() {
   const navigate = useNavigate();
@@ -18,15 +19,10 @@ export function usePrincipalAuth() {
         const token = session.data.session?.access_token;
         const user = session.data.session?.user;
         
-        console.log('[usePrincipalAuth] Session check:', {
-          hasToken: !!token,
-          hasUser: !!user,
-          userId: user?.id,
-          email: user?.email
-        });
-        
+        devLog('[usePrincipalAuth] Session check', { hasToken: !!token, hasUser: !!user });
+
         if (!token || !user) {
-          console.warn('[usePrincipalAuth] No session or token found, redirecting to login');
+          devWarn('[usePrincipalAuth] No session, redirecting to login');
           if (isMountedRef.current) {
             navigate('/login');
           }
@@ -37,8 +33,8 @@ export function usePrincipalAuth() {
         let data;
         try {
           data = await getProfile(token);
-        } catch (parseError) {
-            console.error('[usePrincipalAuth] Error parsing profile response:', parseError);
+        } catch {
+            devError('[usePrincipalAuth] getProfile failed, using fallback');
             // Fallback: try to get profile directly from Supabase
             const userId = session.data.session?.user?.id;
             if (!userId) {
@@ -72,7 +68,7 @@ export function usePrincipalAuth() {
           
           // Only principals and clerks can access this dashboard
           if (resolvedRole !== 'principal' && resolvedRole !== 'clerk') {
-            console.warn('[usePrincipalAuth] Unauthorized access attempt by role:', resolvedRole);
+            devWarn('[usePrincipalAuth] Wrong role for principal area');
             // Redirect to appropriate dashboard based on role
             const redirectMap: Record<string, string> = {
               student: '/student/home',
@@ -90,8 +86,8 @@ export function usePrincipalAuth() {
           if (isMountedRef.current) {
             setRole(resolvedRole);
           }
-      } catch (error) {
-        console.error('[usePrincipalAuth] Error verifying role:', error);
+      } catch {
+        devError('[usePrincipalAuth] verifyRole failed');
         if (isMountedRef.current) {
           navigate('/login');
         }

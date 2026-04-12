@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../utils/supabase';
 import { Assignment, Student } from '../types';
@@ -26,7 +27,7 @@ export function ClassesOverview() {
       const teachingData = await loadTeacherAssignments(token, userId);
       setAssignments(teachingData.assignments || []);
     } catch (error) {
-      console.error('Error loading assignments:', error);
+      devError('Error loading assignments:', error);
       setAssignments([]);
     } finally {
       setLoading(false);
@@ -42,7 +43,7 @@ export function ClassesOverview() {
       setStudents(allStudents);
       setSelectedAssignment(assignment);
     } catch (error) {
-      console.error('Error loading students:', error);
+      devError('Error loading students:', error);
     }
   };
 

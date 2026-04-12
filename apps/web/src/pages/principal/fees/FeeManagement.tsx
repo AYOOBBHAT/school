@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { supabase } from '../../../utils/supabase';
 import {
@@ -135,7 +136,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
       setClassGroups(classesData.classes || []);
       setStudents(studentsData.students || []);
     } catch (error) {
-      console.error('Error loading initial data:', error);
+      devError('Error loading initial data:', error);
     }
   };
 
@@ -150,7 +151,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
       const data = await loadAllClassFees(token);
       setClassFees(data.class_fees || []);
     } catch (error) {
-      console.error('Error loading class fees:', error);
+      devError('Error loading class fees:', error);
     } finally {
       setLoading(false);
     }
@@ -165,7 +166,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
       const data = await loadCustomFeesService(token);
       setCustomFees(data.custom_fees || []);
     } catch (error) {
-      console.error('Error loading custom fees:', error);
+      devError('Error loading custom fees:', error);
     } finally {
       setLoading(false);
     }
@@ -185,7 +186,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
       setTransportRoutes(routesData.routes || []);
       setTransportFees(feesData.transport_fees || []);
     } catch (error) {
-      console.error('Error loading transport data:', error);
+      devError('Error loading transport data:', error);
     } finally {
       setLoading(false);
     }
@@ -218,7 +219,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
       });
       loadClassFees();
     } catch (error: any) {
-      alert(error.message || 'Failed to save class fee');
+      alert('Failed to save class fee');
     }
   };
 
@@ -243,7 +244,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
       });
       loadCustomFees();
     } catch (error: any) {
-      alert(error.message || 'Failed to save custom fee');
+      alert('Failed to save custom fee');
     }
   };
 
@@ -263,7 +264,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
       setRouteForm({ route_name: '', bus_number: '', distance_km: '', zone: '', description: '' });
       loadTransportData();
     } catch (error: any) {
-      alert(error.message || 'Failed to save route');
+      alert('Failed to save route');
     }
   };
 
@@ -294,7 +295,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
       });
       loadTransportData();
     } catch (error: any) {
-      alert(error.message || 'Failed to save transport fee');
+      alert('Failed to save transport fee');
     }
   };
 
@@ -321,7 +322,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
 
       setFeeTracking(feeTrackingData);
     } catch (error) {
-      console.error('Error loading fee tracking:', error);
+      devError('Error loading fee tracking:', error);
     } finally {
       setLoading(false);
     }
@@ -344,7 +345,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
       const data = await loadFeeVersions(token, feeType, fee.id);
       setFeeVersions(data.versions || []);
     } catch (error) {
-      console.error('Error loading fee versions:', error);
+      devError('Error loading fee versions:', error);
     }
   };
 
@@ -392,7 +393,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
         loadCustomFees();
       }
     } catch (error: any) {
-      alert(error.message || 'Failed to hike fee');
+      alert('Failed to hike fee');
     }
   };
 
@@ -492,7 +493,7 @@ export default function FeeManagement({ userRole = 'principal' }: { userRole?: '
                               alert('Custom fee deleted successfully!');
                               loadCustomFees();
                             } catch (error: any) {
-                              alert(error.message || 'Failed to delete custom fee');
+                              alert('Failed to delete custom fee');
                             }
                           }}
                           className="text-red-600 hover:text-red-800"

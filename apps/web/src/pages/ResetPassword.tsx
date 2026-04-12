@@ -102,9 +102,8 @@ export default function ResetPassword() {
           navigate('/student/home');
         }
       }, 2000);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to reset password';
-      setError(message);
+    } catch {
+      setError('Something went wrong');
     } finally {
       if (!completedRef.current) {
         setLoading(false);

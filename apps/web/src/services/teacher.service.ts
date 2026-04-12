@@ -263,8 +263,8 @@ export async function saveMarks(
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to save marks');
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to save marks');
   }
 }
 

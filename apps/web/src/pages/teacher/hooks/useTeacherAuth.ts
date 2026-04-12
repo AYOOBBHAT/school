@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../utils/supabase';
@@ -29,7 +30,7 @@ export function useTeacherAuth() {
         const resolvedRole = data.profile?.role;
           
           if (resolvedRole !== 'teacher') {
-            console.warn('[useTeacherAuth] Unauthorized access attempt by role:', resolvedRole);
+            devWarn('[useTeacherAuth] Unauthorized access attempt by role:', resolvedRole);
             const redirectMap: Record<string, string> = {
               principal: '/principal/dashboard',
               clerk: '/clerk',
@@ -49,7 +50,7 @@ export function useTeacherAuth() {
           setProfile(data.profile);
         }
       } catch (error) {
-        console.error('[useTeacherAuth] Error verifying role:', error);
+        devError('[useTeacherAuth] Error verifying role:', error);
         if (isMountedRef.current) {
           navigate('/login');
         }

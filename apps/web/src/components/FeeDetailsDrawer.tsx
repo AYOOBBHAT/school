@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../utils/devLog';
 import { useState, useEffect, useMemo, useCallback, FormEvent } from 'react';
 import { supabase } from '../utils/supabase';
 import {
@@ -111,16 +112,11 @@ export default function FeeDetailsDrawer({
           setFeeStructure(data.fee_structure);
           setMonthlyLedger(data.monthly_ledger || []);
         }
-      } catch (error: any) {
-        if (error.message && error.message.includes('No fee configured')) {
-          setFeeStructure(null);
-          setMonthlyLedger([]);
-        } else {
-          console.error('Error loading fee data:', error);
-        }
+      } catch (error: unknown) {
+        devError('Error loading fee data:', error);
       }
     } catch (error) {
-      console.error('Error loading fee data:', error);
+      devError('Error loading fee data:', error);
     } finally {
       setLoading(false);
     }
@@ -137,7 +133,7 @@ export default function FeeDetailsDrawer({
       setPaymentHistory(data.payments || []);
       setShowPaymentHistory(true);
     } catch (error) {
-      console.error('Error loading payment history:', error);
+      devError('Error loading payment history:', error);
     } finally {
       setLoadingHistory(false);
     }
@@ -250,8 +246,8 @@ export default function FeeDetailsDrawer({
       if (onPaymentSuccess) {
         onPaymentSuccess();
       }
-    } catch (error: any) {
-      alert(error.message || 'Failed to process payment');
+    } catch {
+      alert('Failed to process payment');
     } finally {
       setProcessingPayment(false);
     }

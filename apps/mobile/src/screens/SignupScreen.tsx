@@ -47,9 +47,8 @@ export function SignupScreen({ navigation }: SignupScreenProps) {
     try {
       const response = await authService.signupPrincipal(principalData);
       setUser(response.user);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to create account';
-      Alert.alert('Signup Failed', message);
+    } catch {
+      Alert.alert('Signup Failed', 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -65,9 +64,8 @@ export function SignupScreen({ navigation }: SignupScreenProps) {
     try {
       const response = await authService.signupJoin(joinData);
       setUser(response.user);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to join school';
-      Alert.alert('Signup Failed', message);
+    } catch {
+      Alert.alert('Signup Failed', 'Something went wrong');
     } finally {
       setLoading(false);
     }

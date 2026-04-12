@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../utils/supabase';
@@ -47,7 +48,7 @@ export function useClerkAuth() {
           setProfile(data.profile);
         }
       } catch (error) {
-        console.error('[useClerkAuth] Error verifying role:', error);
+        devError('[useClerkAuth] Error verifying role:', error);
         if (isMountedRef.current) {
           navigate('/login');
         }

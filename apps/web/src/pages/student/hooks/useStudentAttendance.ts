@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useCallback } from 'react';
 import { supabase } from '../../../utils/supabase';
 import { fetchStudentAttendance } from '../../../services/student.service';
@@ -13,19 +14,19 @@ export function useStudentAttendance() {
       setLoading(true);
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) {
-        console.error('[StudentDashboard] No token available');
+        devError('[StudentDashboard] No token available');
         return;
       }
 
       const data = await fetchStudentAttendance(token);
-      console.log('[useStudentAttendance] Attendance loaded:', {
+      devLog('[useStudentAttendance] Attendance loaded:', {
         records: data.attendance?.length || 0,
         summary: data.summary
       });
       setAttendance(data.attendance || []);
       setAttendanceSummary(data.summary || null);
     } catch (error) {
-      console.error('[useStudentAttendance] Error loading attendance:', error);
+      devError('[useStudentAttendance] Error loading attendance:', error);
       // Show user-friendly error message
       setAttendance([]);
       setAttendanceSummary(null);

@@ -14,9 +14,13 @@ export async function fetchStudentProfile(token: string): Promise<{ student: Stu
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Failed to load profile' }));
-    const errorMessage = errorData.error || 'Failed to load profile';
-    throw new Error(errorMessage);
+    if (response.status === 404) {
+      const e = new Error();
+      e.name = 'StudentProfileNotFoundError';
+      throw e;
+    }
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load profile');
   }
 
   return await response.json();
@@ -49,8 +53,8 @@ export async function fetchStudentAttendance(token: string): Promise<{
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(errorData.error || 'Failed to load attendance');
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load attendance');
   }
 
   return await response.json();
@@ -132,8 +136,8 @@ export async function fetchStudentFees(token: string): Promise<{
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(errorData.error || 'Failed to load fees');
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load fees');
   }
 
   return await response.json();

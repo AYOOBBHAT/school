@@ -26,7 +26,7 @@ export function MarkAttendanceScreen({ navigation, route }: Props) {
   const { data: assignmentsData, isLoading } = useTeacherAttendanceAssignments(user?.id || '');
   const currentDate = date || new Date().toISOString().split('T')[0];
   
-  const { data: studentsData, isLoading: loadingStudents, isError: studentsError, error: studentsErrorDetail } = useStudentsForAttendance(
+  const { data: studentsData, isLoading: loadingStudents, isError: studentsError } = useStudentsForAttendance(
     selectedAssignment?.class_group_id || '',
     selectedAssignment?.section_id ?? undefined,
     !!selectedAssignment
@@ -123,9 +123,8 @@ export function MarkAttendanceScreen({ navigation, route }: Props) {
         Alert.alert('Success', 'Attendance saved successfully!');
         navigation.goBack();
       },
-      onError: (error: unknown) => {
-        const message = error instanceof Error ? error.message : 'Failed to save attendance';
-        Alert.alert('Error', message);
+      onError: () => {
+        Alert.alert('Error', 'Failed to save attendance');
       },
     });
   };
@@ -211,7 +210,7 @@ export function MarkAttendanceScreen({ navigation, route }: Props) {
             <EmptyState
               icon="⚠️"
               title="Could not load students"
-              message={studentsErrorDetail instanceof Error ? studentsErrorDetail.message : 'Something went wrong. Try again.'}
+              message="Something went wrong. Try again."
             />
           ) : students.length === 0 ? (
             <EmptyState icon="👥" title="No students found" message="No students found in this class." />

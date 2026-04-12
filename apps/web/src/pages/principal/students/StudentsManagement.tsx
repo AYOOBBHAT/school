@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { supabase } from '../../../utils/supabase';
 import {
@@ -146,10 +147,10 @@ export default function StudentsManagement() {
         setUsernameStatus({
           checking: false,
           available: data.available,
-          message: data.message || (data.available ? 'Username is available ✓' : 'Username already exists. Please choose another.')
+          message: data.available ? 'Username is available ✓' : 'Username already exists. Please choose another.'
         });
       } catch (error) {
-        console.error('Error checking username:', error);
+        devError('Error checking username:', error);
         setUsernameStatus({ checking: false, available: false, message: 'Error checking username' });
       }
     };
@@ -198,9 +199,9 @@ export default function StudentsManagement() {
       if (showFullPageLoading && data.classes && data.classes.length > 0 && expandedClasses.size === 0) {
         setExpandedClasses(new Set([data.classes[0].id]));
       }
-    } catch (error: any) {
-      console.error('Error loading students:', error);
-      setError(error.message || 'Failed to load students. Please try again.');
+    } catch (error: unknown) {
+      devError('Error loading students:', error);
+      setError('Failed to load students. Please try again.');
     } finally {
       if (showFullPageLoading) {
         setLoading(false);
@@ -221,7 +222,7 @@ export default function StudentsManagement() {
       const data = await loadClassesService(token);
       setAllClasses(data.classes || []);
     } catch (error) {
-      console.error('Error loading classes:', error);
+      devError('Error loading classes:', error);
       // Don't set error state here as it's a secondary load
     }
   };
@@ -244,7 +245,7 @@ export default function StudentsManagement() {
       const data = await loadClassSections(token, classId);
       setSections(prev => ({ ...prev, [classId]: data.sections || [] }));
     } catch (error) {
-      console.error('Error loading sections:', error);
+      devError('Error loading sections:', error);
       setSections(prev => ({ ...prev, [classId]: [] }));
     }
   };
@@ -256,17 +257,17 @@ export default function StudentsManagement() {
       if (!token) return;
 
       const data = await loadDefaultFeesService(token, classId);
-      console.log('[Add Student] Loaded default fees:', data);
-      console.log('[Add Student] Class fees array:', data.class_fees);
-      console.log('[Add Student] Class fees length:', data.class_fees?.length);
-      console.log('[Add Student] Is array?', Array.isArray(data.class_fees));
+      devLog('[Add Student] Loaded default fees:', data);
+      devLog('[Add Student] Class fees array:', data.class_fees);
+      devLog('[Add Student] Class fees length:', data.class_fees?.length);
+      devLog('[Add Student] Is array?', Array.isArray(data.class_fees));
       setDefaultFees(data);
 
       // Set default class fee (first one if available)
       const defaultClassFeeId = data.class_fees && data.class_fees.length > 0 ? data.class_fees[0].id : '';
-      console.log('[Add Student] Default class fee ID:', defaultClassFeeId);
-      console.log('[Add Student] Class fees count:', data.class_fees?.length || 0);
-      console.log('[Add Student] Custom fees count:', data.custom_fees?.length || 0);
+      devLog('[Add Student] Default class fee ID:', defaultClassFeeId);
+      devLog('[Add Student] Class fees count:', data.class_fees?.length || 0);
+      devLog('[Add Student] Custom fees count:', data.custom_fees?.length || 0);
       
       // Initialize custom_fees array with all custom fees
       const customFeesConfig = (data.custom_fees || []).map((cf: any) => ({
@@ -285,7 +286,7 @@ export default function StudentsManagement() {
         custom_fees: customFeesConfig
       });
     } catch (error) {
-      console.error('Error loading default fees:', error);
+      devError('Error loading default fees:', error);
       setDefaultFees(null);
     } finally {
       setLoadingFees(false);
@@ -322,7 +323,7 @@ export default function StudentsManagement() {
           });
         }
       } catch (error) {
-        console.error('Error loading fee config:', error);
+        devError('Error loading fee config:', error);
       }
     }
     
@@ -339,9 +340,9 @@ export default function StudentsManagement() {
       if (!token) return;
 
       const data = await loadDefaultFeesService(token, classId);
-      console.log('[Edit Student] Loaded default fees:', data);
-      console.log('[Edit Student] Class fees array:', data.class_fees);
-      console.log('[Edit Student] Class fees length:', data.class_fees?.length);
+      devLog('[Edit Student] Loaded default fees:', data);
+      devLog('[Edit Student] Class fees array:', data.class_fees);
+      devLog('[Edit Student] Class fees length:', data.class_fees?.length);
       setEditDefaultFees(data);
 
       // Auto-select first class fee if available (always set it, even if already set, to ensure it's selected)
@@ -362,7 +363,7 @@ export default function StudentsManagement() {
         }));
       }
     } catch (error) {
-      console.error('Error loading default fees:', error);
+      devError('Error loading default fees:', error);
       setEditDefaultFees(null);
     } finally {
       setLoadingEditFees(false);
@@ -422,7 +423,7 @@ export default function StudentsManagement() {
       // Refetch students data (lightweight, no full page reload)
       await loadStudents(false);
     } catch (error: any) {
-      alert(error.message || 'Failed to update student');
+      alert('Failed to update student');
     } finally {
       setUpdatingStudent(false);
     }
@@ -443,12 +444,12 @@ export default function StudentsManagement() {
       const { section_id, ...formData } = promoteForm;
       const data = await promoteStudent(token, selectedStudent.id, formData);
       setPromoteModalOpen(false);
-      alert(data.message || 'Student promoted successfully!');
+      alert('Student promoted successfully!');
       
       // Refetch students data (lightweight, no full page reload)
       await loadStudents(false);
     } catch (error: any) {
-      alert(error.message || 'Failed to promote student');
+      alert('Failed to promote student');
     } finally {
       setUpdatingStudent(false);
     }
@@ -471,12 +472,12 @@ export default function StudentsManagement() {
 
       const data = await promoteClass(token, selectedClassId, promoteClassForm);
       setPromoteClassModalOpen(false);
-      alert(data.message || 'Class promoted successfully!');
+      alert('Class promoted successfully!');
       
       // Refetch students data (lightweight, no full page reload)
       await loadStudents(false);
     } catch (error: any) {
-      alert(error.message || 'Failed to promote class');
+      alert('Failed to promote class');
     } finally {
       setUpdatingStudent(false);
     }
@@ -608,7 +609,7 @@ export default function StudentsManagement() {
       });
       window.location.reload();
     } catch (error: any) {
-      alert(error.message || 'Failed to add student');
+      alert('Failed to add student');
     }
   };
 
@@ -973,9 +974,9 @@ export default function StudentsManagement() {
                             }
                           }
                           
-                          console.log('[Edit Student Display] Class fees available:', classFeesArray.length);
-                          console.log('[Edit Student Display] editFeeConfig.class_fee_id:', editFeeConfig.class_fee_id);
-                          console.log('[Edit Student Display] Selected fee:', selectedClassFee ? { id: selectedClassFee.id, amount: selectedClassFee.amount } : 'none');
+                          devLog('[Edit Student Display] Class fees available:', classFeesArray.length);
+                          devLog('[Edit Student Display] editFeeConfig.class_fee_id:', editFeeConfig.class_fee_id);
+                          devLog('[Edit Student Display] Selected fee:', selectedClassFee ? { id: selectedClassFee.id, amount: selectedClassFee.amount } : 'none');
                           
                           const categoryName = selectedClassFee?.fee_categories?.name || 'Class Fee';
                           const defaultAmount = selectedClassFee ? parseFloat(selectedClassFee.amount || 0) : 0;
@@ -1500,9 +1501,9 @@ export default function StudentsManagement() {
                             }
                           }
                           
-                          console.log('[Add Student Display] Class fees available:', classFeesArray.length);
-                          console.log('[Add Student Display] feeConfig.class_fee_id:', feeConfig.class_fee_id);
-                          console.log('[Add Student Display] Selected fee:', selectedClassFee ? { id: selectedClassFee.id, amount: selectedClassFee.amount } : 'none');
+                          devLog('[Add Student Display] Class fees available:', classFeesArray.length);
+                          devLog('[Add Student Display] feeConfig.class_fee_id:', feeConfig.class_fee_id);
+                          devLog('[Add Student Display] Selected fee:', selectedClassFee ? { id: selectedClassFee.id, amount: selectedClassFee.amount } : 'none');
                           
                           const categoryName = selectedClassFee?.fee_categories?.name || 'Class Fee';
                           const defaultAmount = selectedClassFee ? parseFloat(selectedClassFee.amount || 0) : 0;

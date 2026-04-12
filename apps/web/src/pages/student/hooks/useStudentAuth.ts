@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../utils/supabase';
@@ -33,7 +34,7 @@ export function useStudentAuth() {
           return;
         }
       } catch (error) {
-        console.error('[StudentDashboard] Error verifying role:', error);
+        devError('[StudentDashboard] Error verifying role:', error);
         navigate('/login');
       } finally {
         setLoading(false);

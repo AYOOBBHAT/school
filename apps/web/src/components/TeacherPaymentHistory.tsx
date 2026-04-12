@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../utils/devLog';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
 import { loadSalaryPaymentHistory } from '../services/clerk.service';
@@ -99,10 +100,10 @@ export default function TeacherPaymentHistory({
       setSummary(data.summary || null);
       setTotalPages(data.pagination?.total_pages || 1);
       setTotalCount(data.pagination?.total || 0);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (!isMountedRef.current) return;
-      console.error('Error loading payment history:', err);
-      setError(err.message || 'Failed to load payment history');
+      devError('Error loading payment history:', err);
+      setError('Failed to load payment history');
     } finally {
       if (isMountedRef.current) {
       setLoading(false);

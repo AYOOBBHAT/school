@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { supabase } from '../../../utils/supabase';
 import {
@@ -58,7 +59,7 @@ export default function SalaryManagement() {
       setTeachers(teachersData.staff?.filter((s: any) => s.role === 'teacher') || []);
       setSalaryStructures(structuresData.structures || []);
     } catch (error) {
-      console.error('Error loading salary data:', error);
+      devError('Error loading salary data:', error);
     } finally {
       setLoading(false);
     }
@@ -72,7 +73,7 @@ export default function SalaryManagement() {
       const data = await loadUnpaidSalaries(token, 'last_12_months');
       setUnpaidTeachers(data.teachers || []);
     } catch (error) {
-      console.error('Error loading unpaid salaries:', error);
+      devError('Error loading unpaid salaries:', error);
       setUnpaidTeachers([]);
     }
   };
@@ -135,7 +136,7 @@ export default function SalaryManagement() {
       });
       loadData();
     } catch (error: any) {
-      alert(error.message || 'Failed to save structure');
+      alert('Failed to save structure');
     }
   };
 

@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../utils/supabase';
 import { Student } from '../types';
@@ -38,7 +39,7 @@ export default function MarksEntryView({ profile }: MarksEntryViewProps) {
         setExams(examsData);
         setClasses(classesData);
       } catch (error) {
-        console.error('Error loading data:', error);
+        devError('Error loading data:', error);
       }
     };
     loadData();
@@ -65,7 +66,7 @@ export default function MarksEntryView({ profile }: MarksEntryViewProps) {
         setSubjects(subjectsData);
         setStudents(studentsData);
       } catch (error) {
-        console.error('Error loading data:', error);
+        devError('Error loading data:', error);
       }
     };
     loadData();
@@ -83,7 +84,7 @@ export default function MarksEntryView({ profile }: MarksEntryViewProps) {
         const studentsData = await loadStudentsForMarks(token, selectedClass);
         setStudents(studentsData);
       } catch (error) {
-        console.error('Error loading students:', error);
+        devError('Error loading students:', error);
       }
     };
     loadData();
@@ -119,7 +120,7 @@ export default function MarksEntryView({ profile }: MarksEntryViewProps) {
       alert('Marks saved successfully!');
       setMarksData({});
     } catch (error: any) {
-      alert(error.message || 'Failed to save marks');
+      alert('Failed to save marks');
     }
   };
 

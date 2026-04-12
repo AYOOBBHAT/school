@@ -130,7 +130,7 @@ export function SalaryScreen({}: Props) {
           setStructureModalOpen(false);
         },
         onError: (e: unknown) => {
-          Alert.alert('Error', e instanceof Error ? e.message : 'Failed to save');
+          Alert.alert('Error', 'Failed to save');
         },
       }
     );

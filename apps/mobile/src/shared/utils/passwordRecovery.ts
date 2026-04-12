@@ -48,28 +48,37 @@ export function cooldownSecondsRemaining(untilMs: number): number {
   return Math.max(0, Math.ceil((untilMs - Date.now()) / 1000));
 }
 
-/** Map backend-ish text to safe copy without echoing raw errors. */
+/** Map backend-ish text to safe copy — never show raw API errors. */
 export function mapVerifyErrorToMessage(backendError: string | undefined): string {
   const msg = (backendError || '').toLowerCase();
-  if (!msg) return 'Could not reset password. Please try again.';
-  if (msg.includes('expired')) return 'That code has expired. Please request a new code.';
-  if (msg.includes('invalid')) return 'That code is not valid. Please check and try again, or request a new code.';
-  if (msg.includes('rate') || msg.includes('limit') || msg.includes('throttle') || msg.includes('too many') || msg.includes('429')) {
-    return 'Too many attempts. Please wait a few minutes and try again.';
+  if (!msg) return 'Something went wrong';
+  if (msg.includes('expired') || msg.includes('invalid')) return 'Invalid or expired code';
+  if (
+    msg.includes('rate') ||
+    msg.includes('limit') ||
+    msg.includes('throttle') ||
+    msg.includes('too many') ||
+    msg.includes('429')
+  ) {
+    return 'Too many attempts, try again later';
   }
-  return 'Could not reset password. Please try again.';
+  return 'Something went wrong';
+}
+
+export function safeRequestOtpError(): string {
+  return 'Something went wrong';
 }
 
 export function mapResetPasswordError(raw: string | undefined): string {
   const msg = (raw || '').toLowerCase();
-  if (!msg) return 'Could not update your password. Please try again.';
+  if (!msg) return 'Something went wrong';
   if (msg.includes('session') || msg.includes('jwt') || msg.includes('token') || msg.includes('unauthor')) {
     return 'Your session expired. Please sign in again.';
   }
   if (msg.includes('password') && (msg.includes('weak') || msg.includes('short') || msg.includes('length'))) {
     return 'Password does not meet requirements. Use at least 8 characters.';
   }
-  return 'Could not update your password. Please try again.';
+  return 'Something went wrong';
 }
 
 /** Public POST (no bearer) for forgot-password-request. */
@@ -82,7 +91,7 @@ export async function postForgotPasswordRequest(endpointPath: string, body: Reco
   });
   await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error('Could not send a code right now. Please try again.');
+    throw new Error(safeRequestOtpError());
   }
 }
 

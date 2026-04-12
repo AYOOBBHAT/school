@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../utils/devLog';
 import { useState, useEffect, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@school/ui';
@@ -55,8 +56,8 @@ export default function Signup() {
         // If no join code in response, redirect to login
         navigate('/login');
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch {
+      setError('Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -68,7 +69,7 @@ export default function Signup() {
         await navigator.clipboard.writeText(joinCode);
         alert('Join code copied to clipboard!');
       } catch (err) {
-        console.error('Failed to copy:', err);
+        devError('Failed to copy:', err);
       }
     }
   };

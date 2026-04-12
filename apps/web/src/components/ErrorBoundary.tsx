@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../utils/devLog';
 import { Component, ErrorInfo, ReactNode } from 'react';
 
 interface Props {
@@ -21,7 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    devError('ErrorBoundary caught an error:', error, errorInfo);
   }
 
   handleReset = () => {
@@ -39,9 +40,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6 text-center">
             <div className="text-6xl mb-4">⚠️</div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Something went wrong</h2>
-            <p className="text-gray-600 mb-6">
-              {this.state.error?.message || 'An unexpected error occurred'}
-            </p>
+            <p className="text-gray-600 mb-6">An unexpected error occurred</p>
             <button
               onClick={this.handleReset}
               className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition font-semibold"

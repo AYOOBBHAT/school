@@ -79,9 +79,8 @@ export function ResetPasswordScreen({ navigation }: Props) {
           navigation.goBack();
         }
       }, 2000);
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Could not update your password. Please try again.';
-      setError(message);
+    } catch {
+      setError('Something went wrong');
     } finally {
       if (!completedRef.current) {
         setLoading(false);

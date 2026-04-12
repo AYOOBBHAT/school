@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../utils/supabase';
 import { fetchStudentProfile } from '../../../services/student.service';
@@ -20,11 +21,9 @@ export function useStudentProfile() {
       // Load student profile (auth is already verified by useStudentAuth)
       const data = await fetchStudentProfile(token);
       setProfile(data.student);
-    } catch (error: any) {
-      console.error('[useStudentProfile] Error loading profile:', error);
-      // Don't redirect on error - just show error state
-      if (error.message?.includes('404') || error.message?.includes('not found')) {
-        console.error('[useStudentProfile] Student record not found');
+    } catch (error: unknown) {
+      devError('[useStudentProfile] Error loading profile:', error);
+      if (error instanceof Error && error.name === 'StudentProfileNotFoundError') {
         setProfile(null);
       }
     } finally {

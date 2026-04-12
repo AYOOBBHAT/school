@@ -173,7 +173,7 @@ export function SalaryPaymentScreen({ navigation }: Props) {
           refetch();
         },
         onError: (error: unknown) => {
-          Alert.alert('Error', error instanceof Error ? error.message : 'Failed to record payment');
+          Alert.alert('Error', 'Failed to record payment');
         },
       }
     );

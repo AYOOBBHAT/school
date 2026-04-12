@@ -1,3 +1,4 @@
+import { devError, devLog, devWarn } from '../../../utils/devLog';
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { supabase } from '../../../utils/supabase';
 import {
@@ -34,8 +35,8 @@ export default function SubjectsManagement() {
       const data = await loadAllSubjectsForManagement(token);
       setSubjects(data.subjects || []);
     } catch (error: any) {
-      console.error('Error loading subjects:', error);
-      setError(error.message || 'Failed to load subjects. Please try again.');
+      devError('Error loading subjects:', error);
+      setError('Failed to load subjects. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -58,8 +59,8 @@ export default function SubjectsManagement() {
       setFormData({ name: '', code: '' });
       setShowModal(false);
       loadSubjects();
-    } catch (error: any) {
-      alert(error.message || 'Failed to create subject');
+    } catch {
+      alert('Failed to create subject');
     }
   };
 
@@ -79,7 +80,7 @@ export default function SubjectsManagement() {
       alert('Subject deleted successfully!');
       loadSubjects();
     } catch (error: any) {
-      alert(error.message || 'Failed to delete subject');
+      alert('Failed to delete subject');
     }
   };
 

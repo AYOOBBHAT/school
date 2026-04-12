@@ -53,9 +53,8 @@ export function StaffScreen({ navigation }: StaffScreenProps) {
           setShowAddModal(false);
           setFormData(initialForm);
         },
-        onError: (error: unknown) => {
-          const message = error instanceof Error ? error.message : 'Failed to add staff member';
-          Alert.alert('Error', message);
+        onError: () => {
+          Alert.alert('Error', 'Failed to add staff member');
         },
       }
     );

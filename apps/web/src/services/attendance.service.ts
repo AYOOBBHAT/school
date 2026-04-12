@@ -95,7 +95,7 @@ export async function saveAttendance(
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to save attendance');
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to save attendance');
   }
 }

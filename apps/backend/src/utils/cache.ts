@@ -1,4 +1,5 @@
 import { redis, CACHE_TTL } from './redis.js';
+import logger from './logger.js';
 
 /**
  * Cache-aside pattern: Check cache first, fetch if miss, store result
@@ -25,9 +26,9 @@ export async function cacheFetch<T>(
     await redis.set(key, fresh, { ex: CACHE_TTL });
 
     return fresh;
-  } catch (error) {
+  } catch {
     // If Redis fails, fall back to direct fetch (graceful degradation)
-    console.error('[cache] Redis error, falling back to direct fetch:', error);
+    logger.warn('[cache] Redis unavailable, falling back to direct fetch');
     return fetcher();
   }
 }
@@ -58,8 +59,7 @@ export async function invalidateCache(key: string) {
     } else {
     await redis.del(key);
     }
-  } catch (error) {
-    // Log but don't throw - cache invalidation failure shouldn't break the request
-    console.error('[cache] Failed to invalidate cache:', error);
+  } catch {
+    logger.warn('[cache] Failed to invalidate cache');
   }
 }

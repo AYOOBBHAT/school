@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { devError } from '../utils/devLog';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
 interface Props {
@@ -22,7 +23,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    devError('ErrorBoundary caught an error:', error, errorInfo);
   }
 
   handleReset = () => {
@@ -38,7 +39,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <View style={styles.container}>
           <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.message}>{this.state.error?.message || 'An unexpected error occurred'}</Text>
+          <Text style={styles.message}>An unexpected error occurred</Text>
           <TouchableOpacity style={styles.button} onPress={this.handleReset}>
             <Text style={styles.buttonText}>Try Again</Text>
           </TouchableOpacity>
