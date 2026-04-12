@@ -711,6 +711,30 @@ type OtpStoredPayload = {
   attempts: number;
 };
 
+/**
+ * Upstash `redis.get` may return a parsed object (automaticDeserialization default) even though we
+ * `set` JSON.stringify — double JSON.parse throws, which previously wiped the key in catch blocks.
+ */
+function parseOtpRedisValue(raw: unknown): OtpStoredPayload | null {
+  if (raw == null) return null;
+  if (typeof raw === 'object' && raw !== null && typeof (raw as OtpStoredPayload).otp_hash === 'string') {
+    const p = raw as OtpStoredPayload;
+    if (p.type !== 'student' && p.type !== 'email') return null;
+    return p;
+  }
+  if (typeof raw === 'string') {
+    try {
+      const p = JSON.parse(raw) as OtpStoredPayload;
+      if (typeof p?.otp_hash !== 'string') return null;
+      if (p.type !== 'student' && p.type !== 'email') return null;
+      return p;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 function otpRedisKey(profileId: string) {
   return `otp:${profileId}`;
 }
@@ -782,14 +806,10 @@ async function storePasswordResetOtp(params: {
 
 async function incrementOtpAttemptsOrInvalidate(profileId: string): Promise<void> {
   const key = otpRedisKey(profileId);
-  const raw = await redis.get<string>(key);
-  if (raw == null) return;
-
-  let parsed: OtpStoredPayload;
-  try {
-    parsed = JSON.parse(raw) as OtpStoredPayload;
-  } catch {
-    await redis.del(key);
+  const raw = await redis.get(key);
+  const parsed = parseOtpRedisValue(raw);
+  if (parsed == null) {
+    if (raw != null) await redis.del(key);
     return;
   }
 
@@ -1141,18 +1161,12 @@ router.post('/forgot-password-verify', async (req, res) => {
     const otpKey = otpRedisKey(profileId);
     // eslint-disable-next-line no-console
     console.log('VERIFY OTP KEY:', otpKey);
-    const raw = await redis.get<string>(otpKey);
+    const raw = await redis.get(otpKey);
     // eslint-disable-next-line no-console
     console.log('REDIS VALUE:', raw);
-    if (raw == null) {
-      return res.status(400).json({ error: 'Invalid or expired OTP' });
-    }
-
-    let payload: OtpStoredPayload;
-    try {
-      payload = JSON.parse(raw) as OtpStoredPayload;
-    } catch {
-      await redis.del(otpKey);
+    const payload = parseOtpRedisValue(raw);
+    if (payload == null) {
+      if (raw != null) await redis.del(otpKey);
       return res.status(400).json({ error: 'Invalid or expired OTP' });
     }
 

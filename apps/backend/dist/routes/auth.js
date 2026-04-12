@@ -606,6 +606,34 @@ const OTP_MAX_REQUESTS_PER_WINDOW = 3;
 const OTP_REQUEST_WINDOW_SECONDS = 600;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_BCRYPT_ROUNDS = 12;
+/**
+ * Upstash `redis.get` may return a parsed object (automaticDeserialization default) even though we
+ * `set` JSON.stringify — double JSON.parse throws, which previously wiped the key in catch blocks.
+ */
+function parseOtpRedisValue(raw) {
+    if (raw == null)
+        return null;
+    if (typeof raw === 'object' && raw !== null && typeof raw.otp_hash === 'string') {
+        const p = raw;
+        if (p.type !== 'student' && p.type !== 'email')
+            return null;
+        return p;
+    }
+    if (typeof raw === 'string') {
+        try {
+            const p = JSON.parse(raw);
+            if (typeof p?.otp_hash !== 'string')
+                return null;
+            if (p.type !== 'student' && p.type !== 'email')
+                return null;
+            return p;
+        }
+        catch {
+            return null;
+        }
+    }
+    return null;
+}
 function otpRedisKey(profileId) {
     return `otp:${profileId}`;
 }
@@ -665,14 +693,10 @@ async function storePasswordResetOtp(params) {
 async function incrementOtpAttemptsOrInvalidate(profileId) {
     const key = otpRedisKey(profileId);
     const raw = await redis.get(key);
-    if (raw == null)
-        return;
-    let parsed;
-    try {
-        parsed = JSON.parse(raw);
-    }
-    catch {
-        await redis.del(key);
+    const parsed = parseOtpRedisValue(raw);
+    if (parsed == null) {
+        if (raw != null)
+            await redis.del(key);
         return;
     }
     const nextAttempts = (parsed.attempts || 0) + 1;
@@ -681,22 +705,18 @@ async function incrementOtpAttemptsOrInvalidate(profileId) {
         return;
     }
     parsed.attempts = nextAttempts;
-    const ttl = await redis.ttl(key);
-    // Upstash ttl() can return -1 (no expiry) or -2 (missing). Do not reuse invalid TTL.
-    if (ttl <= 0) {
-        await redis.del(key);
-        return;
-    }
-    await redis.set(key, JSON.stringify(parsed), { ex: ttl });
+    // Fixed TTL — do not reuse redis.ttl(); Upstash/replication quirks can return 0/negative and
+    // incorrectly delete the key, making the next verify look "expired" immediately.
+    await redis.set(key, JSON.stringify(parsed), { ex: OTP_REDIS_TTL_SECONDS });
 }
 function otpMatchesRequestContext(payload, ctx) {
     if (ctx.flow === 'student') {
         return (payload.type === 'student' &&
-            (payload.username || '') === ctx.username.trim() &&
+            (payload.username || '').trim() === ctx.username.trim() &&
             payload.schoolId === ctx.schoolId);
     }
     return (payload.type === 'email' &&
-        (payload.email || '').toLowerCase() === ctx.email.trim().toLowerCase());
+        (payload.email || '').trim().toLowerCase() === ctx.email.trim().toLowerCase());
 }
 // Forgot password - Request OTP
 router.post('/forgot-password-request', async (req, res) => {
@@ -968,16 +988,15 @@ router.post('/forgot-password-verify', async (req, res) => {
             return res.status(400).json({ error: 'Invalid or expired OTP' });
         }
         const otpKey = otpRedisKey(profileId);
+        // eslint-disable-next-line no-console
+        console.log('VERIFY OTP KEY:', otpKey);
         const raw = await redis.get(otpKey);
-        if (raw == null) {
-            return res.status(400).json({ error: 'Invalid or expired OTP' });
-        }
-        let payload;
-        try {
-            payload = JSON.parse(raw);
-        }
-        catch {
-            await redis.del(otpKey);
+        // eslint-disable-next-line no-console
+        console.log('REDIS VALUE:', raw);
+        const payload = parseOtpRedisValue(raw);
+        if (payload == null) {
+            if (raw != null)
+                await redis.del(otpKey);
             return res.status(400).json({ error: 'Invalid or expired OTP' });
         }
         if ((payload.attempts || 0) >= OTP_MAX_ATTEMPTS) {
