@@ -898,6 +898,13 @@ router.post('/forgot-password-request', async (req, res) => {
     }
 
     const otpKey = otpRedisKey(profile.id);
+    const existingOtp = await redis.get<string>(otpKey);
+    if (existingOtp) {
+      return res.json({
+        message: 'If a student account exists with this username, an OTP has been sent to the registered email address.'
+      });
+    }
+
     const { otp } = await storePasswordResetOtp({
       profileId: profile.id,
       type: 'student',
@@ -997,6 +1004,11 @@ router.post('/forgot-password-request-email', async (req, res) => {
     }
 
     const otpKey = otpRedisKey(profile.id);
+    const existingOtpEmail = await redis.get<string>(otpKey);
+    if (existingOtpEmail) {
+      return res.json({ message: 'If an account exists with this email, an OTP has been sent.' });
+    }
+
     const { otp } = await storePasswordResetOtp({
       profileId: profile.id,
       type: 'email',

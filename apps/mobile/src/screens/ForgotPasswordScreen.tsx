@@ -38,6 +38,8 @@ export function ForgotPasswordScreen({ navigation }: Props) {
   const [passwordResetComplete, setPasswordResetComplete] = useState(false);
   const passwordResetCompleteRef = useRef(false);
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Synchronous guard — blocks double-tap before `requestingOtp` state updates. */
+  const otpRequestInFlightRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -128,7 +130,8 @@ export function ForgotPasswordScreen({ navigation }: Props) {
   };
 
   const requestOtp = async () => {
-    if (requestingOtp) return;
+    if (requestingOtp || otpRequestInFlightRef.current) return;
+    otpRequestInFlightRef.current = true;
     setRequestingOtp(true);
     setError('');
     if (!passwordResetComplete) setInfo('');
@@ -145,13 +148,13 @@ export function ForgotPasswordScreen({ navigation }: Props) {
       const message = e instanceof Error ? e.message : 'Failed to request code';
       setError(message);
     } finally {
+      otpRequestInFlightRef.current = false;
       setRequestingOtp(false);
     }
   };
 
   const handleResend = async () => {
-    if (requestingOtp) return;
-    if (!canResend) return;
+    if (!canResend || requestingOtp || otpRequestInFlightRef.current) return;
     await requestOtp();
   };
 
@@ -322,7 +325,10 @@ export function ForgotPasswordScreen({ navigation }: Props) {
               )}
               <Button
                 title="Send code"
-                onPress={requestOtp}
+                onPress={() => {
+                  if (requestingOtp || otpRequestInFlightRef.current || passwordResetComplete) return;
+                  void requestOtp();
+                }}
                 loading={requestingOtp}
                 disabled={requestingOtp || passwordResetComplete}
               />

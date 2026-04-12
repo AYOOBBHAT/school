@@ -58,6 +58,8 @@ export default function ForgotPassword() {
   const [passwordResetComplete, setPasswordResetComplete] = useState(false);
   const passwordResetCompleteRef = useRef(false);
   const redirectTimerRef = useRef<number | null>(null);
+  /** Synchronous guard — blocks double-submit before `requestingOtp` state updates. */
+  const otpRequestInFlightRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -163,7 +165,8 @@ export default function ForgotPassword() {
   };
 
   const requestOtp = async () => {
-    if (requestingOtp) return;
+    if (requestingOtp || otpRequestInFlightRef.current) return;
+    otpRequestInFlightRef.current = true;
     setRequestingOtp(true);
     setError('');
     if (!step2Locked) setSuccess('');
@@ -192,19 +195,19 @@ export default function ForgotPassword() {
       const message = err instanceof Error ? err.message : 'Failed to request OTP';
       setError(message);
     } finally {
+      otpRequestInFlightRef.current = false;
       setRequestingOtp(false);
     }
   };
 
   const handleRequestOTP = async (e: FormEvent) => {
     e.preventDefault();
-    if (requestingOtp || passwordResetComplete) return;
+    if (requestingOtp || otpRequestInFlightRef.current || passwordResetComplete) return;
     await requestOtp();
   };
 
   const handleResendClick = async () => {
-    if (requestingOtp) return;
-    if (!canResend) return;
+    if (!canResend || requestingOtp || otpRequestInFlightRef.current) return;
     await requestOtp();
   };
 
@@ -523,7 +526,7 @@ export default function ForgotPassword() {
               <div className="flex items-center justify-between gap-2">
                 <button
                   type="button"
-                  disabled={!canResend}
+                  disabled={!canResend || requestingOtp}
                   onClick={handleResendClick}
                   className="text-sm font-semibold text-blue-600 hover:text-blue-700 disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
