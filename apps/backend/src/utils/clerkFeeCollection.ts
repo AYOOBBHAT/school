@@ -30,15 +30,20 @@ interface MonthlyFeeComponent {
   effective_from?: string;
 }
 
+export interface ClassFeeLine {
+  fee_category_id: string | null;
+  category_name: string;
+  amount: number;
+  fee_cycle: string;
+  billing_frequency: string;
+  start_date: string;
+}
+
 interface FeeStructure {
-  class_fee?: {
-    fee_category_id: string;
-    category_name: string;
-    amount: number;
-    fee_cycle: string;
-    billing_frequency: string;
-    start_date: string;
-  };
+  /** First class line — same as `class_fees[0]` when present (backward compatible API shape). */
+  class_fee?: ClassFeeLine;
+  /** All class fee version lines active as of the snapshot date. */
+  class_fees: ClassFeeLine[];
   transport_fee?: {
     route_id: string;
     route_name: string;
@@ -57,17 +62,65 @@ interface FeeStructure {
   }>;
 }
 
+/** Calendar date in local timezone (avoids UTC drift for version cutoffs). */
+function toLocalYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** Last calendar day of (year, month) — used as version / override snapshot date. */
+export function lastDayOfMonth(year: number, month: number): Date {
+  return new Date(year, month, 0);
+}
+
+async function fetchStudentFeeOverrideAsOf(
+  studentId: string,
+  feeCategoryId: string | null,
+  asOfDate: Date,
+  adminSupabase: any
+): Promise<any | null> {
+  const dateStr = toLocalYmd(asOfDate);
+  let q = adminSupabase
+    .from('student_fee_overrides')
+    .select('*')
+    .eq('student_id', studentId)
+    .eq('is_active', true)
+    .lte('effective_from', dateStr)
+    .or(`effective_to.is.null,effective_to.gte.${dateStr}`)
+    .order('effective_from', { ascending: false })
+    .limit(1);
+
+  if (feeCategoryId) {
+    q = q.eq('fee_category_id', feeCategoryId);
+  } else {
+    q = q.is('fee_category_id', null);
+  }
+
+  const { data } = await q.maybeSingle();
+  return data;
+}
+
+function applyOverrideToAmount(baseAmount: number, override: any | null): number {
+  if (!override) return baseAmount;
+  if (override.is_full_free) return 0;
+  if (override.custom_fee_amount != null) return parseFloat(override.custom_fee_amount);
+  if (override.discount_amount) return Math.max(0, baseAmount - parseFloat(override.discount_amount));
+  return baseAmount;
+}
+
 /**
- * Load assigned fee structure for a student
+ * Build fee structure from version tables only, as of `asOfDate` (typically last day of billing month).
  */
-export async function loadAssignedFeeStructure(
+export async function loadAssignedFeeStructureAsOf(
   studentId: string,
   schoolId: string,
-  adminSupabase: any
+  adminSupabase: any,
+  asOfDate: Date
 ): Promise<FeeStructure> {
-  const today = new Date().toISOString().split('T')[0];
+  const dateStr = toLocalYmd(asOfDate);
 
-  // Get student details
   const { data: student, error: studentError } = await adminSupabase
     .from('students')
     .select('id, class_group_id, admission_date')
@@ -79,69 +132,75 @@ export async function loadAssignedFeeStructure(
     throw new Error('Student not found');
   }
 
-  const admissionDate = student.admission_date || today;
-  const result: FeeStructure = { custom_fees: [] };
+  const admissionDate = student.admission_date || dateStr;
+  const result: FeeStructure = { class_fees: [], custom_fees: [] };
 
-  // 1. Get Class Fee
+  // 1) Class fees — class_fee_versions (one line per fee_category_id + fee_cycle)
   if (student.class_group_id) {
-    const { data: classFeeDefaults } = await adminSupabase
-      .from('class_fee_defaults')
-      .select(`
-        id,
+    const { data: versionRows, error: cvError } = await adminSupabase
+      .from('class_fee_versions')
+      .select(
+        `
         fee_category_id,
-        amount,
         fee_cycle,
+        amount,
+        effective_from_date,
         fee_categories:fee_category_id(id, name)
-      `)
-      .eq('class_group_id', student.class_group_id)
+      `
+      )
       .eq('school_id', schoolId)
-      .eq('is_active', true)
-      .limit(1)
-      .maybeSingle();
+      .eq('class_group_id', student.class_group_id)
+      .lte('effective_from_date', dateStr)
+      .or(`effective_to_date.is.null,effective_to_date.gte.${dateStr}`);
 
-    if (classFeeDefaults) {
-      // Check for student-specific override
-      const { data: override } = await adminSupabase
-        .from('student_fee_overrides')
-        .select('*')
-        .eq('student_id', studentId)
-        .eq('fee_category_id', classFeeDefaults.fee_category_id)
-        .eq('is_active', true)
-        .lte('effective_from', today)
-        .or(`effective_to.is.null,effective_to.gte.${today}`)
-        .order('effective_from', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    if (cvError) {
+      throw new Error(`Failed to load class fee versions: ${cvError.message}`);
+    }
 
-      let finalAmount = parseFloat(classFeeDefaults.amount || 0);
-      if (override) {
-        if (override.is_full_free) {
-          finalAmount = 0;
-        } else if (override.custom_fee_amount) {
-          finalAmount = parseFloat(override.custom_fee_amount);
-        } else if (override.discount_amount) {
-          finalAmount = Math.max(0, finalAmount - parseFloat(override.discount_amount));
-        }
+    const sorted = [...(versionRows || [])].sort((a: any, b: any) =>
+      String(b.effective_from_date).localeCompare(String(a.effective_from_date))
+    );
+    const byKey = new Map<string, any>();
+    for (const row of sorted) {
+      const k = `${row.fee_category_id ?? ''}|${row.fee_cycle}`;
+      if (!byKey.has(k)) {
+        byKey.set(k, row);
       }
+    }
 
-      result.class_fee = {
-        fee_category_id: classFeeDefaults.fee_category_id,
-        category_name: classFeeDefaults.fee_categories?.name || 'Class Fee',
+    for (const row of byKey.values()) {
+      const catId = row.fee_category_id as string | null;
+      const override = await fetchStudentFeeOverrideAsOf(studentId, catId, asOfDate, adminSupabase);
+      const base = parseFloat(row.amount || 0);
+      const finalAmount = applyOverrideToAmount(base, override);
+      const name =
+        (row.fee_categories && (Array.isArray(row.fee_categories) ? row.fee_categories[0]?.name : row.fee_categories?.name)) ||
+        'Class Fee';
+
+      result.class_fees.push({
+        fee_category_id: catId,
+        category_name: name,
         amount: finalAmount,
-        fee_cycle: classFeeDefaults.fee_cycle,
-        billing_frequency: classFeeDefaults.fee_cycle,
+        fee_cycle: row.fee_cycle,
+        billing_frequency: row.fee_cycle,
         start_date: admissionDate
-      };
+      });
+    }
+
+    if (result.class_fees.length > 0) {
+      result.class_fee = result.class_fees[0];
     }
   }
 
-  // 2. Get Transport Fee (if assigned)
+  // 2) Transport — transport_fee_versions (route name + class); amounts are totals per version row
   const { data: studentTransport } = await adminSupabase
     .from('student_transport')
-    .select(`
+    .select(
+      `
       route_id,
       transport_routes:route_id(id, route_name)
-    `)
+    `
+    )
     .eq('student_id', studentId)
     .eq('school_id', schoolId)
     .eq('is_active', true)
@@ -149,39 +208,57 @@ export async function loadAssignedFeeStructure(
     .limit(1)
     .maybeSingle();
 
-  if (studentTransport && studentTransport.route_id) {
-    const { data: transportFee } = await adminSupabase
-      .from('transport_fees')
-      .select(`
-        id,
-        base_fee,
-        escort_fee,
-        fuel_surcharge,
-        fee_cycle
-      `)
-      .eq('route_id', studentTransport.route_id)
-      .eq('school_id', schoolId)
-      .eq('is_active', true)
-      .limit(1)
-      .maybeSingle();
+  const routeJoin = studentTransport?.transport_routes;
+  const routeObj = Array.isArray(routeJoin) ? routeJoin[0] : routeJoin;
 
-    if (transportFee) {
-      const totalAmount = parseFloat(transportFee.base_fee || 0) +
-                         parseFloat(transportFee.escort_fee || 0) +
-                         parseFloat(transportFee.fuel_surcharge || 0);
+  if (studentTransport?.route_id && student.class_group_id) {
+    const routeNameRaw = routeObj?.route_name;
+    const routeName =
+      typeof routeNameRaw === 'string'
+        ? routeNameRaw
+        : (routeNameRaw as { route_name?: string } | undefined)?.route_name;
 
-      result.transport_fee = {
-        route_id: studentTransport.route_id,
-        route_name: studentTransport.transport_routes?.route_name || 'Transport',
-        amount: totalAmount,
-        fee_cycle: transportFee.fee_cycle,
-        billing_frequency: transportFee.fee_cycle,
-        start_date: admissionDate
-      };
+    if (routeName) {
+      const { data: tvRows, error: tvError } = await adminSupabase
+        .from('transport_fee_versions')
+        .select('fee_cycle, amount, effective_from_date')
+        .eq('school_id', schoolId)
+        .eq('class_group_id', student.class_group_id)
+        .eq('route_name', routeName)
+        .lte('effective_from_date', dateStr)
+        .or(`effective_to_date.is.null,effective_to_date.gte.${dateStr}`);
+
+      if (tvError) {
+        throw new Error(`Failed to load transport fee versions: ${tvError.message}`);
+      }
+
+      const tSorted = [...(tvRows || [])].sort((a: any, b: any) =>
+        String(b.effective_from_date).localeCompare(String(a.effective_from_date))
+      );
+      const byCycle = new Map<string, any>();
+      for (const row of tSorted) {
+        if (!byCycle.has(row.fee_cycle)) {
+          byCycle.set(row.fee_cycle, row);
+        }
+      }
+
+      const tv = byCycle.get('monthly') || tSorted[0];
+      if (tv) {
+        const totalAmount = parseFloat(tv.amount || 0);
+
+        result.transport_fee = {
+          route_id: studentTransport.route_id,
+          route_name: routeName || 'Transport',
+          amount: totalAmount,
+          fee_cycle: tv.fee_cycle,
+          billing_frequency: tv.fee_cycle,
+          start_date: admissionDate
+        };
+      }
     }
   }
 
-  // 3. Get Custom Fees
+  // 3) Custom / optional — optional_fee_versions
   const { data: customFeeCategories } = await adminSupabase
     .from('fee_categories')
     .select('id')
@@ -189,62 +266,91 @@ export async function loadAssignedFeeStructure(
     .eq('fee_type', 'custom')
     .eq('is_active', true);
 
-  if (customFeeCategories && customFeeCategories.length > 0) {
+  if (customFeeCategories?.length) {
     const customCategoryIds = customFeeCategories.map((cat: any) => cat.id);
+    const cg = student.class_group_id;
 
-    const { data: customFees } = await adminSupabase
-      .from('optional_fee_definitions')
-      .select(`
-        id,
+    let optQuery = adminSupabase
+      .from('optional_fee_versions')
+      .select(
+        `
         fee_category_id,
-        amount,
         fee_cycle,
+        amount,
+        effective_from_date,
         class_group_id,
         fee_categories:fee_category_id(id, name)
-      `)
-      .in('fee_category_id', customCategoryIds)
+      `
+      )
       .eq('school_id', schoolId)
-      .eq('is_active', true)
-      .or(`class_group_id.eq.${student.class_group_id},class_group_id.is.null`);
+      .in('fee_category_id', customCategoryIds)
+      .lte('effective_from_date', dateStr)
+      .or(`effective_to_date.is.null,effective_to_date.gte.${dateStr}`);
 
-    if (customFees) {
-      for (const customFee of customFees) {
-        // Check for student override
-        const { data: override } = await adminSupabase
-          .from('student_fee_overrides')
-          .select('*')
-          .eq('student_id', studentId)
-          .eq('fee_category_id', customFee.fee_category_id)
-          .eq('is_active', true)
-          .lte('effective_from', today)
-          .or(`effective_to.is.null,effective_to.gte.${today}`)
-          .limit(1)
-          .maybeSingle();
+    if (cg) {
+      optQuery = optQuery.or(`class_group_id.eq.${cg},class_group_id.is.null`);
+    } else {
+      optQuery = optQuery.is('class_group_id', null);
+    }
 
-        let finalAmount = parseFloat(customFee.amount || 0);
-        if (override) {
-          if (override.is_full_free) {
-            finalAmount = 0;
-          } else if (override.custom_fee_amount) {
-            finalAmount = parseFloat(override.custom_fee_amount);
-          } else if (override.discount_amount) {
-            finalAmount = Math.max(0, finalAmount - parseFloat(override.discount_amount));
-          }
-        }
+    const { data: optRows, error: optErr } = await optQuery;
 
-        result.custom_fees.push({
-          fee_category_id: customFee.fee_category_id,
-          category_name: customFee.fee_categories?.name || 'Custom Fee',
-          amount: finalAmount,
-          fee_cycle: customFee.fee_cycle,
-          billing_frequency: customFee.fee_cycle,
-          start_date: admissionDate
-        });
-      }
+    if (optErr) {
+      throw new Error(`Failed to load optional fee versions: ${optErr.message}`);
+    }
+
+    const groups = new Map<string, any[]>();
+    for (const row of optRows || []) {
+      const k = `${row.fee_category_id}|${row.fee_cycle}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(row);
+    }
+
+    for (const [, rows] of groups) {
+      rows.sort((a: any, b: any) => {
+        const c = String(b.effective_from_date).localeCompare(String(a.effective_from_date));
+        if (c !== 0) return c;
+        if (!cg) return 0;
+        const ap = a.class_group_id === cg ? 1 : 0;
+        const bp = b.class_group_id === cg ? 1 : 0;
+        return bp - ap;
+      });
+      const customFee = rows[0];
+      const override = await fetchStudentFeeOverrideAsOf(
+        studentId,
+        customFee.fee_category_id,
+        asOfDate,
+        adminSupabase
+      );
+      const base = parseFloat(customFee.amount || 0);
+      const finalAmount = applyOverrideToAmount(base, override);
+      const catJoin = customFee.fee_categories;
+      const catName =
+        (catJoin && (Array.isArray(catJoin) ? catJoin[0]?.name : catJoin?.name)) || 'Custom Fee';
+
+      result.custom_fees.push({
+        fee_category_id: customFee.fee_category_id,
+        category_name: catName,
+        amount: finalAmount,
+        fee_cycle: customFee.fee_cycle,
+        billing_frequency: customFee.fee_cycle,
+        start_date: admissionDate
+      });
     }
   }
 
   return result;
+}
+
+/**
+ * Load assigned fee structure for a student (snapshot as of today).
+ */
+export async function loadAssignedFeeStructure(
+  studentId: string,
+  schoolId: string,
+  adminSupabase: any
+): Promise<FeeStructure> {
+  return loadAssignedFeeStructureAsOf(studentId, schoolId, adminSupabase, new Date());
 }
 
 /**
@@ -300,33 +406,42 @@ export async function generateMonthlyFeeComponents(
     return false;
   };
 
-  // Class Fee
-  if (feeStructure.class_fee && shouldBillThisMonth(feeStructure.class_fee.fee_cycle, feeStructure.class_fee.start_date)) {
-    const amount = feeStructure.class_fee.fee_cycle === 'monthly' 
-      ? feeStructure.class_fee.amount 
-      : feeStructure.class_fee.fee_cycle === 'quarterly'
-        ? feeStructure.class_fee.amount / 3
-        : feeStructure.class_fee.fee_cycle === 'yearly'
-          ? feeStructure.class_fee.amount / 12
-          : feeStructure.class_fee.amount;
+  const classLines =
+    feeStructure.class_fees.length > 0
+      ? feeStructure.class_fees
+      : feeStructure.class_fee
+        ? [feeStructure.class_fee]
+        : [];
+
+  for (const cf of classLines) {
+    if (!cf || !shouldBillThisMonth(cf.fee_cycle, cf.start_date)) continue;
+
+    const amount =
+      cf.fee_cycle === 'monthly'
+        ? cf.amount
+        : cf.fee_cycle === 'quarterly'
+          ? cf.amount / 3
+          : cf.fee_cycle === 'yearly'
+            ? cf.amount / 12
+            : cf.amount;
 
     components.push({
       student_id: studentId,
       school_id: schoolId,
-      fee_category_id: feeStructure.class_fee.fee_category_id,
+      fee_category_id: cf.fee_category_id,
       fee_type: 'class-fee',
-      fee_name: feeStructure.class_fee.category_name,
+      fee_name: cf.category_name,
       period_year: year,
       period_month: month,
       period_start: periodStart,
       period_end: periodEnd,
       fee_amount: amount,
-      fee_cycle: feeStructure.class_fee.fee_cycle as any,
+      fee_cycle: cf.fee_cycle as any,
       paid_amount: 0,
       pending_amount: amount,
       status: 'pending',
       due_date: dueDate,
-      effective_from: feeStructure.class_fee.start_date
+      effective_from: cf.start_date
     });
   }
 
@@ -619,6 +734,48 @@ export async function checkMonthlyFeeComponentsExist(
   return !!existing;
 }
 
+/** Natural key: student + month + fee line (matches partial unique indexes). */
+export async function monthlyFeeComponentRowExists(
+  adminSupabase: any,
+  params: {
+    student_id: string;
+    school_id: string;
+    period_year: number;
+    period_month: number;
+    fee_type: string;
+    fee_category_id: string | null;
+    transport_route_id?: string | null;
+  }
+): Promise<boolean> {
+  let q = adminSupabase
+    .from('monthly_fee_components')
+    .select('id')
+    .eq('student_id', params.student_id)
+    .eq('school_id', params.school_id)
+    .eq('period_year', params.period_year)
+    .eq('period_month', params.period_month)
+    .eq('fee_type', params.fee_type);
+
+  if (params.fee_type === 'transport-fee') {
+    q = q.is('fee_category_id', null);
+    if (params.transport_route_id) {
+      q = q.eq('transport_route_id', params.transport_route_id);
+    } else {
+      q = q.is('transport_route_id', null);
+    }
+  } else if (params.fee_category_id) {
+    q = q.eq('fee_category_id', params.fee_category_id);
+  } else {
+    q = q.is('fee_category_id', null);
+  }
+
+  const { data, error } = await q.limit(1);
+  if (error) {
+    throw new Error(`monthlyFeeComponentRowExists: ${error.message}`);
+  }
+  return Array.isArray(data) && data.length > 0;
+}
+
 /**
  * Generate monthly fee components for a student (WRITE OPERATION)
  * 
@@ -638,18 +795,10 @@ export async function generateMonthlyFeeComponentsForStudent(
   targetYear?: number,
   targetMonth?: number
 ): Promise<{ generated: number; updated: number }> {
-  const feeStructure = await loadAssignedFeeStructure(studentId, schoolId, adminSupabase);
-  
-  // Check if no fee is assigned
-  if (!feeStructure.class_fee && !feeStructure.transport_fee && feeStructure.custom_fees.length === 0) {
-    return { generated: 0, updated: 0 }; // No fee configured
-  }
-
   const today = new Date();
   const currentYear = targetYear || today.getFullYear();
   const currentMonth = targetMonth || today.getMonth() + 1;
 
-  // Get student admission date
   const { data: student } = await adminSupabase
     .from('students')
     .select('admission_date')
@@ -661,9 +810,7 @@ export async function generateMonthlyFeeComponentsForStudent(
   const admissionMonth = admissionDate.getMonth() + 1;
 
   let generated = 0;
-  let updated = 0;
 
-  // Generate components from admission to target month (or current month)
   const endYear = targetYear || currentYear;
   const endMonth = targetMonth || currentMonth;
 
@@ -672,6 +819,17 @@ export async function generateMonthlyFeeComponentsForStudent(
     const monthLimit = year === endYear ? endMonth : 12;
 
     for (let month = startMonth; month <= monthLimit; month++) {
+      const asOfDate = lastDayOfMonth(year, month);
+      const feeStructure = await loadAssignedFeeStructureAsOf(studentId, schoolId, adminSupabase, asOfDate);
+
+      const hasAny =
+        feeStructure.class_fees.length > 0 ||
+        !!feeStructure.transport_fee ||
+        feeStructure.custom_fees.length > 0;
+      if (!hasAny) {
+        continue;
+      }
+
       const components = await generateMonthlyFeeComponents(
         studentId,
         schoolId,
@@ -681,54 +839,34 @@ export async function generateMonthlyFeeComponentsForStudent(
         adminSupabase
       );
 
-      // Batch upsert components
       for (const component of components) {
-        // Check if component already exists
-        let query = adminSupabase
-          .from('monthly_fee_components')
-          .select('id, paid_amount, pending_amount, status')
-          .eq('student_id', component.student_id)
-          .eq('period_year', component.period_year)
-          .eq('period_month', component.period_month)
-          .eq('fee_type', component.fee_type);
-        
-        // Handle fee_category_id (can be null/empty for transport)
-        if (component.fee_category_id && component.fee_type !== 'transport-fee') {
-          query = query.eq('fee_category_id', component.fee_category_id);
-        } else {
-          // For transport fees or when fee_category_id is null
-          query = query.is('fee_category_id', null);
-        }
-        
-        const { data: existing } = await query.maybeSingle();
+        const exists = await monthlyFeeComponentRowExists(adminSupabase, {
+          student_id: component.student_id,
+          school_id: component.school_id,
+          period_year: component.period_year,
+          period_month: component.period_month,
+          fee_type: component.fee_type,
+          fee_category_id: component.fee_category_id ?? null,
+          transport_route_id: component.transport_route_id ?? null
+        });
 
-        if (existing) {
-          // Update fee_amount if changed, but preserve payment info
-          await adminSupabase
-            .from('monthly_fee_components')
-            .update({
-              fee_amount: component.fee_amount,
-              pending_amount: Math.max(0, component.fee_amount - parseFloat(existing.paid_amount || 0)),
-              fee_name: component.fee_name,
-              transport_route_id: component.transport_route_id,
-              transport_route_name: component.transport_route_name,
-              due_date: component.due_date,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', existing.id);
-          updated++;
-        } else {
-          // Insert new component
-          await adminSupabase
-            .from('monthly_fee_components')
-            .insert(component);
-          generated++;
+        if (exists) {
+          continue;
         }
+
+        const { error: insertErr } = await adminSupabase.from('monthly_fee_components').insert(component);
+        if (insertErr?.code === '23505') {
+          continue;
+        }
+        if (insertErr) {
+          throw new Error(insertErr.message);
+        }
+        generated++;
       }
     }
   }
 
-  return { generated, updated };
+  return { generated, updated: 0 };
 }
 
 /**

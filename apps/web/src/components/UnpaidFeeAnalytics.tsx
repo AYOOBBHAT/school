@@ -101,6 +101,12 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
     enabled: !!timeScope, // Only fetch when timeScope is set
   });
 
+  useEffect(() => {
+    if (data?.summary) {
+      console.log('[UnpaidFeeAnalytics] summary', data.summary);
+    }
+  }, [data]);
+
   // Prepare chart data from single source of truth
   const chartData = useMemo(() => {
     if (!data?.chart_data) return [];
@@ -242,19 +248,21 @@ export default function UnpaidFeeAnalytics({ userRole, onCollectFee }: UnpaidFee
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="text-sm text-blue-600 font-medium">Total Students</div>
-              <div className="text-2xl font-bold text-blue-900">{data.summary.total_students}</div>
+              <div className="text-2xl font-bold text-blue-900">{data.summary?.total_students ?? 0}</div>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <div className="text-sm text-red-600 font-medium">Unpaid</div>
-              <div className="text-2xl font-bold text-red-900">{data.summary.unpaid_count}</div>
+              <div className="text-2xl font-bold text-red-900">{data.summary?.unpaid_count ?? 0}</div>
             </div>
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <div className="text-sm text-yellow-600 font-medium">Partially Paid</div>
-              <div className="text-2xl font-bold text-yellow-900">{data.summary.partially_paid_count}</div>
+              <div className="text-2xl font-bold text-yellow-900">{data.summary?.partially_paid_count ?? 0}</div>
             </div>
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
               <div className="text-sm text-gray-600 font-medium">Total Unpaid Amount</div>
-              <div className="text-2xl font-bold text-gray-900">₹{data.summary.total_unpaid_amount.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-gray-900">
+                ₹{Number(data.summary?.total_unpaid_amount ?? 0).toFixed(2)}
+              </div>
             </div>
           </div>
 

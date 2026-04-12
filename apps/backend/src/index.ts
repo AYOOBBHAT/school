@@ -35,6 +35,7 @@ import adminRouter from './routes/admin.js';
 import principalUsersRouter from './routes/principal-users.js';
 import clerkFeesRouter from './routes/clerk-fees.js';
 import studentFeesRouter from './routes/studentFees.js';
+import { scheduleMonthlyFeeGeneration } from './jobs/scheduleMonthlyFeeGeneration.js';
 
 
 // ======================================================
@@ -244,6 +245,7 @@ const host = process.env.HOST || '0.0.0.0';
 
 const server: Server = app.listen(port, host, () => {
   logger.info({ port, host }, '🚀 Backend server started');
+  scheduleMonthlyFeeGeneration();
 });
 
 // Set server timeout

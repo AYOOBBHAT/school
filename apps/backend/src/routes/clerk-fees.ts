@@ -6,6 +6,8 @@ import {
   loadAssignedFeeStructure,
   checkMonthlyFeeComponentsExist
 } from '../utils/clerkFeeCollection.js';
+import { getUnpaidAnalyticsDateRange } from '../utils/unpaidAnalyticsDateRange.js';
+import { ensureMonthlyFeeComponentsForAnalytics } from '../utils/feeGenerationEnsure.js';
 
 const router = Router();
 
@@ -39,7 +41,12 @@ router.get('/student/:studentId/fee-structure', requireRoles(['clerk', 'principa
     const feeStructure = await loadAssignedFeeStructure(studentId, user.schoolId, adminSupabase);
 
     // Check if no fee configured
-    if (!feeStructure.class_fee && !feeStructure.transport_fee && feeStructure.custom_fees.length === 0) {
+    if (
+      !feeStructure.class_fee &&
+      feeStructure.class_fees.length === 0 &&
+      !feeStructure.transport_fee &&
+      feeStructure.custom_fees.length === 0
+    ) {
       return res.json({
         student: {
           id: student.id,
@@ -612,52 +619,16 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
       return res.status(400).json({ error: 'Invalid time scope' });
     }
 
-    // Calculate date range based on time scope (passed to RPC; SQL uses period overlap).
-    // Rolling windows (last_month, last_N_months) end on the last day of the previous
-    // calendar month so the label matches a full closed month, not "through today".
-    const today = new Date();
-    let startDate: Date | null = null;
-    let endDate: Date | null = null;
-    const lastDayOfPreviousMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+    const { startDateStr, endDateStr, endYear, endMonth } = getUnpaidAnalyticsDateRange(timeScope);
 
-    switch (timeScope) {
-      case 'all_time':
-        break;
-      case 'last_month':
-        startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        endDate = lastDayOfPreviousMonth;
-        break;
-      case 'last_2_months':
-        startDate = new Date(today.getFullYear(), today.getMonth() - 2, 1);
-        endDate = lastDayOfPreviousMonth;
-        break;
-      case 'last_3_months':
-        startDate = new Date(today.getFullYear(), today.getMonth() - 3, 1);
-        endDate = lastDayOfPreviousMonth;
-        break;
-      case 'last_6_months':
-        startDate = new Date(today.getFullYear(), today.getMonth() - 6, 1);
-        endDate = lastDayOfPreviousMonth;
-        break;
-      case 'current_academic_year': {
-        // Academic year through today (overlap filter includes current month correctly)
-        const currentMonth = today.getMonth();
-        startDate =
-          currentMonth >= 3
-            ? new Date(today.getFullYear(), 3, 1)
-            : new Date(today.getFullYear() - 1, 3, 1);
-        endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        break;
-      }
-      default:
-        startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        endDate = lastDayOfPreviousMonth;
-        break;
-    }
-
-    // Convert dates to ISO strings for PostgreSQL
-    const startDateStr = startDate ? startDate.toISOString().split('T')[0] : null;
-    const endDateStr = endDate ? endDate.toISOString().split('T')[0] : null;
+    await ensureMonthlyFeeComponentsForAnalytics({
+      schoolId: user.schoolId,
+      classGroupId: (class_group_id as string) || null,
+      startDateStr,
+      endDateStr,
+      endYear,
+      endMonth,
+    });
 
     // Parse pagination parameters
     const pageNum = parseInt(page as string) || 1;

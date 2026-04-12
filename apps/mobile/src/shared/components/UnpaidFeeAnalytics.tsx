@@ -81,6 +81,12 @@ export function UnpaidFeeAnalytics({ userRole, showChart = true }: UnpaidFeeAnal
     }
   }, [selectedClass, timeScope, currentPage]);
 
+  useEffect(() => {
+    if (data?.summary) {
+      console.log('[UnpaidFeeAnalytics] summary', data.summary);
+    }
+  }, [data]);
+
   const loadClasses = async () => {
     try {
       const result = userRole === 'clerk' 
@@ -229,19 +235,21 @@ export function UnpaidFeeAnalytics({ userRole, showChart = true }: UnpaidFeeAnal
           <View style={styles.summaryGrid}>
             <View style={[styles.summaryCard, styles.summaryCardBlue]}>
               <Text style={styles.summaryLabel}>Total Students</Text>
-              <Text style={styles.summaryValue}>{data.summary.total_students}</Text>
+              <Text style={styles.summaryValue}>{data.summary?.total_students ?? 0}</Text>
             </View>
             <View style={[styles.summaryCard, styles.summaryCardRed]}>
               <Text style={styles.summaryLabel}>Unpaid</Text>
-              <Text style={styles.summaryValue}>{data.summary.unpaid_count}</Text>
+              <Text style={styles.summaryValue}>{data.summary?.unpaid_count ?? 0}</Text>
             </View>
             <View style={[styles.summaryCard, styles.summaryCardYellow]}>
               <Text style={styles.summaryLabel}>Partially Paid</Text>
-              <Text style={styles.summaryValue}>{data.summary.partially_paid_count}</Text>
+              <Text style={styles.summaryValue}>{data.summary?.partially_paid_count ?? 0}</Text>
             </View>
             <View style={[styles.summaryCard, styles.summaryCardGray]}>
               <Text style={styles.summaryLabel}>Total Unpaid</Text>
-              <Text style={styles.summaryValue}>₹{data.summary.total_unpaid_amount.toFixed(2)}</Text>
+              <Text style={styles.summaryValue}>
+                ₹{Number(data.summary?.total_unpaid_amount ?? 0).toFixed(2)}
+              </Text>
             </View>
           </View>
 

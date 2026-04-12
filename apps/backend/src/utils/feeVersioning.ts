@@ -32,10 +32,9 @@ export async function getClassFeeVersion(
     .eq('class_group_id', classGroupId)
     .eq('fee_category_id', feeCategoryId)
     .eq('fee_cycle', feeCycle)
-    .eq('is_active', true)
     .lte('effective_from_date', dateStr)
     .or(`effective_to_date.is.null,effective_to_date.gte.${dateStr}`)
-    .order('version_number', { ascending: false })
+    .order('effective_from_date', { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -76,10 +75,9 @@ export async function getTransportFeeVersion(
     .select('*')
     .eq('class_group_id', classGroupId)
     .eq('fee_cycle', feeCycle)
-    .eq('is_active', true)
     .lte('effective_from_date', dateStr)
     .or(`effective_to_date.is.null,effective_to_date.gte.${dateStr}`)
-    .order('version_number', { ascending: false })
+    .order('effective_from_date', { ascending: false })
     .limit(1);
 
   if (routeName) {
@@ -126,10 +124,9 @@ export async function getOptionalFeeVersion(
     .select('*')
     .eq('fee_category_id', feeCategoryId)
     .eq('fee_cycle', feeCycle)
-    .eq('is_active', true)
     .lte('effective_from_date', dateStr)
     .or(`effective_to_date.is.null,effective_to_date.gte.${dateStr}`)
-    .order('version_number', { ascending: false })
+    .order('effective_from_date', { ascending: false })
     .limit(1);
 
   // Handle class_group_id (can be null for "All Classes")

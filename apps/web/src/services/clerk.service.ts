@@ -13,6 +13,7 @@ import {
   UnpaidFeeAnalyticsResponse,
   RecordSalaryPaymentResponse
 } from './types';
+import { normalizeUnpaidFeeAnalyticsResponse } from './unpaidFeeAnalyticsNormalize';
 
 /**
  * Load students list
@@ -193,18 +194,8 @@ export async function loadUnpaidFeeAnalytics(token: string, params: URLSearchPar
     };
   }
 
-  const data = await response.json();
-  const result = data.analytics || data;
-  // Ensure pagination exists
-  if (!result.pagination) {
-    result.pagination = {
-      page: 1,
-      limit: result.students?.length || 10,
-      total: result.students?.length || 0,
-      total_pages: 1
-    };
-  }
-  return result;
+  const raw = await response.json();
+  return normalizeUnpaidFeeAnalyticsResponse(raw);
 }
 
 /**

@@ -2,6 +2,7 @@ import { API_URL } from '../utils/api';
 import { ROUTES } from '../utils/apiRoutes';
 import { supabase } from '../utils/supabase';
 import type { UnpaidFeeAnalyticsResponse } from './types';
+import { normalizeUnpaidFeeAnalyticsResponse } from './unpaidFeeAnalyticsNormalize';
 
 /**
  * Fetch unpaid fee analytics with filters
@@ -42,18 +43,17 @@ export const fetchUnpaidAnalytics = async ({
     throw new Error('Failed to load analytics');
   }
 
-  const data = await response.json();
-  const result = data.analytics || data;
+  const raw = await response.json();
 
-  // Ensure pagination exists
-  if (!result.pagination) {
-    result.pagination = {
-      page: 1,
-      limit: result.students?.length || 10,
-      total: result.students?.length || 0,
-      total_pages: 1,
-    };
+  if (import.meta.env.DEV) {
+    console.log('[unpaid analytics] /clerk-fees/analytics/unpaid raw', raw);
   }
 
-  return result;
+  const normalized = normalizeUnpaidFeeAnalyticsResponse(raw);
+
+  if (import.meta.env.DEV) {
+    console.log('[unpaid analytics] summary', normalized.summary);
+  }
+
+  return normalized;
 };

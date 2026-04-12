@@ -1,5 +1,6 @@
 import { api } from './api';
 import { devWarn } from '../utils/devLog';
+import { normalizeUnpaidFeeAnalyticsResponse } from '../utils/unpaidFeeAnalyticsNormalize';
 import { 
   Student, 
   ClassGroup,
@@ -374,6 +375,14 @@ export async function loadUnpaidFeeAnalytics(params: {
   if (params.time_scope) query.append('time_scope', params.time_scope);
   if (params.page) query.append('page', params.page.toString());
   if (params.limit) query.append('limit', params.limit.toString());
-  
-  return api.get<UnpaidFeeAnalytics>(`/clerk-fees/analytics/unpaid?${query.toString()}`);
+
+  const raw = await api.get<unknown>(`/clerk-fees/analytics/unpaid?${query.toString()}`);
+  if (__DEV__) {
+    console.log('[unpaid analytics] /clerk-fees/analytics/unpaid raw', raw);
+  }
+  const normalized = normalizeUnpaidFeeAnalyticsResponse(raw);
+  if (__DEV__) {
+    console.log('[unpaid analytics] summary', normalized.summary);
+  }
+  return normalized as UnpaidFeeAnalytics;
 }
