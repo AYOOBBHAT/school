@@ -814,13 +814,13 @@ function otpMatchesRequestContext(
   if (ctx.flow === 'student') {
     return (
       payload.type === 'student' &&
-      (payload.username || '') === ctx.username.trim() &&
+      (payload.username || '').trim() === ctx.username.trim() &&
       payload.schoolId === ctx.schoolId
     );
   }
   return (
     payload.type === 'email' &&
-    (payload.email || '').toLowerCase() === ctx.email.trim().toLowerCase()
+    (payload.email || '').trim().toLowerCase() === ctx.email.trim().toLowerCase()
   );
 }
 
