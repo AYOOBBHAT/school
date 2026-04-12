@@ -800,13 +800,9 @@ async function incrementOtpAttemptsOrInvalidate(profileId: string): Promise<void
   }
 
   parsed.attempts = nextAttempts;
-  const ttl = await redis.ttl(key);
-  // Upstash ttl() can return -1 (no expiry) or -2 (missing). Do not reuse invalid TTL.
-  if (ttl <= 0) {
-    await redis.del(key);
-    return;
-  }
-  await redis.set(key, JSON.stringify(parsed), { ex: ttl });
+  // Fixed TTL — do not reuse redis.ttl(); Upstash/replication quirks can return 0/negative and
+  // incorrectly delete the key, making the next verify look "expired" immediately.
+  await redis.set(key, JSON.stringify(parsed), { ex: OTP_REDIS_TTL_SECONDS });
 }
 
 function otpMatchesRequestContext(
@@ -1143,7 +1139,11 @@ router.post('/forgot-password-verify', async (req, res) => {
     }
 
     const otpKey = otpRedisKey(profileId);
+    // eslint-disable-next-line no-console
+    console.log('VERIFY OTP KEY:', otpKey);
     const raw = await redis.get<string>(otpKey);
+    // eslint-disable-next-line no-console
+    console.log('REDIS VALUE:', raw);
     if (raw == null) {
       return res.status(400).json({ error: 'Invalid or expired OTP' });
     }
