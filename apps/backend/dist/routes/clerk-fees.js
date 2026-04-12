@@ -548,38 +548,46 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
         if (!validTimeScopes.includes(timeScope)) {
             return res.status(400).json({ error: 'Invalid time scope' });
         }
-        // Calculate date range based on time scope
+        // Calculate date range based on time scope (passed to RPC; SQL uses period overlap).
+        // Rolling windows (last_month, last_N_months) end on the last day of the previous
+        // calendar month so the label matches a full closed month, not "through today".
         const today = new Date();
-        let startDate;
-        let endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        let startDate = null;
+        let endDate = null;
+        const lastDayOfPreviousMonth = new Date(today.getFullYear(), today.getMonth(), 0);
         switch (timeScope) {
             case 'all_time':
-                // No date filter - includes all unpaid fees regardless of period
-                startDate = null;
-                endDate = null;
                 break;
             case 'last_month':
                 startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                endDate = lastDayOfPreviousMonth;
                 break;
             case 'last_2_months':
                 startDate = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+                endDate = lastDayOfPreviousMonth;
                 break;
             case 'last_3_months':
                 startDate = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+                endDate = lastDayOfPreviousMonth;
                 break;
             case 'last_6_months':
                 startDate = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+                endDate = lastDayOfPreviousMonth;
                 break;
-            case 'current_academic_year':
-                // Assume academic year starts in April (month 3)
+            case 'current_academic_year': {
+                // Academic year through today (overlap filter includes current month correctly)
                 const currentMonth = today.getMonth();
-                const academicYearStart = currentMonth >= 3
-                    ? new Date(today.getFullYear(), 3, 1) // April of current year
-                    : new Date(today.getFullYear() - 1, 3, 1); // April of previous year
-                startDate = academicYearStart;
+                startDate =
+                    currentMonth >= 3
+                        ? new Date(today.getFullYear(), 3, 1)
+                        : new Date(today.getFullYear() - 1, 3, 1);
+                endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
                 break;
+            }
             default:
                 startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                endDate = lastDayOfPreviousMonth;
+                break;
         }
         // Convert dates to ISO strings for PostgreSQL
         const startDateStr = startDate ? startDate.toISOString().split('T')[0] : null;

@@ -54,5 +54,6 @@ export const queryKeys = {
     attendance: () => ['student', 'attendance'] as const,
     marks: () => ['student', 'marks'] as const,
     fees: () => ['student', 'fees'] as const,
+    monthlyFeeLedger: () => ['student', 'monthly-fee-ledger'] as const,
   },
 } as const;

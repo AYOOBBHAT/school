@@ -12,7 +12,12 @@
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "mobile:dev": "pnpm --filter mobile start",
+    "mobile:dev:tunnel": "pnpm --filter mobile start -- --tunnel",
+    "mobile:build:preview:android": "pnpm --filter mobile build:android",
+    "mobile:build:preview:ios": "pnpm --filter mobile build:ios",
+    "mobile:build:preview:all": "pnpm --filter mobile build:all"
   },
   "devDependencies": {
     "turbo": "^2.1.1",

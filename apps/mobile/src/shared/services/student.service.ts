@@ -130,3 +130,31 @@ export async function loadFees(): Promise<{
     payments: FeePayment[];
   }>('/students/fees');
 }
+
+export interface MonthlyFeeLedgerResponse {
+  student_id: string;
+  monthly_ledger: Array<{
+    month?: string;
+    year?: number;
+    monthNumber?: number;
+    components?: Array<{
+      id: string;
+      fee_type: string;
+      fee_name: string;
+      fee_amount: number;
+      paid_amount: number;
+      pending_amount: number;
+      status: string;
+      due_date?: string | null;
+    }>;
+  }>;
+  pagination: { page: number; limit: number; total: number; total_pages: number };
+  summary: Record<string, number>;
+}
+
+/** Own student id only — backend rejects other ids for student role. */
+export async function loadMonthlyFeeLedger(studentId: string): Promise<MonthlyFeeLedgerResponse> {
+  return api.get<MonthlyFeeLedgerResponse>(
+    `/clerk-fees/student/${encodeURIComponent(studentId)}/monthly-ledger`
+  );
+}

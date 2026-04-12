@@ -1,4 +1,5 @@
 import { API_URL } from '../utils/api';
+import { ROUTES } from '../utils/apiRoutes';
 import { StudentProfile } from '../pages/student/types';
 
 /**
@@ -138,6 +139,43 @@ export async function fetchStudentFees(token: string): Promise<{
   if (!response.ok) {
     await response.json().catch(() => ({}));
     throw new Error('Failed to load fees');
+  }
+
+  return await response.json();
+}
+
+/** GET /clerk-fees/student/:studentId/monthly-ledger — server enforces student = own profile only. */
+export async function fetchStudentMonthlyLedger(
+  token: string,
+  studentId: string
+): Promise<{
+  student_id: string;
+  monthly_ledger: Array<{
+    month?: string;
+    year?: number;
+    monthNumber?: number;
+    components?: Array<{
+      id: string;
+      fee_type: string;
+      fee_name: string;
+      fee_amount: number;
+      paid_amount: number;
+      pending_amount: number;
+      status: string;
+      due_date?: string | null;
+    }>;
+  }>;
+  pagination: { page: number; limit: number; total: number; total_pages: number };
+  summary: Record<string, number>;
+}> {
+  const response = await fetch(
+    `${API_URL}${ROUTES.clerkFees}/student/${encodeURIComponent(studentId)}/monthly-ledger`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+
+  if (!response.ok) {
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load monthly fee ledger');
   }
 
   return await response.json();

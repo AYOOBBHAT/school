@@ -37,10 +37,9 @@ export type Student = {
 };
 
 export type MonthlyLedgerEntry = {
-  month?: number;
+  /** Display label e.g. "Jan 2026" from RPC */
+  month?: string;
   year?: number;
-  amount?: number;
-  paid?: number;
   monthNumber?: number;
   components?: any[];
 };

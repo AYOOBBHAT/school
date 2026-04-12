@@ -1,5 +1,5 @@
 import { devError, devLog, devWarn } from '../utils/devLog';
-import { useState, useEffect, useMemo, useCallback, FormEvent } from 'react';
+import { useState, useEffect, useMemo, useCallback, FormEvent, Fragment } from 'react';
 import { supabase } from '../utils/supabase';
 import {
   loadStudentFeeStructure,
@@ -7,6 +7,7 @@ import {
   collectFee
 } from '../services/clerk.service';
 import type { MonthlyLedgerEntry } from '../services/types';
+import { summarizeLedgerMonth, monthStatusBadgeClass } from '../utils/monthlyFeeLedger';
 
 interface Student {
   id: string;
@@ -378,8 +379,40 @@ export default function FeeDetailsDrawer({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {monthlyLedger.map((monthEntry, monthIdx) => 
-                        (monthEntry.components || []).map((comp, compIdx) => {
+                      {monthlyLedger.map((monthEntry, monthIdx) => {
+                        const monthRollup = summarizeLedgerMonth(monthEntry);
+                        return (
+                          <Fragment key={`m-${monthIdx}`}>
+                            <tr className="bg-slate-100 border-y border-slate-200">
+                              <td colSpan={2} className="px-2 py-2 text-xs font-semibold text-slate-800">
+                                {monthRollup.monthLabel || monthEntry.month}
+                                <span className="ml-2 font-normal text-slate-500">(month total)</span>
+                              </td>
+                              <td className="px-2 py-2 text-xs font-semibold text-slate-800">
+                                ₹{monthRollup.totalFee.toFixed(2)}
+                              </td>
+                              <td className="px-2 py-2 text-xs font-semibold text-green-700">
+                                ₹{monthRollup.totalPaid.toFixed(2)}
+                              </td>
+                              <td className="px-2 py-2 text-xs font-semibold text-red-700">
+                                ₹{monthRollup.totalPending.toFixed(2)}
+                              </td>
+                              <td className="px-2 py-2 text-xs">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-xs font-semibold ${monthStatusBadgeClass(
+                                    monthRollup.monthStatus
+                                  )}`}
+                                >
+                                  {monthRollup.monthStatus === 'partially-paid'
+                                    ? 'Partial'
+                                    : monthRollup.monthStatus === 'paid'
+                                      ? 'Paid'
+                                      : 'Unpaid'}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2" />
+                            </tr>
+                            {(monthEntry.components || []).map((comp, compIdx) => {
                           const isOverdue = comp.status === 'overdue' || 
                             (comp.due_date && new Date(comp.due_date) < new Date() && comp.status !== 'paid');
                           const isFuture = isFutureMonth(monthEntry.year || 0, monthEntry.monthNumber || 0);
@@ -398,7 +431,7 @@ export default function FeeDetailsDrawer({
                               className={`${rowBgColor} ${isOverdue ? 'border-l-4 border-red-500' : ''} ${isFuture ? 'opacity-60' : ''}`}
                             >
                               <td className="px-2 py-2 text-xs font-medium text-gray-900">
-                                {compIdx === 0 ? monthEntry.month : ''}
+                                {compIdx === 0 ? '·' : ''}
                               </td>
                               <td className="px-2 py-2 text-xs text-gray-700">
                                 <div className="font-medium">{comp.fee_name}</div>
@@ -438,8 +471,10 @@ export default function FeeDetailsDrawer({
                               </td>
                             </tr>
                           );
-                        })
-                      )}
+                            })}
+                          </Fragment>
+                        );
+                      })}
                       {monthlyLedger.length === 0 && (
                         <tr>
                           <td colSpan={7} className="px-4 py-8 text-center text-gray-500">

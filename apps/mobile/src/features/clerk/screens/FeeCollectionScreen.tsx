@@ -13,6 +13,7 @@ import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { Card } from '../../../shared/components/Card';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import type { ClerkStackScreenProps } from '../../../navigation/types';
+import { summarizeLedgerMonth } from '../../../shared/utils/monthlyFeeLedger';
 
 type Props = ClerkStackScreenProps<'FeeCollection'>;
 
@@ -245,9 +246,33 @@ export function FeeCollectionScreen({ navigation }: Props) {
                 </View>
               ) : (
                 <ScrollView style={styles.ledgerContainer}>
-                  {monthlyLedger.map((month: any, idx: number) => (
+                  {monthlyLedger.map((month: any, idx: number) => {
+                    const rollup = summarizeLedgerMonth(month);
+                    const monthStatusLabel =
+                      rollup.monthStatus === 'paid'
+                        ? 'Paid'
+                        : rollup.monthStatus === 'partially-paid'
+                          ? 'Partial'
+                          : 'Unpaid';
+                    return (
                     <View key={idx} style={styles.monthSection}>
-                      <Text style={styles.monthTitle}>{month.month ?? `${month.period_month ?? ''}/${month.period_year ?? ''}`}</Text>
+                      <View style={styles.monthTitleRow}>
+                        <Text style={styles.monthTitle}>{rollup.monthLabel || month.month}</Text>
+                        <View
+                          style={[
+                            styles.monthStatusPill,
+                            rollup.monthStatus === 'paid' && styles.monthStatusPaid,
+                            rollup.monthStatus === 'partially-paid' && styles.monthStatusPartial,
+                            rollup.monthStatus === 'unpaid' && styles.monthStatusUnpaid,
+                          ]}
+                        >
+                          <Text style={styles.monthStatusPillText}>{monthStatusLabel}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.monthTotalsText}>
+                        Fee ₹{rollup.totalFee.toFixed(2)} · Paid ₹{rollup.totalPaid.toFixed(2)} · Pending ₹
+                        {rollup.totalPending.toFixed(2)}
+                      </Text>
                       {(month.components || []).map((comp: any) => {
                         const isFuture = isFutureMonth(month.year ?? 0, month.monthNumber ?? month.period_month ?? 0);
                         const isDisabled = comp.status === 'paid' || (comp.pending_amount || 0) === 0 || isFuture;
@@ -273,7 +298,8 @@ export function FeeCollectionScreen({ navigation }: Props) {
                         );
                       })}
                     </View>
-                  ))}
+                    );
+                  })}
                   {monthlyLedger.length === 0 && !noFeeConfigured && (
                     <EmptyState icon="💵" title="No fee data" message="No fee data available for this student" />
                   )}
@@ -500,7 +526,14 @@ const styles = StyleSheet.create({
   noFeeText: { fontSize: 14, color: '#b45309', marginTop: 8 },
   ledgerContainer: { maxHeight: 320, marginBottom: 16 },
   monthSection: { marginBottom: 16 },
-  monthTitle: { fontSize: 16, fontWeight: '600', color: '#1e293b', marginBottom: 8 },
+  monthTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, gap: 8 },
+  monthTitle: { fontSize: 16, fontWeight: '600', color: '#1e293b', flex: 1 },
+  monthTotalsText: { fontSize: 12, color: '#64748b', marginBottom: 8 },
+  monthStatusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  monthStatusPaid: { backgroundColor: '#d1fae5' },
+  monthStatusPartial: { backgroundColor: '#fef3c7' },
+  monthStatusUnpaid: { backgroundColor: '#fee2e2' },
+  monthStatusPillText: { fontSize: 11, fontWeight: '700', color: '#0f172a' },
   componentCard: { padding: 12, backgroundColor: '#f8fafc', borderRadius: 8, marginBottom: 8, borderWidth: 2, borderColor: 'transparent' },
   componentCardSelected: { borderColor: '#2563eb', backgroundColor: '#eff6ff' },
   componentCardDisabled: { opacity: 0.6 },
