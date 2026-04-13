@@ -8,8 +8,27 @@ import {
 } from '../utils/clerkFeeCollection.js';
 import { getUnpaidAnalyticsDateRange } from '../utils/unpaidAnalyticsDateRange.js';
 import { ensureMonthlyFeeComponentsForAnalytics } from '../utils/feeGenerationEnsure.js';
+import { redis, invalidateUnpaidAnalyticsCacheForSchool } from '../utils/redis.js';
 
 const router = Router();
+
+type UnpaidAnalyticsResponseBody = {
+  summary: {
+    total_students: number;
+    unpaid_count: number;
+    partially_paid_count: number;
+    paid_count: number;
+    total_unpaid_amount: number;
+  };
+  chart_data: { paid: number; unpaid: number; partially_paid: number };
+  students: unknown[];
+  pagination: unknown;
+};
+
+const unpaidAnalyticsCacheTtlSeconds =
+  Number(process.env.REDIS_CACHE_TTL_SECONDS) > 0
+    ? Number(process.env.REDIS_CACHE_TTL_SECONDS)
+    : 1800;
 
 // ============================================
 // 1. Get Assigned Fee Structure for Student
@@ -291,6 +310,9 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
       console.error('[clerk-fees/collect] RPC error:', errorMsg);
       return res.status(400).json({ error: errorMsg });
     }
+
+    await invalidateUnpaidAnalyticsCacheForSchool(user.schoolId);
+    console.log('Cache invalidated for school:', user.schoolId);
 
     // Return minimal response - RPC handles all writes
     return res.status(201).json({
@@ -621,24 +643,42 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
 
     const { startDateStr, endDateStr, endYear, endMonth } = getUnpaidAnalyticsDateRange(timeScope);
 
-    await ensureMonthlyFeeComponentsForAnalytics({
-      schoolId: user.schoolId,
-      classGroupId: (class_group_id as string) || null,
-      startDateStr,
-      endDateStr,
-      endYear,
-      endMonth,
-    });
-
     // Parse pagination parameters
     const pageNum = parseInt(page as string) || 1;
     const limitNum = parseInt(limit as string) || 20;
     const offset = (pageNum - 1) * limitNum;
 
+    const schoolId = user.schoolId;
+    const classGroupSegment = (class_group_id as string) || 'all';
+    // Date bounds in key keep cache aligned with RPC params (same time_scope can shift at midnight).
+    const cacheKey = `unpaid:${schoolId}:${classGroupSegment}:${timeScope}:${startDateStr ?? 'all'}:${endDateStr ?? 'all'}:${pageNum}:${limitNum}`;
+
+    try {
+      const cached = await redis.get<UnpaidAnalyticsResponseBody>(cacheKey);
+      if (cached !== null && typeof cached === 'object' && 'summary' in cached && 'students' in cached) {
+        console.log('Cache HIT');
+        return res.json(cached);
+      }
+      console.log('Cache MISS:', cacheKey);
+    } catch {
+      // Redis optional for reads — continue to RPC
+    }
+
+    if (process.env.FEE_GENERATION_ON_ANALYTICS === 'true') {
+      await ensureMonthlyFeeComponentsForAnalytics({
+        schoolId,
+        classGroupId: (class_group_id as string) || null,
+        startDateStr,
+        endDateStr,
+        endYear,
+        endMonth,
+      });
+    }
+
     // Use RPC function which properly filters by class_group_id and date range
     // This ensures ALL summary stats respect the selected filters
     const { data: result, error: rpcError } = await adminSupabase.rpc('get_unpaid_fee_analytics', {
-      p_school_id: user.schoolId,
+      p_school_id: schoolId,
       p_class_group_id: class_group_id || null,
       p_start_date: startDateStr,
       p_end_date: endDateStr,
@@ -649,6 +689,10 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
     if (rpcError) {
       console.error('[analytics/unpaid] RPC error:', rpcError);
       return res.status(500).json({ error: rpcError.message || 'Failed to get unpaid fee analytics' });
+    }
+
+    if (result == null) {
+      return res.status(500).json({ error: 'Failed to get unpaid fee analytics' });
     }
 
     // Extract data from JSON result - this is the SINGLE SOURCE OF TRUTH
@@ -663,7 +707,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
       partially_paid: summary.partially_paid_count || 0
     };
 
-    return res.json({
+    const payload: UnpaidAnalyticsResponseBody = {
       summary: {
         total_students: summary.total_students || 0,
         unpaid_count: summary.unpaid_count || 0,
@@ -674,7 +718,15 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
       chart_data: chartData,
       students: students,
       pagination: pagination
-    });
+    };
+
+    try {
+      await redis.set(cacheKey, payload, { ex: unpaidAnalyticsCacheTtlSeconds });
+    } catch {
+      // Do not fail the request if cache write fails
+    }
+
+    return res.json(payload);
   } catch (err: unknown) {
     console.error('[analytics/unpaid] Error:', err);
     const errorMessage = err instanceof Error ? err.message : 'Failed to get unpaid fee analytics';

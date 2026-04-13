@@ -66,6 +66,12 @@ const app = express();
 // This ensures rate limiting and logging work with real client IPs
 app.set('trust proxy', 1);
 
+/** Must run before route handlers so every request gets a response timeout (and CORS headers on 503). */
+const httpRequestTimeoutMs =
+  Number(process.env.HTTP_REQUEST_TIMEOUT_MS) > 0
+    ? Number(process.env.HTTP_REQUEST_TIMEOUT_MS)
+    : 120_000;
+
 const allowedOrigins = [
   'https://jhelumverse.in',
   'https://www.jhelumverse.in',
@@ -89,7 +95,7 @@ const corsOptions = {
 // ======================================================
 // SECURITY + PERFORMANCE MIDDLEWARE
 // ======================================================
-// Order is critical: helmet → cors → compression → rateLimit → json → logger → routes → errorHandler
+// Order is critical: helmet → cors → compression → rateLimit → json → logger → requestTimeout → routes → errorHandler
 
 // 1. Helmet - Security headers
 app.use(helmet());
@@ -110,6 +116,15 @@ app.use(express.json({ limit: '1mb' }));
 // 6. Request Logging - Log all requests with pino-http
 app.use(pinoHttp({ logger }));
 
+// 7. Per-request socket timeout — MUST be before routes (middleware after routers never runs for matched paths)
+app.use((req, res, next) => {
+  res.setTimeout(httpRequestTimeoutMs, () => {
+    if (!res.headersSent) {
+      res.status(503).json({ error: 'Request timeout' });
+    }
+  });
+  next();
+});
 
 // ======================================================
 // HEALTH CHECK
@@ -204,21 +219,6 @@ app.use('/principal-users', principalUsersRouter);
 app.use('/clerk-fees', clerkFeesRouter);
 app.use('/students/fees', studentFeesRouter);
 
-
-// ======================================================
-// REQUEST TIMEOUT PROTECTION
-// ======================================================
-// Prevent hanging requests
-
-app.use((req, res, next) => {
-  res.setTimeout(15000, () => {
-    if (!res.headersSent) {
-      res.status(503).json({ error: 'Request timeout' });
-    }
-  });
-  next();
-});
-
 // ======================================================
 // GLOBAL ERROR HANDLER
 // ======================================================
@@ -262,11 +262,12 @@ const host = process.env.HOST || '0.0.0.0';
 
 const server: Server = app.listen(port, host, () => {
   logger.info({ port, host }, '🚀 Backend server started');
-  scheduleMonthlyFeeGeneration();
+  if (process.env.ENABLE_MONTHLY_FEE_GENERATION_CRON === 'true') {
+    scheduleMonthlyFeeGeneration();
+  }
 });
 
-// Set server timeout
-server.setTimeout(15000);
+server.setTimeout(httpRequestTimeoutMs);
 
 // ======================================================
 // GRACEFUL SHUTDOWN

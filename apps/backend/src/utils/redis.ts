@@ -25,3 +25,24 @@ export const CACHE_TTL = 600;
 
 /** Forgot-password OTP record TTL (seconds) */
 export const OTP_REDIS_TTL_SECONDS = 600;
+
+/**
+ * Removes cached unpaid analytics for a school (`unpaid:{schoolId}:...`).
+ * Redis DEL does not support globs; uses SCAN + DEL (same intent as `del unpaid:schoolId:*`).
+ */
+export async function invalidateUnpaidAnalyticsCacheForSchool(schoolId: string): Promise<void> {
+  const match = `unpaid:${schoolId}:*`;
+  let cursor = '0';
+  try {
+    do {
+      const [nextCursor, keys] = await redis.scan(cursor, { match, count: 500 });
+      const keyList = (keys ?? []) as string[];
+      if (keyList.length > 0) {
+        await Promise.all(keyList.map((k) => redis.del(k)));
+      }
+      cursor = String(nextCursor);
+    } while (cursor !== '0');
+  } catch (err) {
+    logger.warn({ schoolId, err }, '[redis] unpaid analytics cache invalidation failed');
+  }
+}
