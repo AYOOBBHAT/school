@@ -619,6 +619,13 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'Failed to update password' });
     }
 
+    // Invalidate ALL sessions after password change (all devices)
+    const { error: signOutError } = await adminSupabase.auth.admin.signOut(user.id);
+    if (signOutError) {
+      logger.error({ err: signOutError }, '[reset-password] Failed to revoke sessions');
+      return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
+    }
+
     // Update profile to clear password_reset_required flag
     const { error: profileError } = await adminSupabase
       .from('profiles')
@@ -1139,6 +1146,13 @@ router.post('/forgot-password-verify', async (req, res) => {
 
     if (updateError) {
       return res.status(400).json({ error: 'Failed to reset password' });
+    }
+
+    // Invalidate ALL sessions after password reset (all devices)
+    const { error: signOutError } = await supabase.auth.admin.signOut(profileId);
+    if (signOutError) {
+      logger.error({ err: signOutError }, '[forgot-password-verify] Failed to revoke sessions');
+      return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
     }
 
     // Clear password_reset_required flag
