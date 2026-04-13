@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { devLog } from '../utils/devLog';
+import { secureRemoveItem } from '../lib/secureStorage';
+import { Alert } from 'react-native';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -62,6 +64,30 @@ async function apiRequest<T>(
   }
 
   if (response.status === 401) {
+    const isAuthRoute =
+      normalizedPath.includes('/auth/login') ||
+      normalizedPath.includes('/auth/register') ||
+      normalizedPath.includes('/auth/forgot-password') ||
+      normalizedPath.includes('/auth/reset-password');
+
+    if (!isAuthRoute) {
+      if ((globalThis as any).__handlingUnauthorized) {
+        throw new Error('Authentication required. Please log in again.');
+      }
+      (globalThis as any).__handlingUnauthorized = true;
+
+      Alert.alert('Session Expired', 'Please login again.');
+
+      try {
+        await secureRemoveItem('@school_saas:user');
+        await supabase.auth.signOut();
+      } catch {
+        // ignore
+      } finally {
+        (globalThis as any).__handlingUnauthorized = false;
+      }
+    }
+
     throw new Error('Authentication required. Please log in again.');
   }
 

@@ -12,7 +12,11 @@ export class AuthService {
   async login(email: string, password: string): Promise<AuthResponse> {
     const response = await authServiceFunctions.login(email, password);
     this.currentUser = response.user;
-    await secureWriteItem(USER_KEY, JSON.stringify(response.user));
+    try {
+      await secureWriteItem(USER_KEY, JSON.stringify(response.user));
+    } catch (storageError) {
+      devError('[AuthService] SecureStore failed (non-blocking):', storageError);
+    }
     return response;
   }
 
@@ -24,7 +28,11 @@ export class AuthService {
   }): Promise<AuthResponse> {
     const response = await authServiceFunctions.loginUsername(data);
     this.currentUser = response.user;
-    await secureWriteItem(USER_KEY, JSON.stringify(response.user));
+    try {
+      await secureWriteItem(USER_KEY, JSON.stringify(response.user));
+    } catch (storageError) {
+      devError('[AuthService] SecureStore failed (non-blocking):', storageError);
+    }
     return response;
   }
 
@@ -39,7 +47,13 @@ export class AuthService {
   }): Promise<AuthResponse> {
     const response = await authServiceFunctions.signupPrincipal(data);
     this.currentUser = response.user;
-    if (response.token) await secureWriteItem(USER_KEY, JSON.stringify(response.user));
+    if (response.token) {
+      try {
+        await secureWriteItem(USER_KEY, JSON.stringify(response.user));
+      } catch (storageError) {
+        devError('[AuthService] SecureStore failed (non-blocking):', storageError);
+      }
+    }
     return response;
   }
 
@@ -54,7 +68,13 @@ export class AuthService {
   }): Promise<AuthResponse> {
     const response = await authServiceFunctions.signupJoin(data);
     this.currentUser = response.user;
-    if (response.token) await secureWriteItem(USER_KEY, JSON.stringify(response.user));
+    if (response.token) {
+      try {
+        await secureWriteItem(USER_KEY, JSON.stringify(response.user));
+      } catch (storageError) {
+        devError('[AuthService] SecureStore failed (non-blocking):', storageError);
+      }
+    }
     return response;
   }
 
