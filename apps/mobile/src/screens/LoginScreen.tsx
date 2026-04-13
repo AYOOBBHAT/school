@@ -157,7 +157,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.title}>School SaaS</Text>
+          <Text style={styles.title}>JhelumVerse</Text>
           <Text style={styles.subtitle}>Sign in to your account</Text>
         </View>
 

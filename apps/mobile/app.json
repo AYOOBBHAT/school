@@ -5,33 +5,31 @@
     "scheme": "schools",
     "version": "1.0.0",
     "orientation": "portrait",
-    "platforms": [
-      "ios",
-      "android"
-    ],
+    "platforms": ["ios", "android"],
     "sdkVersion": "54.0.0",
     "updates": {
       "fallbackToCacheTimeout": 0
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "extra": {
       "eas": {
         "projectId": "8feeb4fd-10ac-49cf-aced-3827682c8ea5"
       }
     },
+
     "android": {
-      "package": "com.ayoobbhat.jhelumverse"
+      "package": "com.ayoobbhat.jhelumverse",
+      "versionCode": 1   
     },
+
     "ios": {
       "bundleIdentifier": "com.ayoobbhat.jhelumverse",
+      "buildNumber": "1", 
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
-    "plugins": [
-      "expo-secure-store"
-    ]
+
+    "plugins": ["expo-secure-store"]
   }
 }
