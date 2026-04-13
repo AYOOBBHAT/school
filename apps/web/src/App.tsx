@@ -1,11 +1,13 @@
 import { useState, FormEvent, MouseEvent, lazy, Suspense } from 'react';
-import { Routes, Route, Link } from 'react-router-dom';
+import { Routes, Route, Link, Navigate } from 'react-router-dom';
 import { supabase } from './utils/supabase';
 import { Button } from '@school/ui';
 import Signup from './pages/Signup';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import ForgotPassword from './pages/ForgotPassword';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsAndConditions from './pages/TermsAndConditions';
 import AdminDashboard from './pages/AdminDashboard';
 import { devError } from './utils/devLog';
 
@@ -430,8 +432,16 @@ function Footer() {
           <div>
             <h4 className="font-semibold mb-4">Legal</h4>
             <ul className="space-y-2 text-gray-400">
-              <li><Link to="/terms" className="hover:text-white">Terms</Link></li>
-              <li><Link to="/privacy" className="hover:text-white">Privacy Policy</Link></li>
+              <li>
+                <Link to="/terms" className="hover:text-white">
+                  Terms &amp; Conditions
+                </Link>
+              </li>
+              <li>
+                <Link to="/privacy-policy" className="hover:text-white">
+                  Privacy Policy
+                </Link>
+              </li>
             </ul>
           </div>
           <div>
@@ -443,7 +453,7 @@ function Footer() {
           </div>
         </div>
         <div className="mt-8 pt-8 border-t border-gray-800 text-center text-gray-400">
-          <p>&copy; 2024 JhelumVerse. All rights reserved.</p>
+          <p>&copy; 2026 JhelumVerse. All rights reserved.</p>
         </div>
       </div>
     </footer>
@@ -482,6 +492,9 @@ export default function App() {
     }>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
+        <Route path="/terms" element={<TermsAndConditions />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/reset-password" element={<ResetPassword />} />
