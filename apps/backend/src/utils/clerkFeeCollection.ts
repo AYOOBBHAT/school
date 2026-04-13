@@ -75,31 +75,52 @@ export function lastDayOfMonth(year: number, month: number): Date {
   return new Date(year, month, 0);
 }
 
-async function fetchStudentFeeOverrideAsOf(
+/** Student row needed to build structure without re-querying each month. */
+export type FeeStructureStudentRow = {
+  id: string;
+  class_group_id: string | null;
+  admission_date: string | null;
+};
+
+async function fetchAllStudentOverridesAsOf(
   studentId: string,
-  feeCategoryId: string | null,
   asOfDate: Date,
   adminSupabase: any
-): Promise<any | null> {
+): Promise<any[]> {
   const dateStr = toLocalYmd(asOfDate);
-  let q = adminSupabase
+  const { data, error } = await adminSupabase
     .from('student_fee_overrides')
     .select('*')
     .eq('student_id', studentId)
     .eq('is_active', true)
     .lte('effective_from', dateStr)
     .or(`effective_to.is.null,effective_to.gte.${dateStr}`)
-    .order('effective_from', { ascending: false })
-    .limit(1);
+    .order('effective_from', { ascending: false });
 
-  if (feeCategoryId) {
-    q = q.eq('fee_category_id', feeCategoryId);
-  } else {
-    q = q.is('fee_category_id', null);
+  if (error) {
+    throw new Error(`Failed to load student fee overrides: ${error.message}`);
   }
+  return data || [];
+}
 
-  const { data } = await q.maybeSingle();
-  return data;
+/** Latest override per fee_category_id (empty key = null category), same as repeated single-category queries. */
+function latestOverrideByFeeCategory(overrides: any[]): Map<string, any> {
+  const sorted = [...overrides].sort((a, b) =>
+    String(b.effective_from).localeCompare(String(a.effective_from))
+  );
+  const m = new Map<string, any>();
+  for (const row of sorted) {
+    const k = row.fee_category_id == null ? '' : String(row.fee_category_id);
+    if (!m.has(k)) {
+      m.set(k, row);
+    }
+  }
+  return m;
+}
+
+function pickOverrideForCategory(overrideMap: Map<string, any>, feeCategoryId: string | null): any | null {
+  const k = feeCategoryId == null ? '' : String(feeCategoryId);
+  return overrideMap.get(k) ?? null;
 }
 
 function applyOverrideToAmount(baseAmount: number, override: any | null): number {
@@ -112,28 +133,39 @@ function applyOverrideToAmount(baseAmount: number, override: any | null): number
 
 /**
  * Build fee structure from version tables only, as of `asOfDate` (typically last day of billing month).
+ * Pass `opts.student` when the caller already loaded the row to avoid an extra DB round-trip per month.
  */
 export async function loadAssignedFeeStructureAsOf(
   studentId: string,
   schoolId: string,
   adminSupabase: any,
-  asOfDate: Date
+  asOfDate: Date,
+  opts?: { student?: FeeStructureStudentRow }
 ): Promise<FeeStructure> {
   const dateStr = toLocalYmd(asOfDate);
 
-  const { data: student, error: studentError } = await adminSupabase
-    .from('students')
-    .select('id, class_group_id, admission_date')
-    .eq('id', studentId)
-    .eq('school_id', schoolId)
-    .single();
+  let student: FeeStructureStudentRow;
+  if (opts?.student) {
+    student = opts.student;
+  } else {
+    const { data: row, error: studentError } = await adminSupabase
+      .from('students')
+      .select('id, class_group_id, admission_date')
+      .eq('id', studentId)
+      .eq('school_id', schoolId)
+      .single();
 
-  if (studentError || !student) {
-    throw new Error('Student not found');
+    if (studentError || !row) {
+      throw new Error('Student not found');
+    }
+    student = row as FeeStructureStudentRow;
   }
 
   const admissionDate = student.admission_date || dateStr;
   const result: FeeStructure = { class_fees: [], custom_fees: [] };
+
+  const overrideRows = await fetchAllStudentOverridesAsOf(studentId, asOfDate, adminSupabase);
+  const overrideMap = latestOverrideByFeeCategory(overrideRows);
 
   // 1) Class fees — class_fee_versions (one line per fee_category_id + fee_cycle)
   if (student.class_group_id) {
@@ -170,7 +202,7 @@ export async function loadAssignedFeeStructureAsOf(
 
     for (const row of byKey.values()) {
       const catId = row.fee_category_id as string | null;
-      const override = await fetchStudentFeeOverrideAsOf(studentId, catId, asOfDate, adminSupabase);
+      const override = pickOverrideForCategory(overrideMap, catId);
       const base = parseFloat(row.amount || 0);
       const finalAmount = applyOverrideToAmount(base, override);
       const name =
@@ -316,12 +348,7 @@ export async function loadAssignedFeeStructureAsOf(
         return bp - ap;
       });
       const customFee = rows[0];
-      const override = await fetchStudentFeeOverrideAsOf(
-        studentId,
-        customFee.fee_category_id,
-        asOfDate,
-        adminSupabase
-      );
+      const override = pickOverrideForCategory(overrideMap, customFee.fee_category_id);
       const base = parseFloat(customFee.amount || 0);
       const finalAmount = applyOverrideToAmount(base, override);
       const catJoin = customFee.fee_categories;
@@ -799,13 +826,18 @@ export async function generateMonthlyFeeComponentsForStudent(
   const currentYear = targetYear || today.getFullYear();
   const currentMonth = targetMonth || today.getMonth() + 1;
 
-  const { data: student } = await adminSupabase
+  const { data: studentRow, error: studentLoadErr } = await adminSupabase
     .from('students')
-    .select('admission_date')
+    .select('id, class_group_id, admission_date')
     .eq('id', studentId)
+    .eq('school_id', schoolId)
     .single();
 
-  const admissionDate = student?.admission_date ? new Date(student.admission_date) : new Date(currentYear, 0, 1);
+  if (studentLoadErr || !studentRow) {
+    throw new Error('Student not found');
+  }
+
+  const admissionDate = studentRow.admission_date ? new Date(studentRow.admission_date) : new Date(currentYear, 0, 1);
   const admissionYear = admissionDate.getFullYear();
   const admissionMonth = admissionDate.getMonth() + 1;
 
@@ -814,13 +846,23 @@ export async function generateMonthlyFeeComponentsForStudent(
   const endYear = targetYear || currentYear;
   const endMonth = targetMonth || currentMonth;
 
+  /** Per-run cache: same output as uncached (includes student-specific overrides/transport). Key = school|student|as-of date. */
+  const structureCache = new Map<string, FeeStructure>();
+
   for (let year = admissionYear; year <= endYear; year++) {
     const startMonth = year === admissionYear ? admissionMonth : 1;
     const monthLimit = year === endYear ? endMonth : 12;
 
     for (let month = startMonth; month <= monthLimit; month++) {
       const asOfDate = lastDayOfMonth(year, month);
-      const feeStructure = await loadAssignedFeeStructureAsOf(studentId, schoolId, adminSupabase, asOfDate);
+      const structureCacheKey = `${schoolId}|${studentId}|${toLocalYmd(asOfDate)}`;
+      let feeStructure = structureCache.get(structureCacheKey);
+      if (!feeStructure) {
+        feeStructure = await loadAssignedFeeStructureAsOf(studentId, schoolId, adminSupabase, asOfDate, {
+          student: studentRow as FeeStructureStudentRow,
+        });
+        structureCache.set(structureCacheKey, feeStructure);
+      }
 
       const hasAny =
         feeStructure.class_fees.length > 0 ||

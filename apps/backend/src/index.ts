@@ -66,6 +66,25 @@ const app = express();
 // This ensures rate limiting and logging work with real client IPs
 app.set('trust proxy', 1);
 
+const allowedOrigins = [
+  'https://jhelumverse.in',
+  'https://www.jhelumverse.in',
+  'http://localhost:5173',
+  'http://localhost:3000',
+];
+
+const corsOptions = {
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    if (!origin) return callback(null, true); // allow Postman / mobile
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+};
 
 // ======================================================
 // SECURITY + PERFORMANCE MIDDLEWARE
@@ -75,11 +94,9 @@ app.set('trust proxy', 1);
 // 1. Helmet - Security headers
 app.use(helmet());
 
-// 2. CORS - Cross-origin resource sharing
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+// 2. CORS - Cross-origin resource sharing (before all routes, including /clerk-fees)
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // 3. Compression - Compress responses
 app.use(compression());

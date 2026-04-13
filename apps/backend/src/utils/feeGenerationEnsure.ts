@@ -3,6 +3,7 @@ import { adminSupabase } from './supabaseAdmin.js';
 import { generateMonthlyFeeComponentsForStudent } from './clerkFeeCollection.js';
 
 const DEFAULT_MAX_STUDENTS = 400;
+const DEFAULT_ANALYTICS_CONCURRENCY = 5;
 
 function parseYmd(ymd: string): Date {
   const [y, m, d] = ymd.split('-').map((x) => parseInt(x, 10));
@@ -124,27 +125,52 @@ export async function ensureMonthlyFeeComponentsForAnalytics(params: {
   let errors = 0;
   let studentsWithNewComponents = 0;
 
-  for (const { id: studentId } of capped) {
-    try {
-      const r = await generateMonthlyFeeComponentsForStudent(
-        studentId,
-        params.schoolId,
-        adminSupabase,
-        params.endYear,
-        params.endMonth
-      );
-      generatedRows += r.generated;
-      updatedRows += r.updated;
-      if (r.generated > 0) {
-        studentsWithNewComponents++;
+  const concurrencyRaw = parseInt(process.env.FEE_GENERATION_ANALYTICS_CONCURRENCY || '', 10);
+  const concurrency =
+    Number.isFinite(concurrencyRaw) && concurrencyRaw > 0
+      ? Math.min(concurrencyRaw, 20)
+      : DEFAULT_ANALYTICS_CONCURRENCY;
+
+  if (process.env.NODE_ENV === 'development') {
+    console.time('fee-generation-analytics');
+  }
+
+  for (let i = 0; i < capped.length; i += concurrency) {
+    const batch = capped.slice(i, i + concurrency);
+    const results = await Promise.allSettled(
+      batch.map(({ id: studentId }) =>
+        generateMonthlyFeeComponentsForStudent(
+          studentId,
+          params.schoolId,
+          adminSupabase,
+          params.endYear,
+          params.endMonth
+        )
+      )
+    );
+
+    for (let j = 0; j < results.length; j++) {
+      const studentId = batch[j].id;
+      const r = results[j];
+      if (r.status === 'fulfilled') {
+        generatedRows += r.value.generated;
+        updatedRows += r.value.updated;
+        if (r.value.generated > 0) {
+          studentsWithNewComponents++;
+        }
+      } else {
+        errors++;
+        const errMsg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+        logger.error(
+          { schoolId: params.schoolId, studentId, err: errMsg },
+          '[fee-generation-analytics] generateMonthlyFeeComponentsForStudent failed'
+        );
       }
-    } catch (e) {
-      errors++;
-      logger.error(
-        { schoolId: params.schoolId, studentId, err: e instanceof Error ? e.message : e },
-        '[fee-generation-analytics] generateMonthlyFeeComponentsForStudent failed'
-      );
     }
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    console.timeEnd('fee-generation-analytics');
   }
 
   logger.info(
