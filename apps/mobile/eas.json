@@ -34,7 +34,7 @@
     },
     "production": {
       "android": {
-        "buildType": "app-bundle",
+        "buildType": "apk",
         "image": "latest"
       },
       "ios": {
