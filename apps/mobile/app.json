@@ -30,6 +30,6 @@
       }
     },
 
-    "plugins": ["expo-secure-store"]
+    "plugins": ["expo-secure-store", "./app.plugin.js"]
   }
 }

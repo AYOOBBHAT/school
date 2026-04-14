@@ -8,6 +8,7 @@ import ResetPassword from './pages/ResetPassword';
 import ForgotPassword from './pages/ForgotPassword';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsAndConditions from './pages/TermsAndConditions';
+import DeleteAccount from './pages/DeleteAccount';
 import AdminDashboard from './pages/AdminDashboard';
 import { devError } from './utils/devLog';
 
@@ -442,6 +443,11 @@ function Footer() {
                   Privacy Policy
                 </Link>
               </li>
+              <li>
+                <Link to="/delete-account" className="hover:text-white">
+                  Delete Account
+                </Link>
+              </li>
             </ul>
           </div>
           <div>
@@ -495,6 +501,7 @@ export default function App() {
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
         <Route path="/terms" element={<TermsAndConditions />} />
+        <Route path="/delete-account" element={<DeleteAccount />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/reset-password" element={<ResetPassword />} />
