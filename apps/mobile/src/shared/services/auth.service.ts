@@ -44,7 +44,9 @@ export async function signupPrincipal(data: {
   email: string;
   password: string;
   full_name: string;
+  phone: string;
   school_name: string;
+  school_registration_number: string;
   school_address?: string;
   contact_phone?: string;
   contact_email?: string;

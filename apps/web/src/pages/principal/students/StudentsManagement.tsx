@@ -4,7 +4,7 @@ import { supabase } from '../../../utils/supabase';
 import {
   checkUsername as checkUsernameService,
   loadStudentsAdmin as loadStudentsAdminService,
-  loadClasses as loadClassesService,
+  loadClassGroups as loadClassGroupsService,
   loadClassSections,
   loadDefaultFees as loadDefaultFeesService,
   loadStudentFeeConfig,
@@ -219,8 +219,8 @@ export default function StudentsManagement() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
-      const data = await loadClassesService(token);
-      setAllClasses(data.classes || []);
+      const data = await loadClassGroupsService(token);
+      setAllClasses((data.class_groups || []).map((c) => ({ id: c.id, name: c.name } as any)));
     } catch (error) {
       devError('Error loading classes:', error);
       // Don't set error state here as it's a secondary load
@@ -555,6 +555,11 @@ export default function StudentsManagement() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
+      if (!addStudentForm.class_group_id) {
+        alert('Please select a class.');
+        return;
+      }
+
       await createStudent(token, {
         email: addStudentForm.email,
         password: addStudentForm.password,
@@ -562,7 +567,7 @@ export default function StudentsManagement() {
         username: addStudentForm.username,
         phone: addStudentForm.phone || null,
         roll_number: addStudentForm.roll_number || null,
-        class_group_id: addStudentForm.class_group_id || null,
+        class_group_id: addStudentForm.class_group_id,
         section_id: addStudentForm.section_id || null,
         admission_date: addStudentForm.admission_date || null,
         gender: addStudentForm.gender || null,
@@ -572,8 +577,8 @@ export default function StudentsManagement() {
         guardian_phone: addStudentForm.guardian_phone,
         guardian_email: addStudentForm.guardian_email || null,
         guardian_relationship: addStudentForm.guardian_relationship,
-        // Include fee configuration if class is selected
-        fee_config: addStudentForm.class_group_id ? feeConfig : undefined
+        // Include fee configuration (class is required)
+        fee_config: feeConfig
       });
 
       alert('Student added successfully!');
@@ -1382,7 +1387,7 @@ export default function StudentsManagement() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Class</label>
+                <label className="block text-sm font-medium mb-1">Class *</label>
                 <select
                   value={addStudentForm.class_group_id}
                   onChange={async (e) => {
@@ -1406,18 +1411,14 @@ export default function StudentsManagement() {
                     }
                   }}
                   className="w-full px-3 py-2 border rounded-md"
+                  required
                 >
-                  <option value="">Select Class (Optional)</option>
-                  {allClasses.map((cls) => {
-                    const classificationText = cls.classifications && cls.classifications.length > 0
-                      ? ` (${cls.classifications.map(c => `${c.type}: ${c.value}`).join(', ')})`
-                      : '';
-                    return (
-                      <option key={cls.id} value={cls.id}>
-                        {cls.name}{classificationText}
-                      </option>
-                    );
-                  })}
+                  <option value="">Select Class</option>
+                  {allClasses.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.name}
+                    </option>
+                  ))}
                 </select>
               </div>
               {addStudentForm.class_group_id && sections[addStudentForm.class_group_id] && (

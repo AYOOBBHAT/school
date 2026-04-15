@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { requireRoles } from '../middleware/auth.js';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
 import { invalidateCache } from '../utils/cache.js';
+import logger from '../utils/logger.js';
 
 const router = Router();
 
@@ -47,7 +48,7 @@ const addStudentSchema = Joi.object({
   username: Joi.string().required(), // Username must be unique per school
   phone: Joi.string().allow('', null),
   roll_number: Joi.string().allow('', null),
-  class_group_id: Joi.string().uuid().allow('', null),
+  class_group_id: Joi.string().uuid().required(),
   section_id: Joi.string().uuid().allow('', null),
   admission_date: Joi.string().allow('', null),
   gender: Joi.string().valid('male', 'female', 'other').allow('', null),
@@ -325,12 +326,73 @@ router.get('/check-username/:username', requireRoles(['principal']), async (req,
 
 // Principal adds a student
 router.post('/students', requireRoles(['principal']), async (req, res) => {
-  const { error, value } = addStudentSchema.validate(req.body);
-  if (error) return res.status(400).json({ error: error.message });
+  const redactBodyForLogs = (body: unknown) => {
+    if (body == null || typeof body !== 'object') return body;
+    const b = body as Record<string, unknown>;
+    const redacted: Record<string, unknown> = { ...b };
+    for (const key of ['password', 'new_password', 'otp', 'access_token', 'refresh_token', 'token']) {
+      if (key in redacted) redacted[key] = '[REDACTED]';
+    }
+    return redacted;
+  };
+
+  logger.info({ body: redactBodyForLogs(req.body) }, '[principal-users/students] Incoming request body');
+
+  const { error, value } = addStudentSchema.validate(req.body, {
+    abortEarly: false,
+    allowUnknown: false,
+    stripUnknown: true
+  });
+  if (error) {
+    const details = error.details.map((d) => ({
+      field: d.path.join('.'),
+      message: d.message,
+      type: d.type
+    }));
+    return res.status(400).json({ error: 'Validation failed', details });
+  }
 
   const { user } = req;
   if (!user || !user.schoolId) return res.status(500).json({ error: 'Server misconfigured' });
 
+  // Validate class ownership (multi-school isolation)
+  const { data: classGroup, error: classGroupError } = await adminSupabase
+    .from('class_groups')
+    .select('id')
+    .eq('id', value.class_group_id)
+    .eq('school_id', user.schoolId)
+    .maybeSingle();
+
+  if (classGroupError) {
+    logger.error({ err: classGroupError, class_group_id: value.class_group_id, school_id: user.schoolId }, '[principal-users/students] Error validating class_group_id');
+    return res.status(400).json({ error: 'Failed to validate class group' });
+  }
+  if (!classGroup) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: [{ field: 'class_group_id', message: 'Class group not found for this school' }]
+    });
+  }
+
+  // Optional: validate section ownership (section must belong to class_group_id)
+  if (value.section_id) {
+    const { data: section, error: sectionError } = await adminSupabase
+      .from('sections')
+      .select('id')
+      .eq('id', value.section_id)
+      .eq('class_group_id', value.class_group_id)
+      .maybeSingle();
+    if (sectionError) {
+      logger.error({ err: sectionError, section_id: value.section_id, class_group_id: value.class_group_id }, '[principal-users/students] Error validating section_id');
+      return res.status(400).json({ error: 'Failed to validate section' });
+    }
+    if (!section) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: [{ field: 'section_id', message: 'Section does not belong to selected class' }]
+      });
+    }
+  }
 
   try {
     // Check if username already exists in this school
@@ -430,6 +492,7 @@ router.post('/students', requireRoles(['principal']), async (req, res) => {
       .single();
 
     if (studentError) {
+      logger.error({ err: studentError, studentData: { ...studentData } }, '[principal-users/students] Error inserting student record');
       await adminSupabase.auth.admin.deleteUser(authData.user.id);
       await adminSupabase.from('profiles').delete().eq('id', authData.user.id);
       return res.status(400).json({ error: `Failed to create student record: ${studentError.message}` });

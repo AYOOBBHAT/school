@@ -37,9 +37,35 @@ const joinSignupSchema = Joi.object({
 });
 // Principal creates school
 router.post('/signup-principal', async (req, res) => {
-    const { error, value } = principalSignupSchema.validate(req.body);
-    if (error)
-        return res.status(400).json({ error: error.message });
+    const redactBodyForLogs = (body) => {
+        if (body == null || typeof body !== 'object')
+            return body;
+        const b = body;
+        const redacted = { ...b };
+        for (const key of ['password', 'new_password', 'otp', 'access_token', 'refresh_token', 'token']) {
+            if (key in redacted)
+                redacted[key] = '[REDACTED]';
+        }
+        return redacted;
+    };
+    // Debug: log incoming body shape (redacted)
+    logger.info({ body: redactBodyForLogs(req.body) }, '[signup-principal] Incoming request body');
+    const { error, value } = principalSignupSchema.validate(req.body, {
+        abortEarly: false,
+        allowUnknown: false,
+        stripUnknown: true
+    });
+    if (error) {
+        const details = error.details.map((d) => ({
+            field: d.path.join('.'),
+            message: d.message,
+            type: d.type
+        }));
+        return res.status(400).json({
+            error: 'Validation failed',
+            details
+        });
+    }
     // Check for missing environment variables with specific error messages
     // Service key is validated at module load time in supabaseAdmin.ts
     // Check if service role key is still placeholder
@@ -152,8 +178,8 @@ router.post('/signup-principal', async (req, res) => {
             redirect: '/principal/dashboard'
         });
     }
-    catch {
-        logger.error('[signup-principal] Unexpected error');
+    catch (err) {
+        logger.error({ err }, '[signup-principal] Unexpected error');
         return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
     }
 });
@@ -531,6 +557,12 @@ router.post('/reset-password', async (req, res) => {
         });
         if (updateError) {
             return res.status(400).json({ error: 'Failed to update password' });
+        }
+        // Invalidate ALL sessions after password change (all devices)
+        const { error: signOutError } = await adminSupabase.auth.admin.signOut(user.id);
+        if (signOutError) {
+            logger.error({ err: signOutError }, '[reset-password] Failed to revoke sessions');
+            return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
         }
         // Update profile to clear password_reset_required flag
         const { error: profileError } = await adminSupabase
@@ -970,6 +1002,12 @@ router.post('/forgot-password-verify', async (req, res) => {
         });
         if (updateError) {
             return res.status(400).json({ error: 'Failed to reset password' });
+        }
+        // Invalidate ALL sessions after password reset (all devices)
+        const { error: signOutError } = await supabase.auth.admin.signOut(profileId);
+        if (signOutError) {
+            logger.error({ err: signOutError }, '[forgot-password-verify] Failed to revoke sessions');
+            return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
         }
         // Clear password_reset_required flag
         await supabase

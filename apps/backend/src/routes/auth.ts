@@ -43,8 +43,35 @@ const joinSignupSchema = Joi.object({
 
 // Principal creates school
 router.post('/signup-principal', async (req, res) => {
-  const { error, value } = principalSignupSchema.validate(req.body);
-  if (error) return res.status(400).json({ error: error.message });
+  const redactBodyForLogs = (body: unknown) => {
+    if (body == null || typeof body !== 'object') return body;
+    const b = body as Record<string, unknown>;
+    const redacted: Record<string, unknown> = { ...b };
+    for (const key of ['password', 'new_password', 'otp', 'access_token', 'refresh_token', 'token']) {
+      if (key in redacted) redacted[key] = '[REDACTED]';
+    }
+    return redacted;
+  };
+
+  // Debug: log incoming body shape (redacted)
+  logger.info({ body: redactBodyForLogs(req.body) }, '[signup-principal] Incoming request body');
+
+  const { error, value } = principalSignupSchema.validate(req.body, {
+    abortEarly: false,
+    allowUnknown: false,
+    stripUnknown: true
+  });
+  if (error) {
+    const details = error.details.map((d) => ({
+      field: d.path.join('.'),
+      message: d.message,
+      type: d.type
+    }));
+    return res.status(400).json({
+      error: 'Validation failed',
+      details
+    });
+  }
 
   // Check for missing environment variables with specific error messages
   // Service key is validated at module load time in supabaseAdmin.ts
@@ -173,8 +200,8 @@ router.post('/signup-principal', async (req, res) => {
       school: { id: school.id, name: school.name, join_code: joinCode },
       redirect: '/principal/dashboard'
     });
-  } catch {
-    logger.error('[signup-principal] Unexpected error');
+  } catch (err) {
+    logger.error({ err }, '[signup-principal] Unexpected error');
     return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
   }
 });

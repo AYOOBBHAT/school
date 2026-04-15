@@ -21,8 +21,10 @@ export function SignupScreen({ navigation }: SignupScreenProps) {
     email: '',
     password: '',
     full_name: '',
+    phone: '',
     school_name: '',
     school_address: '',
+    school_registration_number: '',
     contact_phone: '',
     contact_email: '',
   });
@@ -38,7 +40,14 @@ export function SignupScreen({ navigation }: SignupScreenProps) {
   });
 
   const handlePrincipalSignup = async () => {
-    if (!principalData.email || !principalData.password || !principalData.full_name || !principalData.school_name) {
+    if (
+      !principalData.email ||
+      !principalData.password ||
+      !principalData.full_name ||
+      !principalData.phone ||
+      !principalData.school_name ||
+      !principalData.school_registration_number
+    ) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
@@ -136,10 +145,25 @@ export function SignupScreen({ navigation }: SignupScreenProps) {
               secureTextEntry
             />
             <Input
+              label="Phone"
+              placeholder="Your phone number"
+              value={principalData.phone}
+              onChangeText={(text: string) => setPrincipalData({ ...principalData, phone: text })}
+              keyboardType="phone-pad"
+            />
+            <Input
               label="School Name"
               placeholder="Your school name"
               value={principalData.school_name}
               onChangeText={(text: string) => setPrincipalData({ ...principalData, school_name: text })}
+            />
+            <Input
+              label="School Registration Number"
+              placeholder="Unique registration number"
+              value={principalData.school_registration_number}
+              onChangeText={(text: string) =>
+                setPrincipalData({ ...principalData, school_registration_number: text })
+              }
             />
             <Input
               label="School Address (Optional)"
@@ -153,6 +177,14 @@ export function SignupScreen({ navigation }: SignupScreenProps) {
               value={principalData.contact_phone}
               onChangeText={(text: string) => setPrincipalData({ ...principalData, contact_phone: text })}
               keyboardType="phone-pad"
+            />
+            <Input
+              label="Contact Email (Optional)"
+              placeholder="school@email.com"
+              value={principalData.contact_email}
+              onChangeText={(text: string) => setPrincipalData({ ...principalData, contact_email: text })}
+              keyboardType="email-address"
+              autoCapitalize="none"
             />
 
             <Button

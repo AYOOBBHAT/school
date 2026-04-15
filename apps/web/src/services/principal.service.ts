@@ -334,6 +334,20 @@ export async function loadClasses(token: string): Promise<ClassResponse> {
   return await response.json();
 }
 
+// Minimal class-groups list for dropdowns/selectors
+export async function loadClassGroups(token: string): Promise<{ class_groups: Array<{ id: string; name: string }> }> {
+  const response = await fetch(`${API_URL}/class-groups`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    await response.json().catch(() => ({}));
+    throw new Error('Failed to load class groups');
+  }
+
+  return await response.json();
+}
+
 export async function createClass(token: string, data: {
   name: string;
   description?: string;

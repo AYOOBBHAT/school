@@ -16,6 +16,7 @@ import marksRouter from './routes/marks.js';
 import attendanceRouter from './routes/attendance.js';
 import authRouter from './routes/auth.js';
 import classesRouter from './routes/classes.js';
+import classGroupsRouter from './routes/class-groups.js';
 import classificationsRouter from './routes/classifications.js';
 import subjectsRouter from './routes/subjects.js';
 import studentsRouter from './routes/students.js';
@@ -32,6 +33,7 @@ import adminRouter from './routes/admin.js';
 import principalUsersRouter from './routes/principal-users.js';
 import clerkFeesRouter from './routes/clerk-fees.js';
 import studentFeesRouter from './routes/studentFees.js';
+import { scheduleMonthlyFeeGeneration } from './jobs/scheduleMonthlyFeeGeneration.js';
 // ======================================================
 // ENV VALIDATION
 // ======================================================
@@ -52,17 +54,38 @@ const app = express();
 // CRITICAL: Trust proxy for correct IP detection behind Railway/AWS/Nginx
 // This ensures rate limiting and logging work with real client IPs
 app.set('trust proxy', 1);
+/** Must run before route handlers so every request gets a response timeout (and CORS headers on 503). */
+const httpRequestTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS) > 0
+    ? Number(process.env.HTTP_REQUEST_TIMEOUT_MS)
+    : 120_000;
+const allowedOrigins = [
+    'https://jhelumverse.in',
+    'https://www.jhelumverse.in',
+    'http://localhost:5173',
+    'http://localhost:3000',
+];
+const corsOptions = {
+    origin: function (origin, callback) {
+        if (!origin)
+            return callback(null, true); // allow Postman / mobile
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        else {
+            return callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+};
 // ======================================================
 // SECURITY + PERFORMANCE MIDDLEWARE
 // ======================================================
-// Order is critical: helmet → cors → compression → rateLimit → json → logger → routes → errorHandler
+// Order is critical: helmet → cors → compression → rateLimit → json → logger → requestTimeout → routes → errorHandler
 // 1. Helmet - Security headers
 app.use(helmet());
-// 2. CORS - Cross-origin resource sharing
-app.use(cors({
-    origin: true,
-    credentials: true
-}));
+// 2. CORS - Cross-origin resource sharing (before all routes, including /clerk-fees)
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 // 3. Compression - Compress responses
 app.use(compression());
 // 4. Rate Limiting - Prevent abuse (300 req/min per IP - supports mobile apps + shared IPs)
@@ -71,6 +94,15 @@ app.use(rateLimiter);
 app.use(express.json({ limit: '1mb' }));
 // 6. Request Logging - Log all requests with pino-http
 app.use(pinoHttp({ logger }));
+// 7. Per-request socket timeout — MUST be before routes (middleware after routers never runs for matched paths)
+app.use((req, res, next) => {
+    res.setTimeout(httpRequestTimeoutMs, () => {
+        if (!res.headersSent) {
+            res.status(503).json({ error: 'Request timeout' });
+        }
+    });
+    next();
+});
 // ======================================================
 // HEALTH CHECK
 // ======================================================
@@ -138,6 +170,7 @@ app.use('/payments', paymentsRouter);
 app.use('/marks', marksRouter);
 app.use('/attendance', attendanceRouter);
 app.use('/classes', classesRouter);
+app.use('/class-groups', classGroupsRouter);
 app.use('/classifications', classificationsRouter);
 app.use('/subjects', subjectsRouter);
 app.use('/students', studentsRouter);
@@ -153,18 +186,6 @@ app.use('/salary', salaryRouter);
 app.use('/principal-users', principalUsersRouter);
 app.use('/clerk-fees', clerkFeesRouter);
 app.use('/students/fees', studentFeesRouter);
-// ======================================================
-// REQUEST TIMEOUT PROTECTION
-// ======================================================
-// Prevent hanging requests
-app.use((req, res, next) => {
-    res.setTimeout(15000, () => {
-        if (!res.headersSent) {
-            res.status(503).json({ error: 'Request timeout' });
-        }
-    });
-    next();
-});
 // ======================================================
 // GLOBAL ERROR HANDLER
 // ======================================================
@@ -195,9 +216,11 @@ const port = Number(process.env.PORT) || 4000;
 const host = process.env.HOST || '0.0.0.0';
 const server = app.listen(port, host, () => {
     logger.info({ port, host }, '🚀 Backend server started');
+    if (process.env.ENABLE_MONTHLY_FEE_GENERATION_CRON === 'true') {
+        scheduleMonthlyFeeGeneration();
+    }
 });
-// Set server timeout
-server.setTimeout(15000);
+server.setTimeout(httpRequestTimeoutMs);
 // ======================================================
 // GRACEFUL SHUTDOWN
 // ======================================================

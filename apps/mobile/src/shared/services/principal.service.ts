@@ -170,6 +170,10 @@ export async function loadClasses(): Promise<{ classes: ClassGroup[] }> {
   return api.get<{ classes: ClassGroup[] }>('/classes');
 }
 
+export async function loadClassGroups(): Promise<{ class_groups: Array<{ id: string; name: string }> }> {
+  return api.get<{ class_groups: Array<{ id: string; name: string }> }>('/class-groups');
+}
+
 // Staff
 export async function loadStaff(): Promise<{ staff: Staff[] }> {
   return api.get<{ staff: Staff[] }>('/staff-admin');

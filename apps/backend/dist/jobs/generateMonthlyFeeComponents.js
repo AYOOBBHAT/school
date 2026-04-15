@@ -8,13 +8,87 @@
  * ⚠️ DO NOT run this during request handling
  * ⚠️ Use cron job or background worker only
  *
- * Setup:
- * 1. Add to cron: 0 2 * * * (runs daily at 2 AM)
- * 2. Or use a job queue (Bull, BullMQ, etc.)
- * 3. Or use Supabase Edge Functions with cron trigger
+ * When `schoolId` is omitted, processing runs **per school** (distinct school_id from students)
+ * to avoid one unbounded global scan and to isolate failures per tenant.
  */
 import { adminSupabase } from '../utils/supabaseAdmin.js';
 import { generateMonthlyFeeComponentsForStudent } from '../utils/clerkFeeCollection.js';
+import logger from '../utils/logger.js';
+async function generateMonthlyFeeComponentsForSchool(year, month, schoolId, batchSize) {
+    let query = adminSupabase
+        .from('students')
+        .select('id, school_id, admission_date')
+        .eq('status', 'active')
+        .eq('school_id', schoolId);
+    const { data: students, error: studentsError } = await query;
+    if (studentsError) {
+        throw new Error(`Failed to fetch students: ${studentsError.message}`);
+    }
+    if (!students || students.length === 0) {
+        logger.info({ schoolId, year, month }, '[generateMonthlyFeeComponentsJob] no active students in school');
+        return {
+            totalStudents: 0,
+            processed: 0,
+            generated: 0,
+            updated: 0,
+            errors: []
+        };
+    }
+    logger.info({ schoolId, year, month, totalStudents: students.length }, '[generateMonthlyFeeComponentsJob] school batch starting');
+    let processed = 0;
+    let totalGenerated = 0;
+    let totalUpdated = 0;
+    const errors = [];
+    for (let i = 0; i < students.length; i += batchSize) {
+        const batch = students.slice(i, i + batchSize);
+        const batchResults = await Promise.all(batch.map(async (student) => {
+            try {
+                const result = await generateMonthlyFeeComponentsForStudent(student.id, student.school_id, adminSupabase, year, month);
+                return {
+                    ok: true,
+                    studentId: student.id,
+                    generated: result.generated,
+                    updated: result.updated
+                };
+            }
+            catch (error) {
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                logger.error({ schoolId, studentId: student.id, err: errorMessage }, '[generateMonthlyFeeComponentsJob] student failed');
+                return { ok: false, studentId: student.id, error: errorMessage };
+            }
+        }));
+        for (const row of batchResults) {
+            if (row.ok) {
+                processed++;
+                totalGenerated += row.generated;
+                totalUpdated += row.updated;
+            }
+            else {
+                errors.push({ studentId: row.studentId, error: row.error });
+            }
+        }
+        if (i + batchSize < students.length) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+    }
+    logger.info({
+        schoolId,
+        year,
+        month,
+        processed,
+        totalStudents: students.length,
+        generated: totalGenerated,
+        updated: totalUpdated,
+        errorCount: errors.length,
+    }, '[generateMonthlyFeeComponentsJob] school batch completed');
+    return {
+        totalStudents: students.length,
+        processed,
+        generated: totalGenerated,
+        updated: totalUpdated,
+        errors
+    };
+}
 /**
  * Generate monthly fee components for all active students
  *
@@ -27,21 +101,20 @@ export async function generateMonthlyFeeComponentsJob(targetYear, targetMonth, s
     const today = new Date();
     const year = targetYear || today.getFullYear();
     const month = targetMonth || today.getMonth() + 1;
-    console.log(`[generateMonthlyFeeComponentsJob] Starting generation for ${year}-${month}`);
-    // Get all active students
-    let query = adminSupabase
-        .from('students')
-        .select('id, school_id, admission_date')
-        .eq('status', 'active');
+    logger.info({ year, month, schoolId: schoolId ?? 'all' }, '[generateMonthlyFeeComponentsJob] starting');
     if (schoolId) {
-        query = query.eq('school_id', schoolId);
+        return generateMonthlyFeeComponentsForSchool(year, month, schoolId, batchSize);
     }
-    const { data: students, error: studentsError } = await query;
-    if (studentsError) {
-        throw new Error(`Failed to fetch students: ${studentsError.message}`);
+    const { data: schoolRows, error: schoolsError } = await adminSupabase
+        .from('students')
+        .select('school_id')
+        .eq('status', 'active');
+    if (schoolsError) {
+        throw new Error(`Failed to list schools from active students: ${schoolsError.message}`);
     }
-    if (!students || students.length === 0) {
-        console.log('[generateMonthlyFeeComponentsJob] No active students found');
+    const schoolIds = [...new Set((schoolRows || []).map((r) => r.school_id).filter(Boolean))];
+    if (schoolIds.length === 0) {
+        logger.info({ year, month }, '[generateMonthlyFeeComponentsJob] no active students (no schools)');
         return {
             totalStudents: 0,
             processed: 0,
@@ -50,62 +123,42 @@ export async function generateMonthlyFeeComponentsJob(targetYear, targetMonth, s
             errors: []
         };
     }
-    console.log(`[generateMonthlyFeeComponentsJob] Found ${students.length} active students`);
+    logger.info({ year, month, schoolCount: schoolIds.length }, '[generateMonthlyFeeComponentsJob] multi-tenant run');
+    let totalStudents = 0;
     let processed = 0;
-    let totalGenerated = 0;
-    let totalUpdated = 0;
+    let generated = 0;
+    let updated = 0;
     const errors = [];
-    // Process in batches to avoid overwhelming the database
-    for (let i = 0; i < students.length; i += batchSize) {
-        const batch = students.slice(i, i + batchSize);
-        console.log(`[generateMonthlyFeeComponentsJob] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(students.length / batchSize)}`);
-        // Process batch in parallel (but limit concurrency)
-        const batchPromises = batch.map(async (student) => {
-            try {
-                const result = await generateMonthlyFeeComponentsForStudent(student.id, student.school_id, adminSupabase, year, month);
-                processed++;
-                totalGenerated += result.generated;
-                totalUpdated += result.updated;
-                return { success: true, studentId: student.id };
-            }
-            catch (error) {
-                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-                console.error(`[generateMonthlyFeeComponentsJob] Error for student ${student.id}:`, errorMessage);
-                errors.push({ studentId: student.id, error: errorMessage });
-                return { success: false, studentId: student.id, error: errorMessage };
-            }
-        });
-        await Promise.all(batchPromises);
-        // Small delay between batches to avoid overwhelming the database
-        if (i + batchSize < students.length) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+    for (const sid of schoolIds) {
+        try {
+            const r = await generateMonthlyFeeComponentsForSchool(year, month, sid, batchSize);
+            totalStudents += r.totalStudents;
+            processed += r.processed;
+            generated += r.generated;
+            updated += r.updated;
+            errors.push(...r.errors);
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.error({ schoolId: sid, year, month, err: msg }, '[generateMonthlyFeeComponentsJob] school failed');
         }
     }
-    console.log(`[generateMonthlyFeeComponentsJob] Completed: ${processed}/${students.length} students processed`);
-    console.log(`[generateMonthlyFeeComponentsJob] Generated: ${totalGenerated} components, Updated: ${totalUpdated} components`);
-    return {
-        totalStudents: students.length,
+    logger.info({
+        year,
+        month,
+        schoolCount: schoolIds.length,
+        totalStudents,
         processed,
-        generated: totalGenerated,
-        updated: totalUpdated,
+        generated,
+        updated,
+        errorCount: errors.length,
+    }, '[generateMonthlyFeeComponentsJob] all schools completed');
+    return {
+        totalStudents,
+        processed,
+        generated,
+        updated,
         errors
     };
 }
-/**
- * CLI entry point (for manual execution or cron)
- */
-if (require.main === module) {
-    const args = process.argv.slice(2);
-    const year = args[0] ? parseInt(args[0]) : undefined;
-    const month = args[1] ? parseInt(args[1]) : undefined;
-    const schoolId = args[2] || undefined;
-    generateMonthlyFeeComponentsJob(year, month, schoolId)
-        .then(result => {
-        console.log('Job completed:', result);
-        process.exit(0);
-    })
-        .catch(error => {
-        console.error('Job failed:', error);
-        process.exit(1);
-    });
-}
+// CLI: use `pnpm run job:generate-monthly-fees -- [year] [month] [schoolId?]` (see generateMonthlyFeeComponentsCli.ts)

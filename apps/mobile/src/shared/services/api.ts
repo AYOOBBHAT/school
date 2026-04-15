@@ -92,8 +92,36 @@ async function apiRequest<T>(
   }
 
   if (!response.ok) {
-    await response.text().catch(() => '');
-    throw new Error('Something went wrong');
+    const raw = await response.text().catch(() => '');
+    try {
+      const parsed = raw ? (JSON.parse(raw) as any) : null;
+      const baseMsg =
+        typeof parsed?.error === 'string' && parsed.error.trim().length > 0
+          ? parsed.error
+          : 'Something went wrong';
+
+      const details: Array<{ field?: string; message?: string }> = Array.isArray(parsed?.details)
+        ? parsed.details
+        : [];
+
+      if (details.length > 0) {
+        const detailMsg = details
+          .map((d) => {
+            const m = String(d?.message ?? '').trim();
+            const f = String(d?.field ?? '').trim();
+            if (f && m) return `${f}: ${m}`;
+            return m || f;
+          })
+          .filter(Boolean)
+          .join('\n');
+        throw new Error(detailMsg || baseMsg);
+      }
+
+      throw new Error(baseMsg);
+    } catch (e) {
+      if (e instanceof Error && e.message) throw e;
+      throw new Error('Something went wrong');
+    }
   }
 
   try {

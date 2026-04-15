@@ -288,6 +288,10 @@ export function StudentsScreen({ navigation }: Props) {
       Alert.alert('Validation', 'Fill required fields: name, email, username, password, guardian name & phone');
       return;
     }
+    if (!addForm.class_group_id) {
+      Alert.alert('Validation', 'Please select a class');
+      return;
+    }
     if (usernameStatus.checking || usernameStatus.available === false) {
       Alert.alert('Validation', 'Choose an available username (min 3 characters)');
       return;
@@ -295,7 +299,7 @@ export function StudentsScreen({ navigation }: Props) {
     createMutation.mutate(
       {
         ...addForm,
-        class_group_id: addForm.class_group_id || null,
+        class_group_id: addForm.class_group_id,
         section_id: addForm.section_id || null,
         admission_date: addForm.admission_date || null,
         gender: addForm.gender || null,
@@ -526,7 +530,7 @@ export function StudentsScreen({ navigation }: Props) {
             <TextInput style={styles.input} placeholder="Password * (min 8)" secureTextEntry value={addForm.password} onChangeText={(t) => setAddForm({ ...addForm, password: t })} />
             <TextInput style={styles.input} placeholder="Phone" keyboardType="phone-pad" value={addForm.phone ?? ''} onChangeText={(t) => setAddForm({ ...addForm, phone: t || null })} />
             <TextInput style={styles.input} placeholder="Roll Number" value={addForm.roll_number ?? ''} onChangeText={(t) => setAddForm({ ...addForm, roll_number: t || null })} />
-            <Text style={styles.label}>Class</Text>
+            <Text style={styles.label}>Class *</Text>
             <View style={styles.pickerRow}>
               {allClasses.map((c) => (
                 <TouchableOpacity

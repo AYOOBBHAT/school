@@ -3,7 +3,13 @@ import Joi from 'joi';
 import { requireRoles } from '../middleware/auth.js';
 import { adminSupabase } from '../utils/supabaseAdmin.js';
 import { loadAssignedFeeStructure, checkMonthlyFeeComponentsExist } from '../utils/clerkFeeCollection.js';
+import { getUnpaidAnalyticsDateRange } from '../utils/unpaidAnalyticsDateRange.js';
+import { ensureMonthlyFeeComponentsForAnalytics } from '../utils/feeGenerationEnsure.js';
+import { redis, invalidateUnpaidAnalyticsCacheForSchool } from '../utils/redis.js';
 const router = Router();
+const unpaidAnalyticsCacheTtlSeconds = Number(process.env.REDIS_CACHE_TTL_SECONDS) > 0
+    ? Number(process.env.REDIS_CACHE_TTL_SECONDS)
+    : 1800;
 // ============================================
 // 1. Get Assigned Fee Structure for Student
 // ============================================
@@ -29,7 +35,10 @@ router.get('/student/:studentId/fee-structure', requireRoles(['clerk', 'principa
         // Load assigned fee structure
         const feeStructure = await loadAssignedFeeStructure(studentId, user.schoolId, adminSupabase);
         // Check if no fee configured
-        if (!feeStructure.class_fee && !feeStructure.transport_fee && feeStructure.custom_fees.length === 0) {
+        if (!feeStructure.class_fee &&
+            feeStructure.class_fees.length === 0 &&
+            !feeStructure.transport_fee &&
+            feeStructure.custom_fees.length === 0) {
             return res.json({
                 student: {
                     id: student.id,
@@ -250,6 +259,8 @@ router.post('/collect', requireRoles(['clerk', 'principal']), async (req, res) =
             console.error('[clerk-fees/collect] RPC error:', errorMsg);
             return res.status(400).json({ error: errorMsg });
         }
+        await invalidateUnpaidAnalyticsCacheForSchool(user.schoolId);
+        console.log('Cache invalidated for school:', user.schoolId);
         // Return minimal response - RPC handles all writes
         return res.status(201).json({
             success: true,
@@ -548,58 +559,40 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
         if (!validTimeScopes.includes(timeScope)) {
             return res.status(400).json({ error: 'Invalid time scope' });
         }
-        // Calculate date range based on time scope (passed to RPC; SQL uses period overlap).
-        // Rolling windows (last_month, last_N_months) end on the last day of the previous
-        // calendar month so the label matches a full closed month, not "through today".
-        const today = new Date();
-        let startDate = null;
-        let endDate = null;
-        const lastDayOfPreviousMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-        switch (timeScope) {
-            case 'all_time':
-                break;
-            case 'last_month':
-                startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                endDate = lastDayOfPreviousMonth;
-                break;
-            case 'last_2_months':
-                startDate = new Date(today.getFullYear(), today.getMonth() - 2, 1);
-                endDate = lastDayOfPreviousMonth;
-                break;
-            case 'last_3_months':
-                startDate = new Date(today.getFullYear(), today.getMonth() - 3, 1);
-                endDate = lastDayOfPreviousMonth;
-                break;
-            case 'last_6_months':
-                startDate = new Date(today.getFullYear(), today.getMonth() - 6, 1);
-                endDate = lastDayOfPreviousMonth;
-                break;
-            case 'current_academic_year': {
-                // Academic year through today (overlap filter includes current month correctly)
-                const currentMonth = today.getMonth();
-                startDate =
-                    currentMonth >= 3
-                        ? new Date(today.getFullYear(), 3, 1)
-                        : new Date(today.getFullYear() - 1, 3, 1);
-                endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-                break;
-            }
-            default:
-                startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                endDate = lastDayOfPreviousMonth;
-                break;
-        }
-        // Convert dates to ISO strings for PostgreSQL
-        const startDateStr = startDate ? startDate.toISOString().split('T')[0] : null;
-        const endDateStr = endDate ? endDate.toISOString().split('T')[0] : null;
+        const { startDateStr, endDateStr, endYear, endMonth } = getUnpaidAnalyticsDateRange(timeScope);
         // Parse pagination parameters
         const pageNum = parseInt(page) || 1;
         const limitNum = parseInt(limit) || 20;
         const offset = (pageNum - 1) * limitNum;
+        const schoolId = user.schoolId;
+        const classGroupSegment = class_group_id || 'all';
+        // Date bounds in key keep cache aligned with RPC params (same time_scope can shift at midnight).
+        const cacheKey = `unpaid:${schoolId}:${classGroupSegment}:${timeScope}:${startDateStr ?? 'all'}:${endDateStr ?? 'all'}:${pageNum}:${limitNum}`;
+        try {
+            const cached = await redis.get(cacheKey);
+            if (cached !== null && typeof cached === 'object' && 'summary' in cached && 'students' in cached) {
+                console.log('Cache HIT');
+                return res.json(cached);
+            }
+            console.log('Cache MISS:', cacheKey);
+        }
+        catch {
+            // Redis optional for reads — continue to RPC
+        }
+        if (process.env.FEE_GENERATION_ON_ANALYTICS === 'true') {
+            await ensureMonthlyFeeComponentsForAnalytics({
+                schoolId,
+                classGroupId: class_group_id || null,
+                startDateStr,
+                endDateStr,
+                endYear,
+                endMonth,
+            });
+        }
         // Use RPC function which properly filters by class_group_id and date range
         // This ensures ALL summary stats respect the selected filters
         const { data: result, error: rpcError } = await adminSupabase.rpc('get_unpaid_fee_analytics', {
-            p_school_id: user.schoolId,
+            p_school_id: schoolId,
             p_class_group_id: class_group_id || null,
             p_start_date: startDateStr,
             p_end_date: endDateStr,
@@ -609,6 +602,9 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
         if (rpcError) {
             console.error('[analytics/unpaid] RPC error:', rpcError);
             return res.status(500).json({ error: rpcError.message || 'Failed to get unpaid fee analytics' });
+        }
+        if (result == null) {
+            return res.status(500).json({ error: 'Failed to get unpaid fee analytics' });
         }
         // Extract data from JSON result - this is the SINGLE SOURCE OF TRUTH
         const students = result?.students || [];
@@ -620,7 +616,7 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
             unpaid: summary.unpaid_count || 0,
             partially_paid: summary.partially_paid_count || 0
         };
-        return res.json({
+        const payload = {
             summary: {
                 total_students: summary.total_students || 0,
                 unpaid_count: summary.unpaid_count || 0,
@@ -631,7 +627,14 @@ router.get('/analytics/unpaid', requireRoles(['clerk', 'principal']), async (req
             chart_data: chartData,
             students: students,
             pagination: pagination
-        });
+        };
+        try {
+            await redis.set(cacheKey, payload, { ex: unpaidAnalyticsCacheTtlSeconds });
+        }
+        catch {
+            // Do not fail the request if cache write fails
+        }
+        return res.json(payload);
     }
     catch (err) {
         console.error('[analytics/unpaid] Error:', err);
