@@ -5,6 +5,15 @@ import { Alert } from 'react-native';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
+const PUBLIC_ROUTES = [
+  '/auth/login',
+  '/auth/login-username',
+  '/auth/signup-principal',
+  '/auth/register',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+] as const;
+
 if (!API_BASE_URL) {
   throw new Error('EXPO_PUBLIC_API_URL is required. Set it in eas.json build profile or .env file.');
 }
@@ -26,15 +35,11 @@ async function apiRequest<T>(
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${baseUrl}${normalizedPath}`;
 
-  const isAuthRoute =
-    normalizedPath.includes('/auth/login') ||
-    normalizedPath.includes('/auth/register') ||
-    normalizedPath.includes('/auth/forgot-password') ||
-    normalizedPath.includes('/auth/reset-password');
+  const isPublicRoute = PUBLIC_ROUTES.some((p) => normalizedPath.startsWith(p));
 
   // Fix race condition: session can be null briefly after app init/sign-in.
   let session = (await supabase.auth.getSession()).data.session ?? null;
-  if (!session && !isAuthRoute) {
+  if (!session && !isPublicRoute) {
     await sleep(300);
     session = (await supabase.auth.getSession()).data.session ?? null;
   }
@@ -45,7 +50,7 @@ async function apiRequest<T>(
   }
 
   // Enforce strict auth: never send protected requests without a bearer token.
-  if (!isAuthRoute && !token?.trim()) {
+  if (!isPublicRoute && !token?.trim()) {
     if (__DEV__) {
       devLog('[API] Missing token, aborting request:', normalizedPath);
     }
@@ -83,7 +88,8 @@ async function apiRequest<T>(
   }
 
   if (response.status === 401) {
-    if (!isAuthRoute) {
+    // Only trigger session-expired logic for protected routes.
+    if (!isPublicRoute) {
       if ((globalThis as any).__handlingUnauthorized) {
         throw new Error('Authentication required. Please log in again.');
       }

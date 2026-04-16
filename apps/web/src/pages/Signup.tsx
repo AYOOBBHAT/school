@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@school/ui';
 import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api';
+import { PasswordInput } from '../components/PasswordInput';
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -200,15 +201,15 @@ export default function Signup() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
-                <input
-                  type="password"
+                <PasswordInput
+                  label="Password"
                   required
                   minLength={8}
                   value={principalForm.password}
                   onChange={(e) => setPrincipalForm({ ...principalForm, password: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                  className="px-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
                   placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
                 />
               </div>
               <div>
@@ -253,6 +254,26 @@ export default function Signup() {
                   className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none resize-none"
                   rows={3}
                   placeholder="Enter school address"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Contact Phone (Optional)</label>
+                <input
+                  type="tel"
+                  value={principalForm.contact_phone}
+                  onChange={(e) => setPrincipalForm({ ...principalForm, contact_phone: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                  placeholder="School contact phone"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Contact Email (Optional)</label>
+                <input
+                  type="email"
+                  value={principalForm.contact_email}
+                  onChange={(e) => setPrincipalForm({ ...principalForm, contact_email: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                  placeholder="school@email.com"
                 />
               </div>
               <div className="pt-2">

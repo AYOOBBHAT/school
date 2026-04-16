@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
 import { API_URL } from '../utils/api';
+import { PasswordInput } from '../components/PasswordInput';
 
 function mapResetPasswordError(raw: string | undefined): string {
   const msg = (raw || '').toLowerCase();
@@ -161,14 +162,14 @@ export default function ResetPassword() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                       </svg>
                     </div>
-                    <input
+                    <PasswordInput
                       id="reset-new-password"
-                      type="password"
+                      aria-label="New password"
                       required
                       disabled={locked}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="pl-10 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                       placeholder="Enter new password (min. 8 characters)"
                       minLength={8}
                       autoComplete="new-password"
@@ -188,14 +189,14 @@ export default function ResetPassword() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                       </svg>
                     </div>
-                    <input
+                    <PasswordInput
                       id="reset-confirm-password"
-                      type="password"
+                      aria-label="Confirm password"
                       required
                       disabled={locked}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="pl-10 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                       placeholder="Confirm new password"
                       minLength={8}
                       autoComplete="new-password"

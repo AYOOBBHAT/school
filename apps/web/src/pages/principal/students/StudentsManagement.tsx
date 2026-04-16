@@ -16,6 +16,7 @@ import {
 import { Profile, ClassWithStudents } from '../types';
 import type { ClassGroup } from '../../../services/types';
 import { sanitizePrincipalStudentAdminFeeConfig, sanitizePrincipalStudentCreateFeeConfig } from '../../../utils/feeConfigPayload';
+import { PasswordInput } from '../../../components/PasswordInput';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -1416,14 +1417,15 @@ export default function StudentsManagement() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Password *</label>
-                <input
-                  type="password"
+                <PasswordInput
+                  aria-label="Password"
                   required
                   minLength={8}
                   value={addStudentForm.password}
                   onChange={(e) => setAddStudentForm({ ...addStudentForm, password: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md"
+                  className="px-3 py-2 border rounded-md"
                   placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
                 />
               </div>
               <div>

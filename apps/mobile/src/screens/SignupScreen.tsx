@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../shared/components/Button';
 import { Input } from '../shared/components/Input';
+import { PasswordInput } from '../shared/components/PasswordInput';
 import { authService } from '../shared/services/auth';
 import { useAuth } from '../navigation/AuthContext';
 import { NavigationProp } from '../shared/types';
@@ -79,12 +80,11 @@ export function SignupScreen({ navigation }: SignupScreenProps) {
             keyboardType="email-address"
             autoCapitalize="none"
           />
-          <Input
+          <PasswordInput
             label="Password"
             placeholder="Minimum 8 characters"
             value={principalData.password}
             onChangeText={(text: string) => setPrincipalData({ ...principalData, password: text })}
-            secureTextEntry
           />
           <Input
             label="Phone"

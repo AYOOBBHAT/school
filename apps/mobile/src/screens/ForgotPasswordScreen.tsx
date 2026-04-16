@@ -16,6 +16,7 @@ import { RootStackParamList } from '../navigation/types';
 import { Input } from '../shared/components/Input';
 import { Button } from '../shared/components/Button';
 import { OtpSixInput } from '../shared/components/OtpSixInput';
+import { PasswordInput } from '../shared/components/PasswordInput';
 import {
   GENERIC_OTP_REQUEST_MESSAGE,
   readResendUntilMs,
@@ -372,21 +373,19 @@ export function ForgotPasswordScreen({ navigation }: Props) {
                 </TouchableOpacity>
               </View>
 
-              <Input
+              <PasswordInput
                 label="New password"
                 placeholder="At least 8 characters"
                 value={newPassword}
                 onChangeText={setNewPassword}
-                secureTextEntry
                 autoCapitalize="none"
                 editable={!step2Locked && !verifyingOtp}
               />
-              <Input
+              <PasswordInput
                 label="Confirm password"
                 placeholder="Repeat password"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
-                secureTextEntry
                 autoCapitalize="none"
                 editable={!step2Locked && !verifyingOtp}
               />

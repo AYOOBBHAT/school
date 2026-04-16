@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import { Input } from '../../shared/components/Input';
+import { PasswordInput } from '../../shared/components/PasswordInput';
 import { Button } from '../../shared/components/Button';
 import { supabase } from '../../shared/lib/supabase';
 import { getApiBaseUrl, mapResetPasswordError } from '../../shared/utils/passwordRecovery';
@@ -112,21 +113,19 @@ export function ResetPasswordScreen({ navigation }: Props) {
             </View>
           ) : (
             <View style={styles.form}>
-              <Input
+              <PasswordInput
                 label="New password"
                 placeholder="At least 8 characters"
                 value={newPassword}
                 onChangeText={setNewPassword}
-                secureTextEntry
                 autoCapitalize="none"
                 editable={!locked}
               />
-              <Input
+              <PasswordInput
                 label="Confirm password"
                 placeholder="Repeat password"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
-                secureTextEntry
                 autoCapitalize="none"
                 editable={!locked}
               />

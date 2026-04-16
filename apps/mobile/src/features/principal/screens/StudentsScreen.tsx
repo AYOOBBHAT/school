@@ -31,6 +31,7 @@ import {
   type CreateStudentPayload,
 } from '../../../shared/services/principal.service';
 import { sanitizePrincipalStudentAdminFeeConfig } from '../../../shared/utils/feeConfigPayload';
+import { PasswordInput } from '../../../shared/components/PasswordInput';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import type { PrincipalStackScreenProps } from '../../../navigation/types';
@@ -558,7 +559,7 @@ export function StudentsScreen({ navigation }: Props) {
             <TextInput style={styles.input} placeholder="Email *" keyboardType="email-address" autoCapitalize="none" value={addForm.email} onChangeText={(t) => setAddForm({ ...addForm, email: t })} />
             <TextInput style={styles.input} placeholder="Username * (min 3)" value={addForm.username} onChangeText={(t) => setAddForm({ ...addForm, username: t })} />
             {addForm.username.length > 0 && <Text style={usernameStatus.available === true ? styles.helpOk : styles.helpErr}>{usernameStatus.checking ? 'Checking...' : usernameStatus.message}</Text>}
-            <TextInput style={styles.input} placeholder="Password * (min 8)" secureTextEntry value={addForm.password} onChangeText={(t) => setAddForm({ ...addForm, password: t })} />
+            <PasswordInput placeholder="Password * (min 8)" value={addForm.password} onChangeText={(t) => setAddForm({ ...addForm, password: t })} />
             <TextInput style={styles.input} placeholder="Phone" keyboardType="phone-pad" value={addForm.phone ?? ''} onChangeText={(t) => setAddForm({ ...addForm, phone: t || null })} />
             <TextInput style={styles.input} placeholder="Roll Number" value={addForm.roll_number ?? ''} onChangeText={(t) => setAddForm({ ...addForm, roll_number: t || null })} />
             <Text style={styles.label}>Class *</Text>

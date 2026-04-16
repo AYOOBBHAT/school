@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, FormEvent, useCallback } from 're
 import { Link, useNavigate } from 'react-router-dom';
 import { API_URL } from '../utils/api';
 import { OtpSixInput } from '../components/OtpSixInput';
+import { PasswordInput } from '../components/PasswordInput';
 
 /** Shown after requesting an OTP — never implies the account exists. */
 const GENERIC_OTP_REQUEST_MESSAGE = 'If an account exists, an OTP has been sent';
@@ -577,14 +578,14 @@ export default function ForgotPassword() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </div>
-                  <input
+                  <PasswordInput
                     id="forgot-new-pass"
-                    type="password"
+                    aria-label="New password"
                     required
                     disabled={step2Locked || verifyingOtp}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="pl-10 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="Enter new password (min. 8 characters)"
                     minLength={8}
                     autoComplete="new-password"
@@ -604,14 +605,14 @@ export default function ForgotPassword() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </div>
-                  <input
+                  <PasswordInput
                     id="forgot-confirm-pass"
-                    type="password"
+                    aria-label="Confirm password"
                     required
                     disabled={step2Locked || verifyingOtp}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="pl-10 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="Confirm new password"
                     minLength={8}
                     autoComplete="new-password"

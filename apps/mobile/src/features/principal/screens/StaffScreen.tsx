@@ -5,6 +5,7 @@ import { useStaff, useCreateStaff } from '../hooks/useStaff';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { Card } from '../../../shared/components/Card';
 import { EmptyState } from '../../../shared/components/EmptyState';
+import { PasswordInput } from '../../../shared/components/PasswordInput';
 import { NavigationProp } from '../../../shared/types';
 
 interface StaffScreenProps {
@@ -117,7 +118,7 @@ export function StaffScreen({ navigation }: StaffScreenProps) {
               <Text style={styles.inputLabel}>Email *</Text>
               <TextInput style={styles.input} placeholder="Email" keyboardType="email-address" autoCapitalize="none" value={formData.email} onChangeText={(t) => setFormData({ ...formData, email: t })} />
               <Text style={styles.inputLabel}>Password *</Text>
-              <TextInput style={styles.input} placeholder="Minimum 8 characters" secureTextEntry value={formData.password} onChangeText={(t) => setFormData({ ...formData, password: t })} />
+              <PasswordInput placeholder="Minimum 8 characters" value={formData.password} onChangeText={(t) => setFormData({ ...formData, password: t })} />
               <Text style={styles.inputLabel}>Phone</Text>
               <TextInput style={styles.input} placeholder="Phone (optional)" keyboardType="phone-pad" value={formData.phone} onChangeText={(t) => setFormData({ ...formData, phone: t })} />
               <Text style={styles.inputLabel}>Gender</Text>

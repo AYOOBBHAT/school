@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../shared/components/Button';
 import { Input } from '../shared/components/Input';
+import { PasswordInput } from '../shared/components/PasswordInput';
 import { authService } from '../shared/services/auth';
 import { useAuth } from '../navigation/AuthContext';
 import { queryClient } from '../../App';
@@ -267,12 +268,11 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
             </>
           )}
 
-          <Input
+          <PasswordInput
             label="Password"
             placeholder="Enter your password"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
             autoCapitalize="none"
             autoComplete="password"
           />

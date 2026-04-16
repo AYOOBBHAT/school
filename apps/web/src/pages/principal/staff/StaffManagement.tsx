@@ -25,6 +25,7 @@ import {
 import { Profile } from '../types';
 import type { ClassGroup, Subject } from '../../../services/types';
 import TeacherPaymentHistory from '../../../components/TeacherPaymentHistory';
+import { PasswordInput } from '../../../components/PasswordInput';
 
 export default function StaffManagement() {
   // Ref to track if component is mounted (for async operations)
@@ -1506,14 +1507,15 @@ export default function StaffManagement() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Password *</label>
-                    <input
-                      type="password"
+                    <PasswordInput
+                      aria-label="Password"
                       required
                       minLength={8}
                       value={addStaffForm.password}
                       onChange={(e) => setAddStaffForm({ ...addStaffForm, password: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-md"
+                      className="px-3 py-2 border rounded-md"
                       placeholder="Minimum 8 characters"
+                      autoComplete="new-password"
                     />
                   </div>
                   <div>
