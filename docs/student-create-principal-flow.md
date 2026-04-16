@@ -22,16 +22,23 @@ This document explains how **principal-created students** are created end-to-end
 ### Where the request is built
 
 - **UI**: `apps/web/src/pages/principal/students/StudentsManagement.tsx`
-- **API wrapper**: `apps/web/src/services/principal.service.ts` (`createStudent(...)`)
+  - Blocks submit when transport is enabled and routes exist but no valid route is selected.
+  - Only shows transport toggles when the class has **at least one** default transport route; otherwise transport stays off.
+  - Passes `fee_config` through **`sanitizePrincipalStudentCreateFeeConfig`** before `createStudent`.
+- **Payload sanitizer (shared logic)**: `apps/web/src/utils/feeConfigPayload.ts`
+  - `sanitizePrincipalStudentCreateFeeConfig` — create (`POST /principal-users/students`)
+  - `sanitizePrincipalStudentAdminFeeConfig` — admin update (`PUT /students-admin/:id`) when `effective_from_date` is present
+- **API wrapper (second line of defense)**: `apps/web/src/services/principal.service.ts`
+  - `createStudent` / `updateStudent` sanitize `fee_config` again before `JSON.stringify`, so empty `transport_route_id` never reaches the wire as `""`.
 
 ### Typical payload fields
 
 The web “Add Student” modal collects student + guardian fields and includes:
 
 - **`class_group_id`**: UUID (required by backend validation)
-- **`fee_config`**: object built from UI state (`feeConfig` in the page)
+- **`fee_config`**: object built from UI state (`feeConfig` in the page), then normalized for the API
 
-The important part for your reported error is **`fee_config`** always being included when a class is selected (web currently includes fee configuration alongside student creation).
+The important part for your reported error is **`fee_config`** always being included when a class is selected (web currently includes fee configuration alongside student creation). **`transport_route_id` must never be sent as `""`** — the UI and sanitizer enforce **omit** or **valid UUID**; when transport is off, **`transport_route_id` is omitted** from the JSON object.
 
 ## Backend validation (why your error happens)
 
@@ -76,23 +83,19 @@ If validation passes, the route creates:
 3. `students` row (includes `class_group_id`, optional `section_id`, etc.)
 4. Optional fee setup logic when `fee_config` is present (separate from Joi; transport route is only used if truthy)
 
-## Mobile flow (how it differs today)
+## Mobile flow
 
 ### Principal student screen
 
 - **UI**: `apps/mobile/src/features/principal/screens/StudentsScreen.tsx`
-- **API**: `apps/mobile/src/shared/services/principal.service.ts` (`createStudent`)
+  - Edit/update: validates transport (if enabled and routes exist, a route must be chosen); uses `sanitizePrincipalStudentAdminFeeConfig` for outgoing `fee_config`.
+- **Payload sanitizer**: `apps/mobile/src/shared/utils/feeConfigPayload.ts` (same rules as web: no `""` for `transport_route_id`; omit when transport disabled)
+- **API**: `apps/mobile/src/shared/services/principal.service.ts`
+  - `createStudent` / `updateStudent` sanitize `fee_config` before `api.post` / `api.put` if present.
 
 ### Practical difference vs web
 
-Mobile’s “Add Student” path is primarily collecting student + guardian fields. It does **not** mirror the web’s full “fee configuration” block on create in the same way.
-
-So you may see:
-
-- The **same backend endpoint** (`POST /principal-users/students`)
-- But **different payload shapes** depending on whether `fee_config` is included
-
-If mobile later sends `fee_config` with the same `transport_route_id: ""` pattern, it will hit the **same Joi validation error**.
+Mobile’s “Add Student” path may still **omit** `fee_config` on create (unlike web, which always sends fee UI state when a class is selected). If `fee_config` **is** included (now or later), the service layer strips invalid empty-string UUID fields so Joi does not see `transport_route_id: ""`.
 
 ## Debugging checklist (fast)
 
@@ -108,26 +111,26 @@ If mobile later sends `fee_config` with the same `transport_route_id: ""` patter
 - Web: ensure API calls attach `Authorization` (recent work centralized this in `apps/web/src/services/apiClient.ts` + refactors in services)
 - Mobile: ensure `apps/mobile/src/shared/services/api.ts` waits for session and fails fast if token missing for protected routes
 
-## Recommended client payload conventions (conceptual)
+## Client payload conventions (implemented + Joi alignment)
 
-These are **not** enforced as “business rules” everywhere yet, but they align with Joi and avoid `400`s:
+Web and mobile follow these rules so **`fee_config` matches `feeConfigSchema`**:
 
 ### Transport off
 
 - `transport_enabled: false`
-- omit `transport_route_id` **or** set `transport_route_id: null`
-- never send `""`
+- **`transport_route_id` is omitted** from the serialized object (not `""`)
+- never send `""` for optional UUID fields in `fee_config`
 
 ### Transport on
 
 - `transport_enabled: true`
-- `transport_route_id: "<uuid>"`
+- **`transport_route_id`**: valid route **UUID** only; UI blocks submit if routes exist but none selected
+- If the class has **no** transport routes, the client keeps transport **off** and does not send a route field
 
 ### Transport on but user hasn’t picked a route yet
 
-- Prefer **UI blocking** submit until a route is selected, **or**
-- set `transport_enabled: false` until a route exists, **or**
-- omit `transport_route_id` entirely (do not send `""`)
+- **Web / mobile (edit)**: submit is blocked until a route is selected or transport is disabled
+- Sanitizers still avoid sending `""` if any caller passes empty string in state
 
 ## Related: class assignment errors (historical)
 

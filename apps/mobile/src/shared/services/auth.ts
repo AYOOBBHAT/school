@@ -59,27 +59,6 @@ export class AuthService {
     return response;
   }
 
-  async signupJoin(data: {
-    email: string;
-    password: string;
-    full_name: string;
-    role: 'clerk' | 'teacher' | 'student' | 'parent';
-    join_code: string;
-    roll_number?: string;
-    child_student_id?: string;
-  }): Promise<AuthResponse> {
-    const response = await authServiceFunctions.signupJoin(data);
-    this.currentUser = response.user;
-    if (response.token) {
-      try {
-        await secureWriteItem(USER_KEY, JSON.stringify(response.user));
-      } catch (storageError) {
-        devError('[AuthService] SecureStore failed (non-blocking):', storageError);
-      }
-    }
-    return response;
-  }
-
   async logout(): Promise<void> {
     await supabase.auth.signOut();
     await secureRemoveItem(USER_KEY);

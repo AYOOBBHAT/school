@@ -18,12 +18,6 @@ export interface SignupPrincipalResponse {
   redirect?: string;
 }
 
-export interface SignupJoinResponse {
-  user?: User;
-  session?: Session | null;
-  profile?: User;
-}
-
 async function setSessionAndReturn(session: Session, appUser: User): Promise<AuthResponse> {
   const { error } = await supabase.auth.setSession(session);
   if (error) {
@@ -67,20 +61,4 @@ export async function loginUsername(data: {
   if (!response.session) throw new Error('Something went wrong');
   if (!response.profile) throw new Error('Something went wrong');
   return setSessionAndReturn(response.session, response.profile);
-}
-
-export async function signupJoin(data: {
-  email: string;
-  password: string;
-  full_name: string;
-  role: 'clerk' | 'teacher' | 'student' | 'parent';
-  join_code: string;
-  roll_number?: string;
-  child_student_id?: string;
-}): Promise<AuthResponse> {
-  const response = await api.post<SignupJoinResponse>('/auth/signup-join', data);
-  const appUser = response.profile ?? response.user;
-  if (!appUser) throw new Error('Something went wrong');
-  if (response.session) return setSessionAndReturn(response.session, appUser as User);
-  return { user: appUser as User, token: '' };
 }

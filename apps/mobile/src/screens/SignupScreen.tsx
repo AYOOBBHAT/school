@@ -12,11 +12,9 @@ interface SignupScreenProps {
 }
 
 export function SignupScreen({ navigation }: SignupScreenProps) {
-  const [step, setStep] = useState<'type' | 'principal' | 'join'>('type');
   const [loading, setLoading] = useState(false);
   const { setUser } = useAuth();
 
-  // Principal signup fields
   const [principalData, setPrincipalData] = useState({
     email: '',
     password: '',
@@ -27,16 +25,6 @@ export function SignupScreen({ navigation }: SignupScreenProps) {
     school_registration_number: '',
     contact_phone: '',
     contact_email: '',
-  });
-
-  // Join signup fields
-  const [joinData, setJoinData] = useState({
-    email: '',
-    password: '',
-    full_name: '',
-    role: 'student' as 'clerk' | 'teacher' | 'student' | 'parent',
-    join_code: '',
-    roll_number: '',
   });
 
   const handlePrincipalSignup = async () => {
@@ -63,206 +51,97 @@ export function SignupScreen({ navigation }: SignupScreenProps) {
     }
   };
 
-  const handleJoinSignup = async () => {
-    if (!joinData.email || !joinData.password || !joinData.full_name || !joinData.join_code) {
-      Alert.alert('Error', 'Please fill in all required fields');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await authService.signupJoin(joinData);
-      setUser(response.user);
-    } catch {
-      Alert.alert('Signup Failed', 'Something went wrong');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (step === 'type') {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Choose your signup type</Text>
-          </View>
-
-          <View style={styles.options}>
-            <Button
-              title="Create New School (Principal)"
-              onPress={() => setStep('principal')}
-              variant="primary"
-            />
-            <Button
-              title="Join Existing School"
-              onPress={() => setStep('join')}
-              variant="outline"
-            />
-          </View>
-
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Already have an account? </Text>
-            <Text style={styles.link} onPress={() => navigation.navigate('Login')}>
-              Sign in
-            </Text>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  if (step === 'principal') {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Create School</Text>
-            <Text style={styles.subtitle}>Set up your school account</Text>
-          </View>
-
-          <View style={styles.form}>
-            <Input
-              label="Full Name"
-              placeholder="Your full name"
-              value={principalData.full_name}
-              onChangeText={(text: string) => setPrincipalData({ ...principalData, full_name: text })}
-            />
-            <Input
-              label="Email"
-              placeholder="your@email.com"
-              value={principalData.email}
-              onChangeText={(text: string) => setPrincipalData({ ...principalData, email: text })}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <Input
-              label="Password"
-              placeholder="Minimum 8 characters"
-              value={principalData.password}
-              onChangeText={(text: string) => setPrincipalData({ ...principalData, password: text })}
-              secureTextEntry
-            />
-            <Input
-              label="Phone"
-              placeholder="Your phone number"
-              value={principalData.phone}
-              onChangeText={(text: string) => setPrincipalData({ ...principalData, phone: text })}
-              keyboardType="phone-pad"
-            />
-            <Input
-              label="School Name"
-              placeholder="Your school name"
-              value={principalData.school_name}
-              onChangeText={(text: string) => setPrincipalData({ ...principalData, school_name: text })}
-            />
-            <Input
-              label="School Registration Number"
-              placeholder="Unique registration number"
-              value={principalData.school_registration_number}
-              onChangeText={(text: string) =>
-                setPrincipalData({ ...principalData, school_registration_number: text })
-              }
-            />
-            <Input
-              label="School Address (Optional)"
-              placeholder="School address"
-              value={principalData.school_address}
-              onChangeText={(text: string) => setPrincipalData({ ...principalData, school_address: text })}
-            />
-            <Input
-              label="Contact Phone (Optional)"
-              placeholder="School phone"
-              value={principalData.contact_phone}
-              onChangeText={(text: string) => setPrincipalData({ ...principalData, contact_phone: text })}
-              keyboardType="phone-pad"
-            />
-            <Input
-              label="Contact Email (Optional)"
-              placeholder="school@email.com"
-              value={principalData.contact_email}
-              onChangeText={(text: string) => setPrincipalData({ ...principalData, contact_email: text })}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-
-            <Button
-              title="Create School"
-              onPress={handlePrincipalSignup}
-              loading={loading}
-              disabled={loading}
-            />
-
-            <Button
-              title="Back"
-              onPress={() => setStep('type')}
-              variant="outline"
-            />
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.title}>Join School</Text>
-          <Text style={styles.subtitle}>Enter your join code</Text>
+          <Text style={styles.title}>Create your school</Text>
+          <Text style={styles.subtitle}>Principal signup — set up your school account</Text>
+        </View>
+
+        <View style={styles.studentNotice}>
+          <Text style={styles.studentNoticeTitle}>Students</Text>
+          <Text style={styles.studentNoticeBody}>Contact your school to get login credentials.</Text>
         </View>
 
         <View style={styles.form}>
           <Input
             label="Full Name"
             placeholder="Your full name"
-            value={joinData.full_name}
-            onChangeText={(text) => setJoinData({ ...joinData, full_name: text })}
+            value={principalData.full_name}
+            onChangeText={(text: string) => setPrincipalData({ ...principalData, full_name: text })}
           />
           <Input
             label="Email"
             placeholder="your@email.com"
-            value={joinData.email}
-            onChangeText={(text) => setJoinData({ ...joinData, email: text })}
+            value={principalData.email}
+            onChangeText={(text: string) => setPrincipalData({ ...principalData, email: text })}
             keyboardType="email-address"
             autoCapitalize="none"
           />
           <Input
             label="Password"
             placeholder="Minimum 8 characters"
-            value={joinData.password}
-            onChangeText={(text) => setJoinData({ ...joinData, password: text })}
+            value={principalData.password}
+            onChangeText={(text: string) => setPrincipalData({ ...principalData, password: text })}
             secureTextEntry
           />
           <Input
-            label="Join Code"
-            placeholder="School join code"
-            value={joinData.join_code}
-            onChangeText={(text) => setJoinData({ ...joinData, join_code: text })}
-            autoCapitalize="characters"
+            label="Phone"
+            placeholder="Your phone number"
+            value={principalData.phone}
+            onChangeText={(text: string) => setPrincipalData({ ...principalData, phone: text })}
+            keyboardType="phone-pad"
           />
-          {joinData.role === 'student' && (
-            <Input
-              label="Roll Number (Optional)"
-              placeholder="Student roll number"
-              value={joinData.roll_number}
-              onChangeText={(text: string) => setJoinData({ ...joinData, roll_number: text })}
-            />
-          )}
+          <Input
+            label="School Name"
+            placeholder="Your school name"
+            value={principalData.school_name}
+            onChangeText={(text: string) => setPrincipalData({ ...principalData, school_name: text })}
+          />
+          <Input
+            label="School Registration Number"
+            placeholder="Unique registration number"
+            value={principalData.school_registration_number}
+            onChangeText={(text: string) =>
+              setPrincipalData({ ...principalData, school_registration_number: text })
+            }
+          />
+          <Input
+            label="School Address (Optional)"
+            placeholder="School address"
+            value={principalData.school_address}
+            onChangeText={(text: string) => setPrincipalData({ ...principalData, school_address: text })}
+          />
+          <Input
+            label="Contact Phone (Optional)"
+            placeholder="School phone"
+            value={principalData.contact_phone}
+            onChangeText={(text: string) => setPrincipalData({ ...principalData, contact_phone: text })}
+            keyboardType="phone-pad"
+          />
+          <Input
+            label="Contact Email (Optional)"
+            placeholder="school@email.com"
+            value={principalData.contact_email}
+            onChangeText={(text: string) => setPrincipalData({ ...principalData, contact_email: text })}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
 
           <Button
-            title="Join School"
-            onPress={handleJoinSignup}
+            title="Create School"
+            onPress={handlePrincipalSignup}
             loading={loading}
             disabled={loading}
           />
+        </View>
 
-          <Button
-            title="Back"
-            onPress={() => setStep('type')}
-            variant="outline"
-          />
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Already have an account? </Text>
+          <Text style={styles.link} onPress={() => navigation.navigate('Login')}>
+            Sign in
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -277,9 +156,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: 24,
+    paddingBottom: 40,
   },
   header: {
-    marginBottom: 32,
+    marginBottom: 20,
   },
   title: {
     fontSize: 28,
@@ -291,17 +171,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#64748b',
   },
+  studentNotice: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 24,
+  },
+  studentNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e40af',
+    marginBottom: 6,
+  },
+  studentNoticeBody: {
+    fontSize: 14,
+    color: '#1e3a8a',
+    lineHeight: 20,
+  },
   form: {
     width: '100%',
-  },
-  options: {
-    gap: 16,
-    marginBottom: 24,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 24,
+    flexWrap: 'wrap',
   },
   footerText: {
     fontSize: 14,
@@ -313,4 +209,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
