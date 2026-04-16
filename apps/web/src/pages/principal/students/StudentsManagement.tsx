@@ -15,6 +15,14 @@ import {
 } from '../../../services/principal.service';
 import { Profile, ClassWithStudents } from '../types';
 import type { ClassGroup } from '../../../services/types';
+import { sanitizePrincipalStudentAdminFeeConfig, sanitizePrincipalStudentCreateFeeConfig } from '../../../utils/feeConfigPayload';
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value.trim());
+}
 
 export default function StudentsManagement() {
   const [classesWithStudents, setClassesWithStudents] = useState<ClassWithStudents[]>([]);
@@ -100,7 +108,7 @@ export default function StudentsManagement() {
   const [feeConfig, setFeeConfig] = useState({
     class_fee_id: '', // Selected class fee ID
     class_fee_discount: 0,
-    transport_enabled: true,
+    transport_enabled: false,
     transport_route_id: '',
     transport_fee_discount: 0,
     other_fees: [] as Array<{ fee_category_id: string; enabled: boolean; discount: number }>,
@@ -275,11 +283,14 @@ export default function StudentsManagement() {
         discount: 0,
         is_exempt: false
       }));
+
+      const transportRoutes = data.transport_routes || [];
+      const transport_enabled = transportRoutes.length > 0;
       
       setFeeConfig({
         class_fee_id: defaultClassFeeId,
         class_fee_discount: 0,
-        transport_enabled: true,
+        transport_enabled,
         transport_route_id: '',
         transport_fee_discount: 0,
         other_fees: [],
@@ -362,6 +373,13 @@ export default function StudentsManagement() {
           class_fee_discount: 0
         }));
       }
+
+      // Transport routes drive whether "transport enabled" is a meaningful choice.
+      // If there are no routes, force-disable transport so we never send `transport_route_id: ""`.
+      const transportRoutes = data.transport_routes || [];
+      if (transportRoutes.length === 0) {
+        setEditFeeConfig((prev) => ({ ...prev, transport_enabled: false, transport_route_id: '' }));
+      }
     } catch (error) {
       devError('Error loading default fees:', error);
       setEditDefaultFees(null);
@@ -396,6 +414,19 @@ export default function StudentsManagement() {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) return;
 
+      if (editForm.class_group_id && editDefaultFees && loadingEditFees) {
+        alert('Please wait while fee information finishes loading...');
+        return;
+      }
+
+      const transportRoutes = editDefaultFees?.transport_routes || [];
+      if (editForm.class_group_id && editDefaultFees && editFeeConfig.transport_enabled && transportRoutes.length > 0) {
+        if (!editFeeConfig.transport_route_id || !isUuid(editFeeConfig.transport_route_id)) {
+          alert('Please select a transport route (or disable transport).');
+          return;
+        }
+      }
+
       // Prepare update data
       const updateData: any = {
         class_group_id: editForm.class_group_id || null,
@@ -406,10 +437,10 @@ export default function StudentsManagement() {
       // Include fee_config if class is selected
       if (editForm.class_group_id && editDefaultFees) {
         // Include effective_from_date if provided (for editing existing student)
-        updateData.fee_config = {
+        updateData.fee_config = sanitizePrincipalStudentAdminFeeConfig({
           ...editFeeConfig,
           effective_from_date: editFeeConfig.effective_from_date || undefined
-        };
+        });
       }
 
       await updateStudent(token, selectedStudent.id, updateData);
@@ -560,6 +591,24 @@ export default function StudentsManagement() {
         return;
       }
 
+      if (loadingFees) {
+        alert('Please wait while fee information finishes loading...');
+        return;
+      }
+
+      if (!defaultFees) {
+        alert('Fee information is not available for the selected class. Please re-select the class or try again.');
+        return;
+      }
+
+      const transportRoutes = defaultFees.transport_routes || [];
+      if (feeConfig.transport_enabled && transportRoutes.length > 0) {
+        if (!feeConfig.transport_route_id || !isUuid(feeConfig.transport_route_id)) {
+          alert('Please select a transport route (or disable transport).');
+          return;
+        }
+      }
+
       await createStudent(token, {
         email: addStudentForm.email,
         password: addStudentForm.password,
@@ -578,7 +627,7 @@ export default function StudentsManagement() {
         guardian_email: addStudentForm.guardian_email || null,
         guardian_relationship: addStudentForm.guardian_relationship,
         // Include fee configuration (class is required)
-        fee_config: feeConfig
+        fee_config: sanitizePrincipalStudentCreateFeeConfig(feeConfig)
       });
 
       alert('Student added successfully!');
@@ -606,7 +655,7 @@ export default function StudentsManagement() {
       setFeeConfig({
         class_fee_id: '',
         class_fee_discount: 0,
-        transport_enabled: true,
+        transport_enabled: false,
         transport_route_id: '',
         transport_fee_discount: 0,
         other_fees: [],
@@ -1021,65 +1070,87 @@ export default function StudentsManagement() {
 
                       {/* Transport Fee Section */}
                       <div className="bg-green-50 p-4 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <h5 className="font-semibold text-gray-700">Transport Fee</h5>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={editFeeConfig.transport_enabled}
-                              onChange={(e) => setEditFeeConfig({ ...editFeeConfig, transport_enabled: e.target.checked, transport_route_id: e.target.checked ? editFeeConfig.transport_route_id : '' })}
-                              className="rounded"
-                            />
-                            <span className="text-sm text-gray-600">Enable Transport</span>
-                          </label>
-                        </div>
-                        {editFeeConfig.transport_enabled && (
-                          <div className="space-y-2">
-                            <div>
-                              <label className="block text-xs text-gray-600 mb-1">Select Route</label>
-                              <select
-                                value={editFeeConfig.transport_route_id}
-                                onChange={(e) => setEditFeeConfig({ ...editFeeConfig, transport_route_id: e.target.value })}
-                                className="w-full px-2 py-1 border rounded text-sm"
-                              >
-                                <option value="">Select Transport Route</option>
-                                {editDefaultFees.transport_routes.map((route: any) => (
-                                  <option key={route.id} value={route.id}>
-                                    {route.route_name} {route.bus_number ? `(${route.bus_number})` : ''} - ₹{route.fee?.total?.toFixed(2) || '0.00'}/{route.fee?.fee_cycle || 'monthly'}
-                                  </option>
-                                ))}
-                              </select>
+                        {editDefaultFees.transport_routes && editDefaultFees.transport_routes.length > 0 ? (
+                          <>
+                            <div className="flex items-center justify-between mb-2">
+                              <h5 className="font-semibold text-gray-700">Transport Fee</h5>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={editFeeConfig.transport_enabled}
+                                  onChange={(e) =>
+                                    setEditFeeConfig({
+                                      ...editFeeConfig,
+                                      transport_enabled: e.target.checked,
+                                      transport_route_id: e.target.checked ? editFeeConfig.transport_route_id : ''
+                                    })
+                                  }
+                                  className="rounded"
+                                />
+                                <span className="text-sm text-gray-600">Enable Transport</span>
+                              </label>
                             </div>
-                            {editFeeConfig.transport_route_id && (() => {
-                              const selectedRoute = editDefaultFees.transport_routes.find((r: any) => r.id === editFeeConfig.transport_route_id);
-                              const routeFee = selectedRoute?.fee;
-                              const defaultTransportAmount = routeFee ? parseFloat(routeFee.total || 0) : 0;
-                              const finalTransportAmount = Math.max(0, defaultTransportAmount - editFeeConfig.transport_fee_discount);
-                              return (
-                                <>
-                                  <div className="flex justify-between text-sm">
-                                    <span className="text-gray-600">Route Fee:</span>
-                                    <span className="font-medium">₹{defaultTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}</span>
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      value={editFeeConfig.transport_fee_discount}
-                                      onChange={(e) => setEditFeeConfig({ ...editFeeConfig, transport_fee_discount: parseFloat(e.target.value) || 0 })}
-                                      className="w-full px-2 py-1 border rounded text-sm"
-                                      placeholder="0"
-                                    />
-                                  </div>
-                                  <div className="flex justify-between text-sm font-semibold pt-1 border-t">
-                                    <span>Final Amount:</span>
-                                    <span className="text-green-600">₹{finalTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}</span>
-                                  </div>
-                                </>
-                              );
-                            })()}
+                            {editFeeConfig.transport_enabled && (
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Select Route</label>
+                                  <select
+                                    value={editFeeConfig.transport_route_id}
+                                    onChange={(e) => setEditFeeConfig({ ...editFeeConfig, transport_route_id: e.target.value })}
+                                    className="w-full px-2 py-1 border rounded text-sm"
+                                  >
+                                    <option value="">Select Transport Route</option>
+                                    {editDefaultFees.transport_routes.map((route: any) => (
+                                      <option key={route.id} value={route.id}>
+                                        {route.route_name} {route.bus_number ? `(${route.bus_number})` : ''} - ₹
+                                        {route.fee?.total?.toFixed(2) || '0.00'}/{route.fee?.fee_cycle || 'monthly'}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                {editFeeConfig.transport_route_id && (() => {
+                                  const selectedRoute = editDefaultFees.transport_routes.find((r: any) => r.id === editFeeConfig.transport_route_id);
+                                  const routeFee = selectedRoute?.fee;
+                                  const defaultTransportAmount = routeFee ? parseFloat(routeFee.total || 0) : 0;
+                                  const finalTransportAmount = Math.max(0, defaultTransportAmount - editFeeConfig.transport_fee_discount);
+                                  return (
+                                    <>
+                                      <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600">Route Fee:</span>
+                                        <span className="font-medium">
+                                          ₹{defaultTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={editFeeConfig.transport_fee_discount}
+                                          onChange={(e) =>
+                                            setEditFeeConfig({ ...editFeeConfig, transport_fee_discount: parseFloat(e.target.value) || 0 })
+                                          }
+                                          className="w-full px-2 py-1 border rounded text-sm"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between text-sm font-semibold pt-1 border-t">
+                                        <span>Final Amount:</span>
+                                        <span className="text-green-600">
+                                          ₹{finalTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}
+                                        </span>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="text-sm text-gray-600">
+                            <h5 className="font-semibold text-gray-700 mb-1">Transport Fee</h5>
+                            No transport routes are configured for this class.
                           </div>
                         )}
                       </div>
@@ -1402,7 +1473,7 @@ export default function StudentsManagement() {
                       setFeeConfig({
                         class_fee_id: '',
                         class_fee_discount: 0,
-                        transport_enabled: true,
+                        transport_enabled: false,
                         transport_route_id: '',
                         transport_fee_discount: 0,
                         other_fees: [],
@@ -1544,65 +1615,87 @@ export default function StudentsManagement() {
 
                       {/* Transport Fee Section */}
                       <div className="bg-green-50 p-4 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <h5 className="font-semibold text-gray-700">Transport Fee</h5>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={feeConfig.transport_enabled}
-                              onChange={(e) => setFeeConfig({ ...feeConfig, transport_enabled: e.target.checked, transport_route_id: e.target.checked ? feeConfig.transport_route_id : '' })}
-                              className="rounded"
-                            />
-                            <span className="text-sm text-gray-600">Enable Transport</span>
-                          </label>
-                        </div>
-                        {feeConfig.transport_enabled && (
-                          <div className="space-y-2">
-                            <div>
-                              <label className="block text-xs text-gray-600 mb-1">Select Route</label>
-                              <select
-                                value={feeConfig.transport_route_id}
-                                onChange={(e) => setFeeConfig({ ...feeConfig, transport_route_id: e.target.value })}
-                                className="w-full px-2 py-1 border rounded text-sm"
-                              >
-                                <option value="">Select Transport Route</option>
-                                {defaultFees.transport_routes.map((route: any) => (
-                                  <option key={route.id} value={route.id}>
-                                    {route.route_name} {route.bus_number ? `(${route.bus_number})` : ''} - ₹{route.fee?.total?.toFixed(2) || '0.00'}/{route.fee?.fee_cycle || 'monthly'}
-                                  </option>
-                                ))}
-                              </select>
+                        {defaultFees.transport_routes && defaultFees.transport_routes.length > 0 ? (
+                          <>
+                            <div className="flex items-center justify-between mb-2">
+                              <h5 className="font-semibold text-gray-700">Transport Fee</h5>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={feeConfig.transport_enabled}
+                                  onChange={(e) =>
+                                    setFeeConfig({
+                                      ...feeConfig,
+                                      transport_enabled: e.target.checked,
+                                      transport_route_id: e.target.checked ? feeConfig.transport_route_id : ''
+                                    })
+                                  }
+                                  className="rounded"
+                                />
+                                <span className="text-sm text-gray-600">Enable Transport</span>
+                              </label>
                             </div>
-                            {feeConfig.transport_route_id && (() => {
-                              const selectedRoute = defaultFees.transport_routes.find((r: any) => r.id === feeConfig.transport_route_id);
-                              const routeFee = selectedRoute?.fee;
-                              const defaultTransportAmount = routeFee ? parseFloat(routeFee.total || 0) : 0;
-                              const finalTransportAmount = Math.max(0, defaultTransportAmount - feeConfig.transport_fee_discount);
-                              return (
-                                <>
-                                  <div className="flex justify-between text-sm">
-                                    <span className="text-gray-600">Route Fee:</span>
-                                    <span className="font-medium">₹{defaultTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}</span>
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      value={feeConfig.transport_fee_discount}
-                                      onChange={(e) => setFeeConfig({ ...feeConfig, transport_fee_discount: parseFloat(e.target.value) || 0 })}
-                                      className="w-full px-2 py-1 border rounded text-sm"
-                                      placeholder="0"
-                                    />
-                                  </div>
-                                  <div className="flex justify-between text-sm font-semibold pt-1 border-t">
-                                    <span>Final Amount:</span>
-                                    <span className="text-green-600">₹{finalTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}</span>
-                                  </div>
-                                </>
-                              );
-                            })()}
+                            {feeConfig.transport_enabled && (
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Select Route</label>
+                                  <select
+                                    value={feeConfig.transport_route_id}
+                                    onChange={(e) => setFeeConfig({ ...feeConfig, transport_route_id: e.target.value })}
+                                    className="w-full px-2 py-1 border rounded text-sm"
+                                  >
+                                    <option value="">Select Transport Route</option>
+                                    {defaultFees.transport_routes.map((route: any) => (
+                                      <option key={route.id} value={route.id}>
+                                        {route.route_name} {route.bus_number ? `(${route.bus_number})` : ''} - ₹
+                                        {route.fee?.total?.toFixed(2) || '0.00'}/{route.fee?.fee_cycle || 'monthly'}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                {feeConfig.transport_route_id && (() => {
+                                  const selectedRoute = defaultFees.transport_routes.find((r: any) => r.id === feeConfig.transport_route_id);
+                                  const routeFee = selectedRoute?.fee;
+                                  const defaultTransportAmount = routeFee ? parseFloat(routeFee.total || 0) : 0;
+                                  const finalTransportAmount = Math.max(0, defaultTransportAmount - feeConfig.transport_fee_discount);
+                                  return (
+                                    <>
+                                      <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600">Route Fee:</span>
+                                        <span className="font-medium">
+                                          ₹{defaultTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Discount (₹)</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={feeConfig.transport_fee_discount}
+                                          onChange={(e) =>
+                                            setFeeConfig({ ...feeConfig, transport_fee_discount: parseFloat(e.target.value) || 0 })
+                                          }
+                                          className="w-full px-2 py-1 border rounded text-sm"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between text-sm font-semibold pt-1 border-t">
+                                        <span>Final Amount:</span>
+                                        <span className="text-green-600">
+                                          ₹{finalTransportAmount.toFixed(2)}/{routeFee?.fee_cycle || 'monthly'}
+                                        </span>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="text-sm text-gray-600">
+                            <h5 className="font-semibold text-gray-700 mb-1">Transport Fee</h5>
+                            No transport routes are configured for this class.
                           </div>
                         )}
                       </div>
@@ -1805,7 +1898,7 @@ export default function StudentsManagement() {
                     setFeeConfig({
                       class_fee_id: '',
                       class_fee_discount: 0,
-                      transport_enabled: true,
+                      transport_enabled: false,
                       transport_route_id: '',
                       transport_fee_discount: 0,
                       other_fees: [],

@@ -1,4 +1,5 @@
 import { api } from './api';
+import { sanitizePrincipalStudentAdminFeeConfig, sanitizePrincipalStudentCreateFeeConfig } from '../utils/feeConfigPayload';
 import { 
   Student, 
   ClassGroup, 
@@ -112,7 +113,11 @@ export async function updateStudent(studentId: string, data: {
     effective_from_date?: string;
   };
 }): Promise<{ message?: string }> {
-  return api.put<{ message?: string }>(`/students-admin/${studentId}`, data);
+  const payload: typeof data = { ...data };
+  if (payload.fee_config) {
+    payload.fee_config = sanitizePrincipalStudentAdminFeeConfig(payload.fee_config as any) as any;
+  }
+  return api.put<{ message?: string }>(`/students-admin/${studentId}`, payload);
 }
 
 export async function promoteStudent(studentId: string, data: { target_class_id: string }): Promise<{ message?: string }> {
@@ -162,7 +167,11 @@ export interface CreateStudentPayload {
 }
 
 export async function createStudent(data: CreateStudentPayload): Promise<{ id?: string; message?: string }> {
-  return api.post<{ id?: string; message?: string }>('/principal-users/students', data);
+  const payload: CreateStudentPayload = { ...data };
+  if (payload.fee_config) {
+    payload.fee_config = sanitizePrincipalStudentCreateFeeConfig(payload.fee_config as any) as any;
+  }
+  return api.post<{ id?: string; message?: string }>('/principal-users/students', payload);
 }
 
 // Classes (load only; used by StudentsScreen filter and prefetch)

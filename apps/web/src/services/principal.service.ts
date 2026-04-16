@@ -1,5 +1,6 @@
 import { apiFetch } from './apiClient';
 import { API_URL } from '../utils/api';
+import { sanitizePrincipalStudentAdminFeeConfig, sanitizePrincipalStudentCreateFeeConfig } from '../utils/feeConfigPayload';
 import {
   StaffResponse,
   ClassResponse,
@@ -551,13 +552,18 @@ export async function loadStudentFeeConfig(token: string, studentId: string): Pr
 }
 
 export async function updateStudent(token: string, studentId: string, data: any): Promise<UpdateResponse> {
+  const payload: any = { ...data };
+  if (payload.fee_config) {
+    payload.fee_config = sanitizePrincipalStudentAdminFeeConfig(payload.fee_config);
+  }
+
   const response = await fetch(`${API_URL}/students-admin/${studentId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -610,13 +616,18 @@ export async function promoteClass(token: string, classId: string, data: {
 }
 
 export async function createStudent(token: string, data: any): Promise<CreateResponse> {
+  const payload: any = { ...data };
+  if (payload.fee_config) {
+    payload.fee_config = sanitizePrincipalStudentCreateFeeConfig(payload.fee_config);
+  }
+
   const response = await fetch(`${API_URL}/principal-users/students`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {

@@ -30,6 +30,7 @@ import {
   type ClassWithStudents,
   type CreateStudentPayload,
 } from '../../../shared/services/principal.service';
+import { sanitizePrincipalStudentAdminFeeConfig } from '../../../shared/utils/feeConfigPayload';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import type { PrincipalStackScreenProps } from '../../../navigation/types';
@@ -37,6 +38,13 @@ import type { PrincipalStackScreenProps } from '../../../navigation/types';
 type Props = PrincipalStackScreenProps<'Students'>;
 
 type ModalType = 'add' | 'edit' | 'promote' | 'promoteClass' | null;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value.trim());
+}
 
 export function StudentsScreen({ navigation }: Props) {
   const [expandedClassIds, setExpandedClassIds] = useState<Set<string>>(new Set());
@@ -176,6 +184,11 @@ export function StudentsScreen({ navigation }: Props) {
           is_exempt: false,
         })),
       }));
+
+      const transportRoutes = data.transport_routes ?? [];
+      if (transportRoutes.length === 0) {
+        setEditFeeConfig((prev) => ({ ...prev, transport_enabled: false, transport_route_id: '' }));
+      }
     } catch {
       setEditDefaultFees(null);
     } finally {
@@ -322,6 +335,24 @@ export function StudentsScreen({ navigation }: Props) {
 
   const handleUpdateStudent = () => {
     if (!selectedStudent) return;
+
+    if (editForm.class_group_id && loadingEditFees) {
+      Alert.alert('Validation', 'Please wait while fee information finishes loading...');
+      return;
+    }
+
+    const transportRoutes = editDefaultFees?.transport_routes ?? [];
+    if (editForm.class_group_id && editDefaultFees && editFeeConfig.transport_enabled) {
+      if (transportRoutes.length === 0) {
+        Alert.alert('Validation', 'No transport routes are configured for this class. Disable transport to continue.');
+        return;
+      }
+      if (!editFeeConfig.transport_route_id || !isUuid(editFeeConfig.transport_route_id)) {
+        Alert.alert('Validation', 'Select a transport route (or disable transport).');
+        return;
+      }
+    }
+
     const updateData: {
       class_group_id: string | null;
       section_id: string | null;
@@ -333,10 +364,10 @@ export function StudentsScreen({ navigation }: Props) {
       roll_number: editForm.roll_number || null,
     };
     if (editForm.class_group_id && editDefaultFees) {
-      updateData.fee_config = {
+      updateData.fee_config = sanitizePrincipalStudentAdminFeeConfig({
         ...editFeeConfig,
-        effective_from_date: editFeeConfig.effective_from_date || '',
-      };
+        effective_from_date: editFeeConfig.effective_from_date?.trim() ? editFeeConfig.effective_from_date.trim() : undefined,
+      }) as any;
     }
     updateMutation.mutate(
       {
@@ -643,46 +674,63 @@ export function StudentsScreen({ navigation }: Props) {
                     <ActivityIndicator size="small" color="#2563eb" />
                     <Text style={styles.loadingFeesText}>Loading fee options...</Text>
                   </View>
-                ) : editDefaultFees && editDefaultFees.class_fees?.length > 0 ? (
+                ) : editDefaultFees ? (
                   <>
-                    <Text style={styles.label}>Class fee discount (₹)</Text>
-                    <TextInput
-                      style={styles.input}
-                      keyboardType="decimal-pad"
-                      placeholder="0"
-                      value={editFeeConfig.class_fee_discount ? String(editFeeConfig.class_fee_discount) : ''}
-                      onChangeText={(t) => setEditFeeConfig((prev) => ({ ...prev, class_fee_discount: parseFloat(t) || 0 }))}
-                    />
-                    <View style={styles.transportRow}>
-                      <Text style={styles.label}>Transport</Text>
-                      <Switch
-                        value={editFeeConfig.transport_enabled}
-                        onValueChange={(v) => setEditFeeConfig((prev) => ({ ...prev, transport_enabled: v, transport_route_id: v ? prev.transport_route_id : '' }))}
-                      />
-                    </View>
-                    {editFeeConfig.transport_enabled && editDefaultFees.transport_routes?.length > 0 && (
+                    {editDefaultFees.class_fees?.length > 0 ? (
                       <>
-                        <Text style={styles.label}>Route</Text>
-                        <View style={styles.pickerRow}>
-                          {editDefaultFees.transport_routes.map((r) => (
-                            <TouchableOpacity
-                              key={r.id}
-                              style={[styles.chip, editFeeConfig.transport_route_id === r.id && styles.chipSelected]}
-                              onPress={() => setEditFeeConfig((prev) => ({ ...prev, transport_route_id: r.id }))}
-                            >
-                              <Text style={editFeeConfig.transport_route_id === r.id ? styles.chipTextSelected : styles.chipText}>{r.route_name ?? r.bus_number ?? r.id}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                        <Text style={styles.label}>Transport discount (₹)</Text>
+                        <Text style={styles.label}>Class fee discount (₹)</Text>
                         <TextInput
                           style={styles.input}
                           keyboardType="decimal-pad"
                           placeholder="0"
-                          value={editFeeConfig.transport_fee_discount ? String(editFeeConfig.transport_fee_discount) : ''}
-                          onChangeText={(t) => setEditFeeConfig((prev) => ({ ...prev, transport_fee_discount: parseFloat(t) || 0 }))}
+                          value={editFeeConfig.class_fee_discount ? String(editFeeConfig.class_fee_discount) : ''}
+                          onChangeText={(t) => setEditFeeConfig((prev) => ({ ...prev, class_fee_discount: parseFloat(t) || 0 }))}
                         />
                       </>
+                    ) : (
+                      <Text style={styles.helperText}>No default class fees are configured for this class.</Text>
+                    )}
+
+                    {editDefaultFees.transport_routes && editDefaultFees.transport_routes.length > 0 ? (
+                      <>
+                        <View style={styles.transportRow}>
+                          <Text style={styles.label}>Transport</Text>
+                          <Switch
+                            value={editFeeConfig.transport_enabled}
+                            onValueChange={(v) =>
+                              setEditFeeConfig((prev) => ({ ...prev, transport_enabled: v, transport_route_id: v ? prev.transport_route_id : '' }))
+                            }
+                          />
+                        </View>
+                        {editFeeConfig.transport_enabled ? (
+                          <>
+                            <Text style={styles.label}>Route</Text>
+                            <View style={styles.pickerRow}>
+                              {editDefaultFees.transport_routes.map((r) => (
+                                <TouchableOpacity
+                                  key={r.id}
+                                  style={[styles.chip, editFeeConfig.transport_route_id === r.id && styles.chipSelected]}
+                                  onPress={() => setEditFeeConfig((prev) => ({ ...prev, transport_route_id: r.id }))}
+                                >
+                                  <Text style={editFeeConfig.transport_route_id === r.id ? styles.chipTextSelected : styles.chipText}>
+                                    {r.route_name ?? r.bus_number ?? r.id}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                            <Text style={styles.label}>Transport discount (₹)</Text>
+                            <TextInput
+                              style={styles.input}
+                              keyboardType="decimal-pad"
+                              placeholder="0"
+                              value={editFeeConfig.transport_fee_discount ? String(editFeeConfig.transport_fee_discount) : ''}
+                              onChangeText={(t) => setEditFeeConfig((prev) => ({ ...prev, transport_fee_discount: parseFloat(t) || 0 }))}
+                            />
+                          </>
+                        ) : null}
+                      </>
+                    ) : (
+                      <Text style={styles.helperText}>No transport routes are configured for this class.</Text>
                     )}
                   </>
                 ) : null}
@@ -840,5 +888,6 @@ const styles = StyleSheet.create({
   feeSectionTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 12 },
   loadingFeesRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
   loadingFeesText: { fontSize: 14, color: '#64748b' },
+  helperText: { fontSize: 13, color: '#64748b', marginBottom: 8 },
   transportRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 8 },
 });
