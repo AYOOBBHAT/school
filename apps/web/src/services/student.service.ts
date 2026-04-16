@@ -1,6 +1,6 @@
-import { API_URL } from '../utils/api';
 import { ROUTES } from '../utils/apiRoutes';
 import { StudentProfile } from '../pages/student/types';
+import { apiFetch } from './apiClient';
 
 /**
  * Fetch student profile
@@ -8,11 +8,7 @@ import { StudentProfile } from '../pages/student/types';
  * @returns Student profile data
  */
 export async function fetchStudentProfile(token: string): Promise<{ student: StudentProfile }> {
-  const response = await fetch(`${API_URL}/students/profile`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch('/students/profile', {}, token);
 
   if (!response.ok) {
     if (response.status === 404) {
@@ -47,11 +43,7 @@ export async function fetchStudentAttendance(token: string): Promise<{
     attendancePercentage: number;
   };
 }> {
-  const response = await fetch(`${API_URL}/students/attendance`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch('/students/attendance', {}, token);
 
   if (!response.ok) {
     await response.json().catch(() => ({}));
@@ -88,11 +80,7 @@ export async function fetchStudentMarks(token: string): Promise<{
     overallPercentage: string;
   }>;
 }> {
-  const response = await fetch(`${API_URL}/students/marks`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch('/students/marks', {}, token);
 
   if (!response.ok) {
     throw new Error('Failed to load marks');
@@ -130,11 +118,7 @@ export async function fetchStudentFees(token: string): Promise<{
     created_at: string;
   }>;
 }> {
-  const response = await fetch(`${API_URL}/students/fees`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch('/students/fees', {}, token);
 
   if (!response.ok) {
     await response.json().catch(() => ({}));
@@ -168,9 +152,10 @@ export async function fetchStudentMonthlyLedger(
   pagination: { page: number; limit: number; total: number; total_pages: number };
   summary: Record<string, number>;
 }> {
-  const response = await fetch(
-    `${API_URL}${ROUTES.clerkFees}/student/${encodeURIComponent(studentId)}/monthly-ledger`,
-    { headers: { Authorization: `Bearer ${token}` } }
+  const response = await apiFetch(
+    `${ROUTES.clerkFees}/student/${encodeURIComponent(studentId)}/monthly-ledger`,
+    {},
+    token
   );
 
   if (!response.ok) {

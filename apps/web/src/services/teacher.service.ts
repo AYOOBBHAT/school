@@ -1,5 +1,5 @@
-import { API_URL } from '../utils/api';
 import { AssignmentResponse, ExamResponse } from './types';
+import { apiFetch } from './apiClient';
 
 /**
  * Load teacher assignments
@@ -8,11 +8,7 @@ import { AssignmentResponse, ExamResponse } from './types';
  * @returns Array of assignments
  */
 export async function loadTeacherAssignments(token: string, userId: string): Promise<AssignmentResponse> {
-  const response = await fetch(`${API_URL}/teacher-assignments/teacher/${userId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch(`/teacher-assignments/teacher/${userId}`, {}, token);
 
   if (!response.ok) {
     throw new Error('Failed to load assignments');
@@ -27,11 +23,7 @@ export async function loadTeacherAssignments(token: string, userId: string): Pro
  * @returns Array of exams
  */
 export async function loadExams(token: string): Promise<ExamResponse['exams']> {
-  const response = await fetch(`${API_URL}/exams`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch('/exams', {}, token);
 
   if (!response.ok) {
     throw new Error('Failed to load exams');
@@ -48,11 +40,7 @@ export async function loadExams(token: string): Promise<ExamResponse['exams']> {
  * @returns Array of unique classes
  */
 export async function loadClassesForMarks(token: string, userId: string): Promise<Array<{ id: string; name: string }>> {
-  const response = await fetch(`${API_URL}/teacher-assignments/teacher/${userId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch(`/teacher-assignments/teacher/${userId}`, {}, token);
 
   if (!response.ok) {
     throw new Error('Failed to load classes');
@@ -84,11 +72,7 @@ export async function loadClassesForMarks(token: string, userId: string): Promis
 export async function loadSubjectsForMarks(token: string, userId: string, selectedClass: string): Promise<Array<{ id: string; name: string; code: string | null }>> {
   if (!selectedClass) return [];
 
-  const response = await fetch(`${API_URL}/teacher-assignments/teacher/${userId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch(`/teacher-assignments/teacher/${userId}`, {}, token);
 
   if (!response.ok) {
     throw new Error('Failed to load subjects');
@@ -131,11 +115,7 @@ export async function loadStudentsForMarks(token: string, selectedClass: string)
     class_group_id: selectedClass,
   });
 
-  const response = await fetch(`${API_URL}/students-admin?${params.toString()}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch(`/students-admin?${params.toString()}`, {}, token);
 
   if (!response.ok) {
     throw new Error('Failed to load students');
@@ -191,11 +171,7 @@ export async function loadStudentsForAttendance(token: string, classGroupId: str
     params.append('section_id', sectionId);
   }
 
-  const response = await fetch(`${API_URL}/students-admin?${params.toString()}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch(`/students-admin?${params.toString()}`, {}, token);
 
   if (!response.ok) {
     throw new Error('Failed to load students');
@@ -253,14 +229,10 @@ export async function saveMarks(
     school_id: string;
   }>
 ): Promise<void> {
-  const response = await fetch(`${API_URL}/marks/bulk`, {
+  const response = await apiFetch('/marks/bulk', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify({ marks: marksData }),
-  });
+  }, token);
 
   if (!response.ok) {
     await response.json().catch(() => ({}));
@@ -299,12 +271,8 @@ export async function loadSalaryData(token: string, userId: string): Promise<{
   }>;
 }> {
   const [structureRes, recordsRes] = await Promise.all([
-    fetch(`${API_URL}/salary/structure/${userId}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    }),
-    fetch(`${API_URL}/salary/records`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    apiFetch(`/salary/structure/${userId}`, {}, token),
+    apiFetch('/salary/records', {}, token)
   ]);
 
   let structure = null;

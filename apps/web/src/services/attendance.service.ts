@@ -1,4 +1,4 @@
-import { API_URL } from '../utils/api';
+import { apiFetch } from './apiClient';
 
 /**
  * Load attendance assignments for a teacher
@@ -15,11 +15,7 @@ export async function loadAttendanceAssignments(token: string, userId: string): 
   sections: { id: string; name: string } | null;
   subjects: { id: string; name: string; code: string | null };
 }>> {
-  const response = await fetch(`${API_URL}/teacher-attendance-assignments/teacher/${userId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch(`/teacher-attendance-assignments/teacher/${userId}`, {}, token);
   
   if (!response.ok) {
     return [];
@@ -50,11 +46,7 @@ export async function loadAttendanceForDate(
   classGroupId: string,
   date: string
 ): Promise<Record<string, 'present' | 'absent' | 'late'>> {
-  const response = await fetch(`${API_URL}/attendance?class_group_id=${classGroupId}&date=${date}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await apiFetch(`/attendance?class_group_id=${classGroupId}&date=${date}`, {}, token);
 
   if (!response.ok) {
     return {};
@@ -85,14 +77,10 @@ export async function saveAttendance(
     school_id: string;
   }>
 ): Promise<void> {
-  const response = await fetch(`${API_URL}/attendance/bulk`, {
+  const response = await apiFetch('/attendance/bulk', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify({ attendance: attendanceData }),
-  });
+  }, token);
 
   if (!response.ok) {
     await response.json().catch(() => ({}));

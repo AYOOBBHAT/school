@@ -26,18 +26,37 @@ async function apiRequest<T>(
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${baseUrl}${normalizedPath}`;
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const isAuthRoute =
+    normalizedPath.includes('/auth/login') ||
+    normalizedPath.includes('/auth/register') ||
+    normalizedPath.includes('/auth/forgot-password') ||
+    normalizedPath.includes('/auth/reset-password');
+
+  // Fix race condition: session can be null briefly after app init/sign-in.
+  let session = (await supabase.auth.getSession()).data.session ?? null;
+  if (!session && !isAuthRoute) {
+    await sleep(300);
+    session = (await supabase.auth.getSession()).data.session ?? null;
+  }
   const token = session?.access_token ?? null;
+
+  if (__DEV__) {
+    devLog('[API] Token present:', !!token, normalizedPath);
+  }
+
+  // Enforce strict auth: never send protected requests without a bearer token.
+  if (!isAuthRoute && !token?.trim()) {
+    if (__DEV__) {
+      devLog('[API] Missing token, aborting request:', normalizedPath);
+    }
+    throw new Error('Missing bearer token');
+  }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
-  if (token?.trim()) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  if (token?.trim()) headers['Authorization'] = `Bearer ${token}`;
 
   let response: Response;
   try {
@@ -64,12 +83,6 @@ async function apiRequest<T>(
   }
 
   if (response.status === 401) {
-    const isAuthRoute =
-      normalizedPath.includes('/auth/login') ||
-      normalizedPath.includes('/auth/register') ||
-      normalizedPath.includes('/auth/forgot-password') ||
-      normalizedPath.includes('/auth/reset-password');
-
     if (!isAuthRoute) {
       if ((globalThis as any).__handlingUnauthorized) {
         throw new Error('Authentication required. Please log in again.');

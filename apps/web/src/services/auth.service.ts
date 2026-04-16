@@ -1,5 +1,5 @@
-import { API_URL } from '../utils/api';
 import { ProfileResponse } from './types';
+import { apiFetch } from './apiClient';
 
 /**
  * Get user profile from the backend
@@ -7,22 +7,20 @@ import { ProfileResponse } from './types';
  * @returns Profile data or throws error
  */
 export async function getProfile(token: string): Promise<ProfileResponse> {
-  const response = await fetch(`${API_URL}/auth/profile`, {
+  const response = await apiFetch('/auth/profile', {
     headers: {
-      Authorization: `Bearer ${token}`,
       'Cache-Control': 'no-cache',
     },
-  });
+  }, token);
 
   if (response.ok || response.status === 304) {
     // For 304 responses, re-fetch with cache-busting
     if (response.status === 304) {
-      const freshResponse = await fetch(`${API_URL}/auth/profile?t=${Date.now()}`, {
+      const freshResponse = await apiFetch(`/auth/profile?t=${Date.now()}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
         },
-      });
+      }, token);
       if (freshResponse.ok) {
         return await freshResponse.json();
       } else {

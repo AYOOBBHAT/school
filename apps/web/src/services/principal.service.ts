@@ -1,3 +1,4 @@
+import { apiFetch } from './apiClient';
 import { API_URL } from '../utils/api';
 import {
   StaffResponse,
@@ -20,9 +21,7 @@ import {
 
 // Staff Management
 export async function loadStaff(token: string): Promise<StaffResponse> {
-  const response = await fetch(`${API_URL}/staff-admin`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await apiFetch('/staff-admin', {}, token);
 
   if (!response.ok) {
     await response.json().catch(() => ({}));
@@ -33,9 +32,7 @@ export async function loadStaff(token: string): Promise<StaffResponse> {
 }
 
 export async function loadAllClasses(token: string): Promise<ClassResponse> {
-  const response = await fetch(`${API_URL}/classes`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await apiFetch('/classes', {}, token);
 
   if (!response.ok) {
     return { classes: [] };
@@ -45,9 +42,7 @@ export async function loadAllClasses(token: string): Promise<ClassResponse> {
 }
 
 export async function loadAllSubjects(token: string): Promise<SubjectResponse> {
-  const response = await fetch(`${API_URL}/subjects`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await apiFetch('/subjects', {}, token);
 
   if (!response.ok) {
     return { subjects: [] };
@@ -57,9 +52,7 @@ export async function loadAllSubjects(token: string): Promise<SubjectResponse> {
 }
 
 export async function loadAllAssignments(token: string): Promise<AssignmentResponse> {
-  const response = await fetch(`${API_URL}/teacher-assignments`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await apiFetch('/teacher-assignments', {}, token);
 
   if (!response.ok) {
     return { assignments: [] };
@@ -69,9 +62,7 @@ export async function loadAllAssignments(token: string): Promise<AssignmentRespo
 }
 
 export async function loadAttendanceAssignments(token: string): Promise<AssignmentResponse> {
-  const response = await fetch(`${API_URL}/teacher-attendance-assignments`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await apiFetch('/teacher-attendance-assignments', {}, token);
 
   if (!response.ok) {
     return { assignments: [] };
@@ -81,9 +72,7 @@ export async function loadAttendanceAssignments(token: string): Promise<Assignme
 }
 
 export async function loadSections(token: string, classId: string): Promise<{ sections: Array<{ id: string; name: string; class_id: string }> }> {
-  const response = await fetch(`${API_URL}/classes/${classId}/sections`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await apiFetch(`/classes/${classId}/sections`, {}, token);
 
   if (!response.ok) {
     return { sections: [] };
@@ -96,9 +85,7 @@ export async function loadTeacherAttendance(token: string, teacherId: string): P
   attendance: Array<{ date: string; status: string; notes?: string }>;
   summary?: { total: number; present: number; absent: number; late: number } | null;
 }> {
-  const response = await fetch(`${API_URL}/teacher-attendance?teacher_id=${teacherId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await apiFetch(`/teacher-attendance?teacher_id=${teacherId}`, {}, token);
 
   if (!response.ok) {
     return { attendance: [], summary: undefined };
@@ -115,14 +102,10 @@ export async function markTeacherAttendance(
   token: string,
   data: { teacher_id: string; date: string; status: string; notes?: string }
 ): Promise<void> {
-  const response = await fetch(`${API_URL}/teacher-attendance`, {
+  const response = await apiFetch('/teacher-attendance', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify(data),
-  });
+  }, token);
 
   if (!response.ok) {
     const error = await response.json();

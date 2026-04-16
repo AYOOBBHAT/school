@@ -1,8 +1,7 @@
-import { API_URL } from '../utils/api';
 import { ROUTES } from '../utils/apiRoutes';
-import { supabase } from '../utils/supabase';
 import type { UnpaidFeeAnalyticsResponse } from './types';
 import { normalizeUnpaidFeeAnalyticsResponse } from './unpaidFeeAnalyticsNormalize';
+import { apiFetch } from './apiClient';
 
 /**
  * Fetch unpaid fee analytics with filters
@@ -19,11 +18,6 @@ export const fetchUnpaidAnalytics = async ({
   page?: number;
   limit?: number;
 }): Promise<UnpaidFeeAnalyticsResponse> => {
-  const token = (await supabase.auth.getSession()).data.session?.access_token;
-  if (!token) {
-    throw new Error('Not authenticated');
-  }
-
   const params = new URLSearchParams({
     time_scope: timeScope,
     page: page.toString(),
@@ -34,9 +28,7 @@ export const fetchUnpaidAnalytics = async ({
     params.append('class_group_id', classId);
   }
 
-  const response = await fetch(`${API_URL}${ROUTES.clerkFees}/analytics/unpaid?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await apiFetch(`${ROUTES.clerkFees}/analytics/unpaid?${params.toString()}`);
 
   if (!response.ok) {
     await response.json().catch(() => ({}));
