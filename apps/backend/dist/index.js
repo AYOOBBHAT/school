@@ -58,22 +58,40 @@ app.set('trust proxy', 1);
 const httpRequestTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS) > 0
     ? Number(process.env.HTTP_REQUEST_TIMEOUT_MS)
     : 120_000;
-const allowedOrigins = [
+const defaultAllowedOrigins = [
     'https://jhelumverse.in',
     'https://www.jhelumverse.in',
     'http://localhost:5173',
     'http://localhost:3000',
 ];
+const extraAllowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+const allowedOrigins = [...new Set([...defaultAllowedOrigins, ...extraAllowedOrigins])];
+function isAllowedOrigin(origin) {
+    if (allowedOrigins.includes(origin))
+        return true;
+    // Vercel preview + production deployments (*.vercel.app)
+    try {
+        const { hostname, protocol } = new URL(origin);
+        if (protocol === 'https:' && hostname.endsWith('.vercel.app'))
+            return true;
+    }
+    catch {
+        return false;
+    }
+    return false;
+}
 const corsOptions = {
     origin: function (origin, callback) {
         if (!origin)
             return callback(null, true); // allow Postman / mobile
-        if (allowedOrigins.includes(origin)) {
+        if (isAllowedOrigin(origin)) {
             return callback(null, true);
         }
-        else {
-            return callback(new Error('Not allowed by CORS'));
-        }
+        logger.warn({ origin }, 'Blocked request from disallowed origin');
+        return callback(null, false);
     },
     credentials: true,
 };

@@ -42,9 +42,14 @@ const queryClient = new QueryClient({
     const isAuthRoute =
       typeof url === 'string' &&
       (url.includes('/auth/login') ||
+        url.includes('/auth/login-username') ||
         url.includes('/auth/register') ||
+        url.includes('/auth/signup-principal') ||
+        url.includes('/auth/signup-join') ||
         url.includes('/auth/forgot-password') ||
-        url.includes('/auth/reset-password'));
+        url.includes('/auth/reset-password') ||
+        url.includes('/auth/profile') ||
+        url.includes('/auth/schools'));
 
     if (response.status === 401 && !isAuthRoute) {
       if (window.__handlingUnauthorized) return response;
