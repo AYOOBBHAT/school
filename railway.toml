@@ -1,0 +1,8 @@
+[build]
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter backend build"
+
+[deploy]
+startCommand = "pnpm --filter backend start"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"

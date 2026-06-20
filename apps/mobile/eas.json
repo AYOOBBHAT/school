@@ -35,7 +35,8 @@
     "production": {
       "android": {
         "buildType": "app-bundle",
-        "image": "latest"
+        "image": "latest",
+        "autoIncrement": "versionCode"
       },
       "ios": {
         "image": "latest"

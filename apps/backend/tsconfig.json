@@ -1,13 +1,16 @@
 {
-  "extends": "../../packages/config/tsconfig.base.json",
   "compilerOptions": {
+    "target": "ES2021",
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node", "express"],
-    "module": "Node16",
-    "moduleResolution": "node16"
+    "types": ["node", "express"]
   },
   "include": ["src"]
 }
-
-
