@@ -1048,11 +1048,20 @@ School Management System
     return res.json({ 
       message: 'If an account exists with this email, an OTP has been sent.'
     });
-  } catch {
-    logger.error('[forgot-password-request-email] Unexpected error');
-    // Return generic message for security
-    return res.json({ 
-      message: 'If an account exists with this email, an OTP has been sent.' 
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : String(error);
+
+    logger.error(
+      {
+        error: message,
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+      '[forgot-password-request-email] Unexpected error'
+    );
+
+    return res.json({
+      message: 'If an account exists with this email, an OTP has been sent.',
     });
   }
 });
