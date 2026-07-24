@@ -1026,9 +1026,21 @@ Best regards,
 School Management System
     `;
 
-    try {
-      await sendEmail({ to: profile.email, subject: emailSubject, text: emailBody });
-    } catch (e) {
+    const emailResult = await sendEmail({
+      to: profile.email,
+      subject: emailSubject,
+      text: emailBody,
+    });
+
+    if (!emailResult.ok) {
+      logger.error(
+        {
+          profileId: profile.id,
+          reason: emailResult.error,
+        },
+        '[forgot-password-request-email] OTP email failed'
+      );
+
       await redis.del(otpKey);
     }
 
