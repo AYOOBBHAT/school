@@ -646,11 +646,27 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'Failed to update password' });
     }
 
-    // Invalidate ALL sessions after password change (all devices)
-    const { error: signOutError } = await adminSupabase.auth.admin.signOut(user.id);
-    if (signOutError) {
-      logger.error({ err: signOutError }, '[reset-password] Failed to revoke sessions');
-      return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
+    // Invalidate sessions for this access token (admin.signOut expects a JWT, not a user id)
+    const accessToken = authHeader.slice('Bearer '.length).trim();
+    if (accessToken) {
+      const { error: signOutError } = await adminSupabase.auth.admin.signOut(accessToken, 'global');
+      if (signOutError) {
+        logger.error(
+          {
+            userId: user.id,
+            error: signOutError.message,
+            status: signOutError.status,
+            code: (signOutError as { code?: string }).code,
+          },
+          '[reset-password] Failed to revoke sessions'
+        );
+        // Best-effort: password update already succeeded
+      }
+    } else {
+      logger.info(
+        { userId: user.id },
+        '[reset-password] Session revocation skipped because no access token is available'
+      );
     }
 
     // Update profile to clear password_reset_required flag
@@ -1196,12 +1212,11 @@ router.post('/forgot-password-verify', async (req, res) => {
       return res.status(400).json({ error: 'Failed to reset password' });
     }
 
-    // Invalidate ALL sessions after password reset (all devices)
-    const { error: signOutError } = await supabase.auth.admin.signOut(profileId);
-    if (signOutError) {
-      logger.error({ err: signOutError }, '[forgot-password-verify] Failed to revoke sessions');
-      return res.status(500).json({ error: SAFE_INTERNAL_ERROR });
-    }
+    // admin.signOut requires a valid user access JWT. Forgot-password OTP flow has none.
+    logger.info(
+      { profileId },
+      '[forgot-password-verify] Session revocation skipped because no access token is available'
+    );
 
     // Clear password_reset_required flag
     await supabase
