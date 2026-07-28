@@ -5,6 +5,7 @@
 /assets/*.map    200
 /assets/*    200
 /index.html    200
+/app-ads.txt    200
 # SPA routing - all other routes go to index.html
 /*    /index.html   200
 
